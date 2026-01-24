@@ -10,6 +10,50 @@ export default function SummaryPage() {
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const handleExport = () => {
+    if (!workout) return;
+
+    const workoutSession = {
+      workoutName: workout.name,
+      date: new Date().toISOString(),
+      exercises: workout.exercises.map((ex) => {
+        if (ex.type === 'single') {
+          return {
+            type: 'single',
+            name: ex.name,
+            sets: ex.sets,
+            targetWeight: ex.targetWeight,
+            targetReps: ex.targetReps,
+            // TODO: Add actual logged sets data when we have persistence
+          };
+        } else {
+          return {
+            type: 'b2b',
+            exercise1: ex.exercises[0].name,
+            exercise2: ex.exercises[1].name,
+            sets: ex.exercises[0].sets,
+            // TODO: Add actual logged sets data when we have persistence
+          };
+        }
+      }),
+      cardio: workout.cardio ? {
+        type: workout.cardio.type,
+        targetDuration: workout.cardio.duration,
+        // TODO: Add actual duration when we have persistence
+      } : null,
+    };
+
+    const blob = new Blob([JSON.stringify(workoutSession, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${workout.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   useEffect(() => {
     async function fetchWorkout() {
       try {
@@ -93,6 +137,14 @@ export default function SummaryPage() {
             ))}
           </div>
         </div>
+
+        {/* Export Button */}
+        <button
+          onClick={handleExport}
+          className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-4 rounded-lg text-lg font-semibold transition-colors mb-4"
+        >
+          📥 Export Workout JSON
+        </button>
 
         {/* Back to Home */}
         <Link

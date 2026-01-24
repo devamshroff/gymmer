@@ -125,7 +125,7 @@ export default function PostStretchesPage() {
         {/* Stretch Card */}
         <div className="bg-zinc-800 rounded-lg p-8 border-2 border-blue-600 mb-8">
           <div className="text-center mb-6">
-            <div className="text-6xl mb-4">🔵</div>
+            <div className="text-6xl mb-4">🧘</div>
             <h2 className="text-3xl font-bold text-white mb-4">{currentStretch.name}</h2>
             <div className="text-2xl text-blue-400 font-semibold">{currentStretch.duration}</div>
           </div>

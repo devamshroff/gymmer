@@ -11,6 +11,7 @@ export default function CardioPage() {
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [isDone, setIsDone] = useState(false);
+  const [actualDuration, setActualDuration] = useState('');
 
   useEffect(() => {
     async function fetchWorkout() {
@@ -115,9 +116,21 @@ export default function CardioPage() {
             <div className="text-xl text-zinc-300">{cardio.intensity}</div>
           </div>
 
-          <div className="bg-zinc-900 rounded-lg p-4">
+          <div className="bg-zinc-900 rounded-lg p-4 mb-6">
             <div className="text-zinc-400 text-sm mb-2">Tips:</div>
             <p className="text-zinc-200 text-lg leading-relaxed">{cardio.tips}</p>
+          </div>
+
+          {/* Actual Duration Input */}
+          <div className="bg-zinc-900 rounded-lg p-4">
+            <label className="text-zinc-400 text-sm block mb-2">How much did you do?</label>
+            <input
+              type="text"
+              value={actualDuration}
+              onChange={(e) => setActualDuration(e.target.value)}
+              placeholder="e.g., 15 min, 12 min, 20 min"
+              className="w-full bg-zinc-800 text-white text-xl text-center rounded p-3 focus:outline-none focus:ring-2 focus:ring-red-500"
+            />
           </div>
         </div>
 
