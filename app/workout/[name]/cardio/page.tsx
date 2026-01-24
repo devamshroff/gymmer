@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
+import { addCardioToSession } from '@/lib/workout-session';
 
 export default function CardioPage() {
   const params = useParams();
@@ -65,6 +66,14 @@ export default function CardioPage() {
   const progressPercentage = (currentProgress / totalItems) * 100;
 
   const handleComplete = () => {
+    // Save cardio data to session
+    if (actualDuration.trim()) {
+      addCardioToSession({
+        type: cardio.type,
+        time: actualDuration.trim(),
+      });
+    }
+
     setIsDone(true);
     setTimeout(() => {
       router.push(`/workout/${encodeURIComponent(workout.name)}/post-stretches`);

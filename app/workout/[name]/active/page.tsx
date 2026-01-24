@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Exercise, SingleExercise, B2BExercise } from '@/lib/types';
+import { addExerciseToSession } from '@/lib/workout-session';
 
 interface SetData {
   weight: number;
@@ -178,7 +179,8 @@ export default function ActiveWorkoutPage() {
       setCurrentExerciseInPair(1);
     } else {
       // Completed both exercises in the pair
-      setCompletedPairs([...completedPairs, { ex1: setData1, ex2: setData2 }]);
+      const newCompletedPairs = [...completedPairs, { ex1: setData1, ex2: setData2 }];
+      setCompletedPairs(newCompletedPairs);
 
       if (currentSetIndex < b2bExercise.exercises[0].sets) {
         // More sets to go - start rest timer
@@ -187,7 +189,17 @@ export default function ActiveWorkoutPage() {
         setCurrentSetIndex(currentSetIndex + 1);
         setCurrentExerciseInPair(0); // Reset to first exercise for next round
       } else {
-        // All sets complete - show transition to next exercise
+        // All sets complete - save to session and show transition to next exercise
+        addExerciseToSession({
+          name: b2bExercise.exercises[0].name,
+          type: 'b2b',
+          sets: newCompletedPairs.map(pair => pair.ex1),
+          b2bPartner: {
+            name: b2bExercise.exercises[1].name,
+            sets: newCompletedPairs.map(pair => pair.ex2),
+          },
+        });
+
         if (currentExerciseIndex < workout!.exercises.length - 1) {
           setIsResting(false);
           setIsTransitioning(true);
@@ -206,7 +218,8 @@ export default function ActiveWorkoutPage() {
 
   // Single Exercise Handlers
   const handleCompleteSet = () => {
-    setCompletedSets([...completedSets, setData]);
+    const newCompletedSets = [...completedSets, setData];
+    setCompletedSets(newCompletedSets);
 
     const exercise = currentExercise as SingleExercise;
 
@@ -224,7 +237,16 @@ export default function ActiveWorkoutPage() {
         });
       }
     } else {
-      // Exercise complete - show transition to next exercise
+      // Exercise complete - save to session
+      const hasWarmup = exercise.warmupWeight !== exercise.targetWeight;
+      addExerciseToSession({
+        name: exercise.name,
+        type: 'single',
+        warmup: hasWarmup ? newCompletedSets[0] : undefined,
+        sets: hasWarmup ? newCompletedSets.slice(1) : newCompletedSets,
+      });
+
+      // Show transition to next exercise
       if (currentExerciseIndex < workout.exercises.length - 1) {
         setIsResting(false);
         setIsTransitioning(true);

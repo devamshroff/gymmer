@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Stretch } from '@/lib/types';
+import { initWorkoutSession } from '@/lib/workout-session';
 
 export default function StretchesPage() {
   const params = useParams();
@@ -21,6 +22,8 @@ export default function StretchesPage() {
         }
         const data = await response.json();
         setWorkout(data.workout);
+        // Initialize workout session when workout is loaded
+        initWorkoutSession(data.workout.name);
       } catch (error) {
         console.error('Error fetching workout:', error);
       } finally {

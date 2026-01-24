@@ -4,50 +4,41 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
+import { getWorkoutSession, clearWorkoutSession, WorkoutSessionData } from '@/lib/workout-session';
 
 export default function SummaryPage() {
   const params = useParams();
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionData, setSessionData] = useState<WorkoutSessionData | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [totalVolume, setTotalVolume] = useState(0);
+  const [totalDuration, setTotalDuration] = useState(0);
 
   const handleExport = () => {
-    if (!workout) return;
+    if (!sessionData) return;
 
-    const workoutSession = {
-      workoutName: workout.name,
+    const exportData = {
+      workoutName: sessionData.workoutName,
       date: new Date().toISOString(),
-      exercises: workout.exercises.map((ex) => {
-        if (ex.type === 'single') {
-          return {
-            type: 'single',
-            name: ex.name,
-            sets: ex.sets,
-            targetWeight: ex.targetWeight,
-            targetReps: ex.targetReps,
-            // TODO: Add actual logged sets data when we have persistence
-          };
-        } else {
-          return {
-            type: 'b2b',
-            exercise1: ex.exercises[0].name,
-            exercise2: ex.exercises[1].name,
-            sets: ex.exercises[0].sets,
-            // TODO: Add actual logged sets data when we have persistence
-          };
-        }
-      }),
-      cardio: workout.cardio ? {
-        type: workout.cardio.type,
-        targetDuration: workout.cardio.duration,
-        // TODO: Add actual duration when we have persistence
-      } : null,
+      exercises: sessionData.exercises.map((ex) => ({
+        type: ex.type,
+        name: ex.name,
+        warmup: ex.warmup,
+        sets: ex.sets,
+        b2bPartner: ex.b2bPartner,
+      })),
+      cardio: sessionData.cardio || null,
+      totalVolume,
+      totalDurationMinutes: totalDuration,
     };
 
-    const blob = new Blob([JSON.stringify(workoutSession, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${workout.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `${sessionData.workoutName.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -72,6 +63,69 @@ export default function SummaryPage() {
 
     fetchWorkout();
   }, [params.name]);
+
+  useEffect(() => {
+    async function loadAndSaveSession() {
+      // Load session data from localStorage
+      const session = getWorkoutSession();
+      if (!session) {
+        console.error('No session data found');
+        return;
+      }
+
+      setSessionData(session);
+
+      // Calculate total volume
+      let volume = 0;
+      for (const exercise of session.exercises) {
+        if (exercise.warmup) {
+          volume += exercise.warmup.weight * exercise.warmup.reps;
+        }
+        for (const set of exercise.sets) {
+          volume += set.weight * set.reps;
+        }
+        if (exercise.b2bPartner) {
+          if (exercise.b2bPartner.warmup) {
+            volume += exercise.b2bPartner.warmup.weight * exercise.b2bPartner.warmup.reps;
+          }
+          for (const set of exercise.b2bPartner.sets) {
+            volume += set.weight * set.reps;
+          }
+        }
+      }
+      setTotalVolume(Math.round(volume));
+
+      // Calculate duration
+      const startTime = new Date(session.startTime);
+      const endTime = new Date();
+      const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
+      setTotalDuration(durationMinutes);
+
+      // Save to database
+      setSaving(true);
+      try {
+        const response = await fetch('/api/save-workout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(session),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to save workout');
+        }
+
+        setSaved(true);
+        // Clear localStorage after successful save
+        clearWorkoutSession();
+      } catch (error) {
+        console.error('Error saving workout:', error);
+      } finally {
+        setSaving(false);
+      }
+    }
+
+    loadAndSaveSession();
+  }, []);
 
   if (loading) {
     return (
@@ -112,31 +166,78 @@ export default function SummaryPage() {
           </div>
         </div>
 
-        {/* Summary Stats (TODO: calculate from actual logged data) */}
+        {/* Summary Stats */}
         <div className="bg-zinc-800 rounded-lg p-6 mb-8 border-2 border-green-600">
-          <div className="text-center">
-            <div className="text-zinc-400 text-sm mb-2">Total Volume</div>
-            <div className="text-white text-4xl font-bold mb-1">12,450 lbs</div>
-            <div className="text-green-400 text-lg">+850 lbs vs last time ⬆</div>
-          </div>
+          {sessionData ? (
+            <div className="text-center">
+              <div className="text-zinc-400 text-sm mb-2">Total Volume</div>
+              <div className="text-white text-4xl font-bold mb-1">
+                {totalVolume.toLocaleString()} lbs
+              </div>
+              <div className="text-zinc-500 text-sm mt-2">
+                Duration: {totalDuration} minutes
+              </div>
+              {saving && <div className="text-yellow-400 text-sm mt-2">Saving to database...</div>}
+              {saved && <div className="text-green-400 text-sm mt-2">✓ Saved to database</div>}
+            </div>
+          ) : (
+            <div className="text-center text-zinc-400">Loading session data...</div>
+          )}
         </div>
 
         {/* Exercises Summary */}
-        <div className="bg-zinc-800 rounded-lg p-6 mb-8">
-          <h2 className="text-xl font-bold text-white mb-4">EXERCISES COMPLETED</h2>
-          <div className="space-y-3">
-            {workout.exercises.map((exercise, index) => (
-              <div key={index} className="border-l-4 border-green-500 pl-3">
-                <div className="text-white font-semibold">
-                  {exercise.type === 'single' ? exercise.name : `B2B: ${exercise.exercises[0].name} / ${exercise.exercises[1].name}`}
-                </div>
-                <div className="text-zinc-400 text-sm">
-                  {exercise.type === 'single' ? `${exercise.sets} sets` : `${exercise.exercises[0].sets} sets`} • Volume data coming soon
-                </div>
+        {sessionData && (
+          <div className="bg-zinc-800 rounded-lg p-6 mb-8">
+            <h2 className="text-xl font-bold text-white mb-4">EXERCISES COMPLETED</h2>
+            <div className="space-y-4">
+              {sessionData.exercises.map((exercise, index) => {
+                const exerciseVolume =
+                  (exercise.warmup ? exercise.warmup.weight * exercise.warmup.reps : 0) +
+                  exercise.sets.reduce((sum, set) => sum + set.weight * set.reps, 0) +
+                  (exercise.b2bPartner ?
+                    (exercise.b2bPartner.warmup ? exercise.b2bPartner.warmup.weight * exercise.b2bPartner.warmup.reps : 0) +
+                    exercise.b2bPartner.sets.reduce((sum, set) => sum + set.weight * set.reps, 0)
+                    : 0);
+
+                return (
+                  <div key={index} className="border-l-4 border-green-500 pl-3">
+                    <div className="text-white font-semibold mb-1">
+                      {exercise.type === 'single'
+                        ? exercise.name
+                        : `B2B: ${exercise.name} / ${exercise.b2bPartner?.name}`}
+                    </div>
+                    <div className="text-zinc-400 text-sm mb-2">
+                      {exercise.sets.length} sets • {Math.round(exerciseVolume).toLocaleString()} lbs volume
+                    </div>
+                    <div className="space-y-1 text-xs">
+                      {exercise.warmup && (
+                        <div className="text-zinc-500">
+                          Warmup: {exercise.warmup.weight} lbs × {exercise.warmup.reps} reps
+                        </div>
+                      )}
+                      {exercise.sets.map((set, setIndex) => (
+                        <div key={setIndex} className="text-zinc-300">
+                          Set {setIndex + 1}: {set.weight} lbs × {set.reps} reps
+                          {exercise.b2bPartner && exercise.b2bPartner.sets[setIndex] && (
+                            <span className="text-purple-400">
+                              {' + '}{exercise.b2bPartner.sets[setIndex].weight} lbs × {exercise.b2bPartner.sets[setIndex].reps} reps
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {sessionData.cardio && (
+              <div className="mt-4 pt-4 border-t border-zinc-700">
+                <div className="text-white font-semibold mb-1">Cardio: {sessionData.cardio.type}</div>
+                <div className="text-zinc-400 text-sm">{sessionData.cardio.time}</div>
               </div>
-            ))}
+            )}
           </div>
-        </div>
+        )}
 
         {/* Export Button */}
         <button
