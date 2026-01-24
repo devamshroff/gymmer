@@ -1,22 +1,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
-import { getWorkoutSession, WorkoutSessionData } from '@/lib/workout-session';
+import { getWorkoutSession, clearWorkoutSession, WorkoutSessionData } from '@/lib/workout-session';
 
-export default function SummaryPage() {
+export default function StatsPage() {
   const params = useParams();
-  const router = useRouter();
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionData, setSessionData] = useState<WorkoutSessionData | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [totalVolume, setTotalVolume] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
-
 
   useEffect(() => {
     async function fetchWorkout() {
@@ -74,30 +70,22 @@ export default function SummaryPage() {
     setTotalDuration(durationMinutes);
   }, []);
 
-  const handleCompleteWorkout = async () => {
+  const handleExportJSON = () => {
     if (!sessionData) return;
 
-    setSaving(true);
-    try {
-      const response = await fetch('/api/save-workout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sessionData),
-      });
+    const dataStr = JSON.stringify(sessionData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `workout-${sessionData.workoutName}-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 
-      if (!response.ok) {
-        throw new Error('Failed to save workout');
-      }
-
-      setSaved(true);
-      // Navigate to stats page
-      router.push(`/workout/${encodeURIComponent(workout!.name)}/stats`);
-    } catch (error) {
-      console.error('Error saving workout:', error);
-      alert('Failed to save workout. Please try again.');
-    } finally {
-      setSaving(false);
-    }
+    // Clear localStorage after export
+    clearWorkoutSession();
   };
 
   if (loading) {
@@ -124,10 +112,10 @@ export default function SummaryPage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto">
-        {/* Celebration Header */}
+        {/* Header */}
         <div className="text-center mb-8">
-          <div className="text-8xl mb-4">🎉</div>
-          <h1 className="text-4xl font-bold text-white mb-2">Workout Complete!</h1>
+          <div className="text-6xl mb-4">💪</div>
+          <h1 className="text-3xl font-bold text-white mb-2">Workout Stats</h1>
           <div className="text-zinc-400 text-xl mb-2">{workout.name}</div>
           <div className="text-zinc-500">
             {new Date().toLocaleDateString('en-US', {
@@ -139,28 +127,29 @@ export default function SummaryPage() {
           </div>
         </div>
 
-        {/* Summary Stats */}
-        <div className="bg-zinc-800 rounded-lg p-6 mb-8 border-2 border-green-600">
-          {sessionData ? (
-            <div className="text-center">
-              <div className="text-zinc-400 text-sm mb-2">Total Volume</div>
-              <div className="text-white text-4xl font-bold mb-1">
-                {totalVolume.toLocaleString()} lbs
-              </div>
-              <div className="text-zinc-500 text-sm mt-2">
-                Duration: {totalDuration} minutes
-              </div>
+        {/* Summary Stats Cards */}
+        <div className="grid grid-cols-2 gap-4 mb-8">
+          <div className="bg-zinc-800 rounded-lg p-6 border-2 border-blue-600">
+            <div className="text-zinc-400 text-sm mb-2">Total Volume</div>
+            <div className="text-white text-3xl font-bold">
+              {totalVolume.toLocaleString()}
             </div>
-          ) : (
-            <div className="text-center text-zinc-400">Loading session data...</div>
-          )}
+            <div className="text-zinc-500 text-sm">lbs</div>
+          </div>
+          <div className="bg-zinc-800 rounded-lg p-6 border-2 border-green-600">
+            <div className="text-zinc-400 text-sm mb-2">Duration</div>
+            <div className="text-white text-3xl font-bold">
+              {totalDuration}
+            </div>
+            <div className="text-zinc-500 text-sm">minutes</div>
+          </div>
         </div>
 
         {/* Exercises Summary */}
         {sessionData && (
           <div className="bg-zinc-800 rounded-lg p-6 mb-8">
-            <h2 className="text-xl font-bold text-white mb-4">EXERCISES COMPLETED</h2>
-            <div className="space-y-4">
+            <h2 className="text-xl font-bold text-white mb-4">EXERCISE BREAKDOWN</h2>
+            <div className="space-y-6">
               {sessionData.exercises.map((exercise, index) => {
                 const exerciseVolume =
                   (exercise.warmup ? exercise.warmup.weight * exercise.warmup.reps : 0) +
@@ -171,28 +160,34 @@ export default function SummaryPage() {
                     : 0);
 
                 return (
-                  <div key={index} className="border-l-4 border-green-500 pl-3">
-                    <div className="text-white font-semibold mb-1">
-                      {exercise.type === 'single'
-                        ? exercise.name
-                        : `B2B: ${exercise.name} / ${exercise.b2bPartner?.name}`}
+                  <div key={index} className="border-l-4 border-blue-500 pl-4 pb-4 border-b border-zinc-700 last:border-b-0">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <div className="text-white font-bold text-lg mb-1">
+                          {exercise.type === 'single'
+                            ? exercise.name
+                            : `B2B: ${exercise.name} / ${exercise.b2bPartner?.name}`}
+                        </div>
+                        <div className="text-zinc-400 text-sm">
+                          {exercise.sets.length} sets • {Math.round(exerciseVolume).toLocaleString()} lbs
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-zinc-400 text-sm mb-2">
-                      {exercise.sets.length} sets • {Math.round(exerciseVolume).toLocaleString()} lbs volume
-                    </div>
-                    <div className="space-y-1 text-xs">
+                    <div className="space-y-2">
                       {exercise.warmup && (
-                        <div className="text-zinc-500">
-                          Warmup: {exercise.warmup.weight} lbs × {exercise.warmup.reps} reps
+                        <div className="bg-zinc-700 rounded p-2 text-sm">
+                          <span className="text-zinc-400">Warmup:</span>{' '}
+                          <span className="text-white font-semibold">{exercise.warmup.weight} lbs</span> × {exercise.warmup.reps} reps
                         </div>
                       )}
                       {exercise.sets.map((set, setIndex) => (
-                        <div key={setIndex} className="text-zinc-300">
-                          Set {setIndex + 1}: {set.weight} lbs × {set.reps} reps
+                        <div key={setIndex} className="bg-zinc-700 rounded p-2 text-sm">
+                          <span className="text-zinc-400">Set {setIndex + 1}:</span>{' '}
+                          <span className="text-white font-semibold">{set.weight} lbs</span> × {set.reps} reps
                           {exercise.b2bPartner && exercise.b2bPartner.sets[setIndex] && (
-                            <span className="text-purple-400">
-                              {' + '}{exercise.b2bPartner.sets[setIndex].weight} lbs × {exercise.b2bPartner.sets[setIndex].reps} reps
-                            </span>
+                            <div className="mt-1 text-purple-400">
+                              + <span className="font-semibold">{exercise.b2bPartner.sets[setIndex].weight} lbs</span> × {exercise.b2bPartner.sets[setIndex].reps} reps
+                            </div>
                           )}
                         </div>
                       ))}
@@ -202,21 +197,23 @@ export default function SummaryPage() {
               })}
             </div>
             {sessionData.cardio && (
-              <div className="mt-4 pt-4 border-t border-zinc-700">
-                <div className="text-white font-semibold mb-1">Cardio: {sessionData.cardio.type}</div>
-                <div className="text-zinc-400 text-sm">{sessionData.cardio.time}</div>
+              <div className="mt-6 pt-6 border-t border-zinc-700">
+                <div className="text-white font-bold text-lg mb-1">Cardio</div>
+                <div className="text-zinc-400">
+                  {sessionData.cardio.type} • {sessionData.cardio.time}
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* Complete Workout Button */}
+        {/* Export JSON Button */}
         <button
-          onClick={handleCompleteWorkout}
-          disabled={saving}
-          className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-not-allowed text-white py-4 rounded-lg text-xl font-bold transition-colors mb-4"
+          onClick={handleExportJSON}
+          disabled={!sessionData}
+          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white py-4 rounded-lg text-lg font-bold transition-colors mb-4"
         >
-          {saving ? 'Saving...' : '🎉 Complete Workout!'}
+          📥 Export Workout JSON
         </button>
 
         {/* Back to Home */}

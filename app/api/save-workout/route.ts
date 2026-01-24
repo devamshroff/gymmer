@@ -32,12 +32,12 @@ export async function POST(request: Request) {
     }
 
     // Create workout session
-    const sessionId = createWorkoutSession(
-      sessionData.workoutName,
-      endTime.toISOString(),
-      totalDurationMinutes,
-      Math.round(totalStrain)
-    );
+    const sessionId = await createWorkoutSession({
+      workout_plan_name: sessionData.workoutName,
+      date_completed: endTime.toISOString(),
+      total_duration_minutes: totalDurationMinutes,
+      total_strain: Math.round(totalStrain),
+    });
 
     // Log all exercises
     for (const exercise of sessionData.exercises) {
@@ -78,12 +78,16 @@ export async function POST(request: Request) {
         });
       }
 
-      logExercise(exerciseLog);
+      await logExercise(exerciseLog);
     }
 
     // Log cardio if present
     if (sessionData.cardio) {
-      logCardio(sessionId, sessionData.cardio.type, sessionData.cardio.time);
+      await logCardio({
+        session_id: sessionId,
+        cardio_type: sessionData.cardio.type,
+        time: sessionData.cardio.time,
+      });
     }
 
     return NextResponse.json({

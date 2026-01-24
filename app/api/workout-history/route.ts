@@ -14,7 +14,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const lastDate = getLastWorkoutDate(workoutName);
+    const lastDate = await getLastWorkoutDate(workoutName);
 
     return NextResponse.json({ lastDate });
   } catch (error) {

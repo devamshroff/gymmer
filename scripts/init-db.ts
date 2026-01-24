@@ -1,20 +1,27 @@
 // scripts/init-db.ts
-// Simple script to initialize the database
+// Simple script to test Turso database connection
 import { getDatabase } from '../lib/database';
 
-console.log('Initializing database...');
-const db = getDatabase();
-console.log('Database initialized successfully!');
-console.log('Database path: data/gymmer.db');
+async function main() {
+  console.log('Connecting to Turso database...');
+  const db = getDatabase();
+  console.log('Connected successfully!');
 
-// Test query
-const tables = db.prepare(`
-  SELECT name FROM sqlite_master WHERE type='table'
-`).all();
+  // Test query
+  const result = await db.execute(`
+    SELECT name FROM sqlite_master WHERE type='table'
+  `);
 
-console.log('\nTables created:');
-tables.forEach((table: any) => {
-  console.log(`  - ${table.name}`);
+  console.log('\nTables in database:');
+  result.rows.forEach((table: any) => {
+    console.log(`  - ${table.name}`);
+  });
+
+  await db.close();
+  process.exit(0);
+}
+
+main().catch(error => {
+  console.error('Error:', error);
+  process.exit(1);
 });
-
-process.exit(0);

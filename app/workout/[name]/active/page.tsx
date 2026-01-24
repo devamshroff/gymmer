@@ -33,6 +33,7 @@ export default function ActiveWorkoutPage() {
 
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [transitionTimeRemaining, setTransitionTimeRemaining] = useState(60);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   useEffect(() => {
     async function fetchWorkout() {
@@ -182,10 +183,8 @@ export default function ActiveWorkoutPage() {
       const newCompletedPairs = [...completedPairs, { ex1: setData1, ex2: setData2 }];
       setCompletedPairs(newCompletedPairs);
 
-      if (currentSetIndex < b2bExercise.exercises[0].sets) {
-        // More sets to go - start rest timer
-        setIsResting(true);
-        setRestTimeRemaining(b2bExercise.restTime);
+      if (newCompletedPairs.length < b2bExercise.exercises[0].sets) {
+        // More sets to go - no rest, immediately continue to next set
         setCurrentSetIndex(currentSetIndex + 1);
         setCurrentExerciseInPair(0); // Reset to first exercise for next round
       } else {
@@ -285,6 +284,57 @@ export default function ActiveWorkoutPage() {
     setTransitionTimeRemaining(0);
   };
 
+  const handleEndExercise = () => {
+    // Save completed sets and move to next exercise
+    if (currentExercise.type === 'single') {
+      const exercise = currentExercise as SingleExercise;
+      const hasWarmup = exercise.warmupWeight !== exercise.targetWeight;
+
+      if (completedSets.length > 0) {
+        addExerciseToSession({
+          name: exercise.name,
+          type: 'single',
+          warmup: hasWarmup ? completedSets[0] : undefined,
+          sets: hasWarmup ? completedSets.slice(1) : completedSets,
+        });
+      }
+    } else {
+      // B2B exercise
+      const b2bExercise = currentExercise as B2BExercise;
+
+      if (completedPairs.length > 0) {
+        addExerciseToSession({
+          name: b2bExercise.exercises[0].name,
+          type: 'b2b',
+          sets: completedPairs.map(pair => pair.ex1),
+          b2bPartner: {
+            name: b2bExercise.exercises[1].name,
+            sets: completedPairs.map(pair => pair.ex2),
+          },
+        });
+      }
+    }
+
+    // Move to next exercise or finish
+    if (currentExerciseIndex < workout!.exercises.length - 1) {
+      setIsResting(false);
+      setIsTransitioning(true);
+      setTransitionTimeRemaining(60);
+    } else {
+      // All exercises done - go to cardio or post-workout stretches
+      if (workout!.cardio) {
+        router.push(`/workout/${encodeURIComponent(workout!.name)}/cardio`);
+      } else {
+        router.push(`/workout/${encodeURIComponent(workout!.name)}/post-stretches`);
+      }
+    }
+  };
+
+  const handleBackClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setShowExitConfirm(true);
+  };
+
   // Handle B2B/Superset exercises
   if (currentExercise.type === 'b2b') {
     const b2bExercise = currentExercise as B2BExercise;
@@ -314,9 +364,9 @@ export default function ActiveWorkoutPage() {
             </div>
 
             {/* Rest Timer */}
-            <div className="bg-zinc-800 rounded-lg p-12 mb-8 text-center border-4 border-purple-600">
-              <div className="text-purple-400 text-xl mb-4">REST TIME</div>
-              <div className="text-white text-8xl font-bold mb-2">
+            <div className={`bg-zinc-800 rounded-lg p-12 mb-8 text-center border-4 ${restTimeRemaining === 0 ? 'border-zinc-700' : 'border-purple-600'}`}>
+              <div className={`text-xl mb-4 ${restTimeRemaining === 0 ? 'text-zinc-400' : 'text-purple-400'}`}>REST TIME</div>
+              <div className={`text-8xl font-bold mb-2 ${restTimeRemaining === 0 ? 'text-purple-400' : 'text-white'}`}>
                 {restTimeRemaining}
               </div>
               <div className="text-zinc-400 text-lg">seconds</div>
@@ -359,9 +409,9 @@ export default function ActiveWorkoutPage() {
         <div className="max-w-2xl mx-auto">
           {/* Header */}
           <div className="flex justify-between items-center mb-6">
-            <Link href={`/workout/${encodeURIComponent(workout.name)}`} className="text-blue-400 hover:text-blue-300">
+            <button onClick={handleBackClick} className="text-blue-400 hover:text-blue-300">
               ← Back
-            </Link>
+            </button>
             <div className="text-zinc-400">Exercise {currentExerciseIndex + 1}/{workout.exercises.length}</div>
           </div>
 
@@ -414,8 +464,9 @@ export default function ActiveWorkoutPage() {
                   <div className="bg-zinc-900 rounded-lg p-3">
                     <label className="text-zinc-400 text-xs block mb-1">Weight (lbs)</label>
                     <input
-                      type="number"
-                      value={setData1.weight}
+                      type="text"
+                      inputMode="decimal"
+                      value={setData1.weight || ''}
                       onChange={(e) => setSetData1({ ...setData1, weight: parseFloat(e.target.value) || 0 })}
                       className="w-full bg-zinc-800 text-white text-2xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
                     />
@@ -423,8 +474,9 @@ export default function ActiveWorkoutPage() {
                   <div className="bg-zinc-900 rounded-lg p-3">
                     <label className="text-zinc-400 text-xs block mb-1">Reps</label>
                     <input
-                      type="number"
-                      value={setData1.reps}
+                      type="text"
+                      inputMode="numeric"
+                      value={setData1.reps || ''}
                       onChange={(e) => setSetData1({ ...setData1, reps: parseInt(e.target.value) || 0 })}
                       className="w-full bg-zinc-800 text-white text-2xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
                     />
@@ -495,8 +547,9 @@ export default function ActiveWorkoutPage() {
                   <div className="bg-zinc-900 rounded-lg p-3">
                     <label className="text-zinc-400 text-xs block mb-1">Weight (lbs)</label>
                     <input
-                      type="number"
-                      value={setData2.weight}
+                      type="text"
+                      inputMode="decimal"
+                      value={setData2.weight || ''}
                       onChange={(e) => setSetData2({ ...setData2, weight: parseFloat(e.target.value) || 0 })}
                       className="w-full bg-zinc-800 text-white text-2xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
                     />
@@ -504,8 +557,9 @@ export default function ActiveWorkoutPage() {
                   <div className="bg-zinc-900 rounded-lg p-3">
                     <label className="text-zinc-400 text-xs block mb-1">Reps</label>
                     <input
-                      type="number"
-                      value={setData2.reps}
+                      type="text"
+                      inputMode="numeric"
+                      value={setData2.reps || ''}
                       onChange={(e) => setSetData2({ ...setData2, reps: parseInt(e.target.value) || 0 })}
                       className="w-full bg-zinc-800 text-white text-2xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
                     />
@@ -517,12 +571,22 @@ export default function ActiveWorkoutPage() {
                   <p className="text-zinc-300 text-sm">{ex2.tips}</p>
                 </div>
 
-                <button
-                  onClick={handleCompleteB2BExercise}
-                  className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg text-lg font-bold transition-colors"
-                >
-                  ✓ Complete Exercise 2
-                </button>
+                <div className="space-y-3">
+                  <button
+                    onClick={handleCompleteB2BExercise}
+                    className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg text-lg font-bold transition-colors"
+                  >
+                    ✓ Complete Exercise 2
+                  </button>
+                  {completedPairs.length > 0 && (
+                    <button
+                      onClick={handleEndExercise}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg text-lg font-semibold transition-colors"
+                    >
+                      End Exercise & Continue
+                    </button>
+                  )}
+                </div>
               </>
             ) : (
               <>
@@ -645,9 +709,9 @@ export default function ActiveWorkoutPage() {
           </h1>
 
           {/* Countdown Timer */}
-          <div className="bg-zinc-800 rounded-lg p-16 mb-12 text-center border-4 border-blue-600">
-            <div className="text-blue-400 text-xl mb-4">Chilll Outtt</div>
-            <div className="text-white text-9xl font-bold mb-2">
+          <div className={`bg-zinc-800 rounded-lg p-16 mb-12 text-center border-4 ${transitionTimeRemaining === 0 ? 'border-zinc-700' : 'border-blue-600'}`}>
+            <div className={`text-xl mb-4 ${transitionTimeRemaining === 0 ? 'text-zinc-400' : 'text-blue-400'}`}>Chilll Outtt</div>
+            <div className={`text-9xl font-bold mb-2 ${transitionTimeRemaining === 0 ? 'text-blue-400' : 'text-white'}`}>
               {transitionTimeRemaining}
             </div>
             <div className="text-zinc-400 text-lg">seconds</div>
@@ -687,9 +751,9 @@ export default function ActiveWorkoutPage() {
           </div>
 
           {/* Rest Timer */}
-          <div className="bg-zinc-800 rounded-lg p-12 mb-8 text-center border-4 border-orange-600">
-            <div className="text-orange-400 text-xl mb-4">REST TIME</div>
-            <div className="text-white text-8xl font-bold mb-2">
+          <div className={`bg-zinc-800 rounded-lg p-12 mb-8 text-center border-4 ${restTimeRemaining === 0 ? 'border-zinc-700' : 'border-orange-600'}`}>
+            <div className={`text-xl mb-4 ${restTimeRemaining === 0 ? 'text-zinc-400' : 'text-orange-400'}`}>REST TIME</div>
+            <div className={`text-8xl font-bold mb-2 ${restTimeRemaining === 0 ? 'text-orange-400' : 'text-white'}`}>
               {restTimeRemaining}
             </div>
             <div className="text-zinc-400 text-lg">seconds</div>
@@ -726,15 +790,43 @@ export default function ActiveWorkoutPage() {
     );
   }
 
+  // Exit Confirmation Modal
+  if (showExitConfirm) {
+    return (
+      <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-zinc-800 rounded-lg p-6">
+          <h2 className="text-white text-2xl font-bold mb-4">Exit Routine?</h2>
+          <p className="text-zinc-300 mb-6">
+            You will lose your current routine progress. Completed exercises have been saved to the database.
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={() => setShowExitConfirm(false)}
+              className="bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-lg font-semibold transition-colors"
+            >
+              Continue
+            </button>
+            <Link
+              href="/"
+              className="bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-semibold transition-colors text-center"
+            >
+              Exit Routine
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Exercise Tracking Screen
   return (
     <div className="min-h-screen bg-zinc-900 p-4 pb-32">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
-          <Link href={`/workout/${encodeURIComponent(workout.name)}`} className="text-blue-400 hover:text-blue-300">
+          <button onClick={handleBackClick} className="text-blue-400 hover:text-blue-300">
             ← Back
-          </Link>
+          </button>
           <div className="text-zinc-400">Exercise {currentExerciseIndex + 1}/{workout.exercises.length}</div>
         </div>
 
@@ -777,8 +869,9 @@ export default function ActiveWorkoutPage() {
             <div className="bg-zinc-900 rounded-lg p-4">
               <label className="text-zinc-400 text-sm block mb-2">Weight (lbs)</label>
               <input
-                type="number"
-                value={setData.weight}
+                type="text"
+                inputMode="decimal"
+                value={setData.weight || ''}
                 onChange={(e) => setSetData({ ...setData, weight: parseFloat(e.target.value) || 0 })}
                 className="w-full bg-zinc-800 text-white text-3xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
@@ -786,8 +879,9 @@ export default function ActiveWorkoutPage() {
             <div className="bg-zinc-900 rounded-lg p-4">
               <label className="text-zinc-400 text-sm block mb-2">Reps</label>
               <input
-                type="number"
-                value={setData.reps}
+                type="text"
+                inputMode="numeric"
+                value={setData.reps || ''}
                 onChange={(e) => setSetData({ ...setData, reps: parseInt(e.target.value) || 0 })}
                 className="w-full bg-zinc-800 text-white text-3xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
@@ -811,12 +905,22 @@ export default function ActiveWorkoutPage() {
               </button>
             </div>
           ) : (
-            <button
-              onClick={handleCompleteSet}
-              className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-lg text-xl font-bold transition-colors"
-            >
-              ✓ Complete Set {currentSetIndex}
-            </button>
+            <div className="space-y-3">
+              <button
+                onClick={handleCompleteSet}
+                className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-lg text-xl font-bold transition-colors"
+              >
+                ✓ Complete Set {currentSetIndex}
+              </button>
+              {completedSets.length > 0 && (
+                <button
+                  onClick={handleEndExercise}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg text-lg font-semibold transition-colors"
+                >
+                  End Exercise & Continue
+                </button>
+              )}
+            </div>
           )}
         </div>
 
