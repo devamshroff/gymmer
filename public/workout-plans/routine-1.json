@@ -131,7 +131,7 @@
       "targetReps": 10,
       "targetWeight": 70,
       "warmupWeight": 45,
-      "restTime": 150,
+      "restTime": 90,
       "videoUrl": "https://www.youtube.com/results?search_query=barbell+shoulder+press+form",
       "tips": "Keep core tight. Press straight up, lock out at top. Control the descent"
     },
@@ -142,7 +142,7 @@
       "targetReps": 10,
       "targetWeight": 45,
       "warmupWeight": 0,
-      "restTime": 150,
+      "restTime": 90,
       "videoUrl": "https://www.youtube.com/results?search_query=belt+squat+form",
       "tips": "Full depth, keep torso upright. Drive through heels. No knee stress"
     },

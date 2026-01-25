@@ -35,6 +35,9 @@ export default function ActiveWorkoutPage() {
   const [transitionTimeRemaining, setTransitionTimeRemaining] = useState(60);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
+  // Last exercise log from database
+  const [lastExerciseLog, setLastExerciseLog] = useState<any>(null);
+
   useEffect(() => {
     async function fetchWorkout() {
       try {
@@ -139,6 +142,37 @@ export default function ActiveWorkoutPage() {
     }
   }, [isTransitioning, transitionTimeRemaining, workout, currentExerciseIndex]);
 
+  // Fetch last exercise log from database when exercise changes
+  useEffect(() => {
+    async function fetchLastExerciseLog() {
+      if (!workout) return;
+
+      const currentExercise = workout.exercises[currentExerciseIndex];
+      let exerciseName = '';
+
+      if (currentExercise.type === 'single') {
+        exerciseName = currentExercise.name;
+      } else {
+        // For B2B, use the first exercise name
+        exerciseName = (currentExercise as B2BExercise).exercises[0].name;
+      }
+
+      try {
+        const response = await fetch(
+          `/api/last-exercise?workoutName=${encodeURIComponent(workout.name)}&exerciseName=${encodeURIComponent(exerciseName)}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setLastExerciseLog(data.lastLog);
+        }
+      } catch (error) {
+        console.error('Error fetching last exercise log:', error);
+      }
+    }
+
+    fetchLastExerciseLog();
+  }, [workout, currentExerciseIndex]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
@@ -181,14 +215,29 @@ export default function ActiveWorkoutPage() {
     } else {
       // Completed both exercises in the pair
       const newCompletedPairs = [...completedPairs, { ex1: setData1, ex2: setData2 }];
+      const totalSets = b2bExercise.exercises[0].sets;
+
+      console.log('B2B Completion Check:', {
+        newCompletedPairsLength: newCompletedPairs.length,
+        totalSets,
+        shouldContinue: newCompletedPairs.length < totalSets
+      });
+
+      // Guard: Don't allow completing more sets than total
+      if (newCompletedPairs.length > totalSets) {
+        console.log('Already completed all sets, ignoring duplicate click');
+        return;
+      }
+
       setCompletedPairs(newCompletedPairs);
 
-      if (newCompletedPairs.length < b2bExercise.exercises[0].sets) {
+      if (newCompletedPairs.length < totalSets) {
         // More sets to go - no rest, immediately continue to next set
         setCurrentSetIndex(currentSetIndex + 1);
         setCurrentExerciseInPair(0); // Reset to first exercise for next round
       } else {
         // All sets complete - save to session and show transition to next exercise
+        console.log('Finishing B2B exercise');
         addExerciseToSession({
           name: b2bExercise.exercises[0].name,
           type: 'b2b',
@@ -285,6 +334,12 @@ export default function ActiveWorkoutPage() {
   };
 
   const handleEndExercise = () => {
+    console.log('handleEndExercise called', {
+      exerciseType: currentExercise.type,
+      currentExerciseIndex,
+      totalExercises: workout!.exercises.length
+    });
+
     // Save completed sets and move to next exercise
     if (currentExercise.type === 'single') {
       const exercise = currentExercise as SingleExercise;
@@ -302,6 +357,10 @@ export default function ActiveWorkoutPage() {
       // B2B exercise
       const b2bExercise = currentExercise as B2BExercise;
 
+      console.log('Ending B2B exercise early', {
+        completedPairsLength: completedPairs.length
+      });
+
       if (completedPairs.length > 0) {
         addExerciseToSession({
           name: b2bExercise.exercises[0].name,
@@ -317,10 +376,12 @@ export default function ActiveWorkoutPage() {
 
     // Move to next exercise or finish
     if (currentExerciseIndex < workout!.exercises.length - 1) {
+      console.log('Moving to next exercise');
       setIsResting(false);
       setIsTransitioning(true);
       setTransitionTimeRemaining(60);
     } else {
+      console.log('All exercises done, going to cardio/stretches');
       // All exercises done - go to cardio or post-workout stretches
       if (workout!.cardio) {
         router.push(`/workout/${encodeURIComponent(workout!.name)}/cardio`);
@@ -332,6 +393,8 @@ export default function ActiveWorkoutPage() {
 
   const handleBackClick = (e: React.MouseEvent) => {
     e.preventDefault();
+    // For now, always show exit confirmation when back is clicked
+    // TODO: Implement review mode to navigate back through completed exercises
     setShowExitConfirm(true);
   };
 
@@ -340,6 +403,63 @@ export default function ActiveWorkoutPage() {
     const b2bExercise = currentExercise as B2BExercise;
     const ex1 = b2bExercise.exercises[0];
     const ex2 = b2bExercise.exercises[1];
+
+    // Transition Screen (for B2B)
+    if (isTransitioning) {
+      return (
+        <div className="min-h-screen bg-zinc-900 p-4">
+          <div className="max-w-2xl mx-auto">
+            {/* Header */}
+            <div className="flex justify-between items-center mb-6">
+              <div className="text-zinc-400">Exercise {currentExerciseIndex + 1}/{workout.exercises.length}</div>
+            </div>
+
+            {/* Exercise Names */}
+            <h1 className="text-2xl font-bold text-white text-center mb-2">{ex1.name}</h1>
+            <div className="text-purple-400 text-center text-lg mb-8">+ {ex2.name}</div>
+
+            {/* Exercise Complete */}
+            <div className="text-center mb-8">
+              <div className="text-green-500 text-6xl mb-2">✓</div>
+              <div className="text-white text-2xl font-semibold">EXERCISE COMPLETE</div>
+            </div>
+
+            {/* Transition Timer */}
+            <div className={`bg-zinc-800 rounded-lg p-12 mb-8 text-center border-4 ${transitionTimeRemaining === 0 ? 'border-zinc-700' : 'border-orange-600'}`}>
+              <div className={`text-xl mb-4 ${transitionTimeRemaining === 0 ? 'text-zinc-400' : 'text-orange-400'}`}>Chilll Outtt</div>
+              <div className={`text-8xl font-bold mb-2 ${transitionTimeRemaining === 0 ? 'text-orange-400' : 'text-white'}`}>
+                {transitionTimeRemaining}
+              </div>
+              <div className="text-zinc-400 text-lg">seconds</div>
+            </div>
+
+            {/* Timer Controls */}
+            <div className="space-y-3">
+              <button
+                onClick={() => setTransitionTimeRemaining(0)}
+                className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-lg text-lg font-bold transition-colors"
+              >
+                Skip Timer →
+              </button>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => setTransitionTimeRemaining(Math.max(0, transitionTimeRemaining - 15))}
+                  className="bg-zinc-800 hover:bg-zinc-700 text-white py-3 rounded-lg font-semibold transition-colors"
+                >
+                  -15s
+                </button>
+                <button
+                  onClick={() => setTransitionTimeRemaining(transitionTimeRemaining + 15)}
+                  className="bg-zinc-800 hover:bg-zinc-700 text-white py-3 rounded-lg font-semibold transition-colors"
+                >
+                  +15s
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     // Rest Timer Screen (for B2B)
     if (isResting) {
@@ -436,6 +556,53 @@ export default function ActiveWorkoutPage() {
             </div>
           </div>
 
+          {/* Last Time Section for B2B */}
+          {lastExerciseLog && (
+            <div className="bg-zinc-800 rounded-lg p-4 mb-6 border border-zinc-700">
+              <div className="text-zinc-400 text-sm mb-3">
+                LAST TIME ({new Date(lastExerciseLog.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {/* Exercise 1 Last Time */}
+                <div>
+                  <div className="text-purple-400 text-xs font-semibold mb-2">{ex1.name}</div>
+                  <div className="space-y-1">
+                    {[1, 2, 3, 4].map((setNum) => {
+                      const weight = lastExerciseLog[`set${setNum}_weight`];
+                      const reps = lastExerciseLog[`set${setNum}_reps`];
+                      if (weight !== null && reps !== null) {
+                        return (
+                          <div key={setNum} className="text-zinc-300 text-xs">
+                            Set {setNum}: {weight} × {reps}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })}
+                  </div>
+                </div>
+                {/* Exercise 2 Last Time */}
+                <div>
+                  <div className="text-purple-400 text-xs font-semibold mb-2">{ex2.name}</div>
+                  <div className="space-y-1">
+                    {[1, 2, 3, 4].map((setNum) => {
+                      const weight = lastExerciseLog[`b2b_set${setNum}_weight`];
+                      const reps = lastExerciseLog[`b2b_set${setNum}_reps`];
+                      if (weight !== null && reps !== null) {
+                        return (
+                          <div key={setNum} className="text-zinc-300 text-xs">
+                            Set {setNum}: {weight} × {reps}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Exercise 1 Card */}
           <div className={`bg-zinc-800 rounded-lg p-5 mb-4 transition-all ${
             currentExerciseInPair === 0 ? 'border-2 border-purple-600' : 'border border-zinc-700 opacity-60'
@@ -466,8 +633,18 @@ export default function ActiveWorkoutPage() {
                     <input
                       type="text"
                       inputMode="decimal"
-                      value={setData1.weight || ''}
-                      onChange={(e) => setSetData1({ ...setData1, weight: parseFloat(e.target.value) || 0 })}
+                      value={setData1.weight ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          setSetData1({ ...setData1, weight: 0 });
+                        } else {
+                          const num = parseFloat(val);
+                          if (!isNaN(num)) {
+                            setSetData1({ ...setData1, weight: num });
+                          }
+                        }
+                      }}
                       className="w-full bg-zinc-800 text-white text-2xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
                     />
                   </div>
@@ -476,7 +653,7 @@ export default function ActiveWorkoutPage() {
                     <input
                       type="text"
                       inputMode="numeric"
-                      value={setData1.reps || ''}
+                      value={setData1.reps ?? ''}
                       onChange={(e) => setSetData1({ ...setData1, reps: parseInt(e.target.value) || 0 })}
                       className="w-full bg-zinc-800 text-white text-2xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
                     />
@@ -546,8 +723,18 @@ export default function ActiveWorkoutPage() {
                     <input
                       type="text"
                       inputMode="decimal"
-                      value={setData2.weight || ''}
-                      onChange={(e) => setSetData2({ ...setData2, weight: parseFloat(e.target.value) || 0 })}
+                      value={setData2.weight ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          setSetData2({ ...setData2, weight: 0 });
+                        } else {
+                          const num = parseFloat(val);
+                          if (!isNaN(num)) {
+                            setSetData2({ ...setData2, weight: num });
+                          }
+                        }
+                      }}
                       className="w-full bg-zinc-800 text-white text-2xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
                     />
                   </div>
@@ -556,7 +743,7 @@ export default function ActiveWorkoutPage() {
                     <input
                       type="text"
                       inputMode="numeric"
-                      value={setData2.reps || ''}
+                      value={setData2.reps ?? ''}
                       onChange={(e) => setSetData2({ ...setData2, reps: parseInt(e.target.value) || 0 })}
                       className="w-full bg-zinc-800 text-white text-2xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
                     />
@@ -840,15 +1027,33 @@ export default function ActiveWorkoutPage() {
         {/* Exercise Name */}
         <h1 className="text-3xl font-bold text-white mb-6">{exercise.name}</h1>
 
-        {/* Last Time Section (TODO: fetch from database) */}
-        <div className="bg-zinc-800 rounded-lg p-4 mb-6 border border-zinc-700">
-          <div className="text-zinc-400 text-sm mb-2">LAST TIME (Dec 15, 2024)</div>
-          <div className="space-y-1">
-            <div className="text-zinc-300 text-sm">Set 1: 10 lbs × 8 reps</div>
-            <div className="text-zinc-300 text-sm">Set 2: 15 lbs × 8 reps</div>
-            <div className="text-zinc-300 text-sm">Set 3: 15 lbs × 7 reps</div>
+        {/* Last Time Section */}
+        {lastExerciseLog && (
+          <div className="bg-zinc-800 rounded-lg p-4 mb-6 border border-zinc-700">
+            <div className="text-zinc-400 text-sm mb-2">
+              LAST TIME ({new Date(lastExerciseLog.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})
+            </div>
+            <div className="space-y-1">
+              {lastExerciseLog.warmup_weight !== null && lastExerciseLog.warmup_reps !== null && (
+                <div className="text-zinc-300 text-sm">
+                  Warmup: {lastExerciseLog.warmup_weight} lbs × {lastExerciseLog.warmup_reps} reps
+                </div>
+              )}
+              {[1, 2, 3, 4].map((setNum) => {
+                const weight = lastExerciseLog[`set${setNum}_weight`];
+                const reps = lastExerciseLog[`set${setNum}_reps`];
+                if (weight !== null && reps !== null) {
+                  return (
+                    <div key={setNum} className="text-zinc-300 text-sm">
+                      Set {setNum}: {weight} lbs × {reps} reps
+                    </div>
+                  );
+                }
+                return null;
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Current Set */}
         <div className="bg-zinc-800 rounded-lg p-6 mb-6 border-2 border-orange-600">
@@ -865,8 +1070,18 @@ export default function ActiveWorkoutPage() {
               <input
                 type="text"
                 inputMode="decimal"
-                value={setData.weight || ''}
-                onChange={(e) => setSetData({ ...setData, weight: parseFloat(e.target.value) || 0 })}
+                value={setData.weight ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '') {
+                    setSetData({ ...setData, weight: 0 });
+                  } else {
+                    const num = parseFloat(val);
+                    if (!isNaN(num)) {
+                      setSetData({ ...setData, weight: num });
+                    }
+                  }
+                }}
                 className="w-full bg-zinc-800 text-white text-3xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
             </div>
@@ -875,7 +1090,7 @@ export default function ActiveWorkoutPage() {
               <input
                 type="text"
                 inputMode="numeric"
-                value={setData.reps || ''}
+                value={setData.reps ?? ''}
                 onChange={(e) => setSetData({ ...setData, reps: parseInt(e.target.value) || 0 })}
                 className="w-full bg-zinc-800 text-white text-3xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
