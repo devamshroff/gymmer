@@ -497,24 +497,21 @@ export default function ActiveWorkoutPage() {
               </>
             ) : (
               <>
-                {/* Inactive: Show target or completed data */}
+                {/* Inactive: Show entered data */}
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <div className="bg-zinc-900 rounded p-3 text-center">
                     <div className="text-zinc-500 text-xs mb-1">Weight</div>
                     <div className="text-white text-xl font-semibold">
-                      {completedPairs.length >= currentSetIndex ? setData1.weight : ex1.targetWeight} lbs
+                      {setData1.weight} lbs
                     </div>
                   </div>
                   <div className="bg-zinc-900 rounded p-3 text-center">
                     <div className="text-zinc-500 text-xs mb-1">Reps</div>
                     <div className="text-white text-xl font-semibold">
-                      {completedPairs.length >= currentSetIndex ? setData1.reps : ex1.targetReps}
+                      {setData1.reps}
                     </div>
                   </div>
                 </div>
-                {completedPairs.length >= currentSetIndex && (
-                  <div className="text-green-400 text-sm text-center">✓ Completed</div>
-                )}
               </>
             )}
           </div>
@@ -590,24 +587,21 @@ export default function ActiveWorkoutPage() {
               </>
             ) : (
               <>
-                {/* Inactive: Show target or completed data */}
+                {/* Inactive: Show entered data */}
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <div className="bg-zinc-900 rounded p-3 text-center">
                     <div className="text-zinc-500 text-xs mb-1">Weight</div>
                     <div className="text-white text-xl font-semibold">
-                      {completedPairs.length >= currentSetIndex ? setData2.weight : ex2.targetWeight} lbs
+                      {setData2.weight} lbs
                     </div>
                   </div>
                   <div className="bg-zinc-900 rounded p-3 text-center">
                     <div className="text-zinc-500 text-xs mb-1">Reps</div>
                     <div className="text-white text-xl font-semibold">
-                      {completedPairs.length >= currentSetIndex ? setData2.reps : ex2.targetReps}
+                      {setData2.reps}
                     </div>
                   </div>
                 </div>
-                {completedPairs.length >= currentSetIndex && currentExerciseInPair === 0 && (
-                  <div className="text-green-400 text-sm text-center">✓ Completed</div>
-                )}
               </>
             )}
           </div>
