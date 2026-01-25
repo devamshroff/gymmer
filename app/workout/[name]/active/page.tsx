@@ -38,6 +38,17 @@ export default function ActiveWorkoutPage() {
   // Last exercise log from database
   const [lastExerciseLog, setLastExerciseLog] = useState<any>(null);
 
+  // Review mode: cache completed exercises and track viewing
+  type CompletedExerciseCache = {
+    exerciseIndex: number;
+    exerciseName: string;
+    type: 'single' | 'b2b';
+    completedSets?: SetData[];
+    completedPairs?: Array<{ ex1: SetData; ex2: SetData }>;
+  };
+  const [completedExercisesCache, setCompletedExercisesCache] = useState<CompletedExerciseCache[]>([]);
+  const [viewingExerciseIndex, setViewingExerciseIndex] = useState(0); // Which exercise we're viewing (can be past/current)
+
   useEffect(() => {
     async function fetchWorkout() {
       try {
@@ -112,6 +123,7 @@ export default function ActiveWorkoutPage() {
       const nextExerciseIndex = currentExerciseIndex + 1;
       setIsTransitioning(false);
       setCurrentExerciseIndex(nextExerciseIndex);
+      setViewingExerciseIndex(nextExerciseIndex); // Keep viewing in sync with active exercise
       setCompletedSets([]);
 
       // Initialize next exercise
@@ -196,6 +208,11 @@ export default function ActiveWorkoutPage() {
 
   const currentExercise = workout.exercises[currentExerciseIndex];
 
+  // Review mode: determine if viewing a previous exercise
+  const isReviewMode = viewingExerciseIndex < currentExerciseIndex;
+  const viewingExercise = workout.exercises[viewingExerciseIndex];
+  const viewingCachedData = completedExercisesCache.find(cache => cache.exerciseIndex === viewingExerciseIndex);
+
   // Calculate total workout items for progress
   const totalItems =
     workout.preWorkoutStretches.length +
@@ -248,6 +265,14 @@ export default function ActiveWorkoutPage() {
           },
         });
 
+        // Cache completed B2B exercise for review
+        setCompletedExercisesCache([...completedExercisesCache, {
+          exerciseIndex: currentExerciseIndex,
+          exerciseName: b2bExercise.exercises[0].name,
+          type: 'b2b',
+          completedPairs: newCompletedPairs,
+        }]);
+
         if (currentExerciseIndex < workout!.exercises.length - 1) {
           setIsResting(false);
           setIsTransitioning(true);
@@ -293,6 +318,14 @@ export default function ActiveWorkoutPage() {
         warmup: hasWarmup ? newCompletedSets[0] : undefined,
         sets: hasWarmup ? newCompletedSets.slice(1) : newCompletedSets,
       });
+
+      // Cache completed exercise for review
+      setCompletedExercisesCache([...completedExercisesCache, {
+        exerciseIndex: currentExerciseIndex,
+        exerciseName: exercise.name,
+        type: 'single',
+        completedSets: newCompletedSets,
+      }]);
 
       // Show transition to next exercise
       if (currentExerciseIndex < workout.exercises.length - 1) {
@@ -352,6 +385,14 @@ export default function ActiveWorkoutPage() {
           warmup: hasWarmup ? completedSets[0] : undefined,
           sets: hasWarmup ? completedSets.slice(1) : completedSets,
         });
+
+        // Cache for review
+        setCompletedExercisesCache([...completedExercisesCache, {
+          exerciseIndex: currentExerciseIndex,
+          exerciseName: exercise.name,
+          type: 'single',
+          completedSets: completedSets,
+        }]);
       }
     } else {
       // B2B exercise
@@ -371,6 +412,14 @@ export default function ActiveWorkoutPage() {
             sets: completedPairs.map(pair => pair.ex2),
           },
         });
+
+        // Cache for review
+        setCompletedExercisesCache([...completedExercisesCache, {
+          exerciseIndex: currentExerciseIndex,
+          exerciseName: b2bExercise.exercises[0].name,
+          type: 'b2b',
+          completedPairs: completedPairs,
+        }]);
       }
     }
 
@@ -393,16 +442,33 @@ export default function ActiveWorkoutPage() {
 
   const handleBackClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    // For now, always show exit confirmation when back is clicked
-    // TODO: Implement review mode to navigate back through completed exercises
-    setShowExitConfirm(true);
+
+    // If viewing a previous exercise, go back one more
+    if (viewingExerciseIndex > 0) {
+      setViewingExerciseIndex(viewingExerciseIndex - 1);
+    } else {
+      // At the first exercise, show exit confirmation
+      setShowExitConfirm(true);
+    }
+  };
+
+  const handleForwardClick = () => {
+    // Can only go forward if there are completed exercises ahead
+    if (viewingExerciseIndex < currentExerciseIndex) {
+      setViewingExerciseIndex(viewingExerciseIndex + 1);
+    }
   };
 
   // Handle B2B/Superset exercises
   if (currentExercise.type === 'b2b') {
-    const b2bExercise = currentExercise as B2BExercise;
+    const b2bExercise = (isReviewMode ? viewingExercise : currentExercise) as B2BExercise;
     const ex1 = b2bExercise.exercises[0];
     const ex2 = b2bExercise.exercises[1];
+
+    // In review mode, show cached completed pairs
+    const displayCompletedPairs = isReviewMode && viewingCachedData
+      ? viewingCachedData.completedPairs || []
+      : completedPairs;
 
     // Transition Screen (for B2B)
     if (isTransitioning) {
@@ -529,11 +595,38 @@ export default function ActiveWorkoutPage() {
         <div className="max-w-2xl mx-auto">
           {/* Header */}
           <div className="flex justify-between items-center mb-6">
-            <button onClick={handleBackClick} className="text-blue-400 hover:text-blue-300">
-              ← Back
-            </button>
-            <div className="text-zinc-400">Exercise {currentExerciseIndex + 1}/{workout.exercises.length}</div>
+            {isReviewMode ? (
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleBackClick}
+                  disabled={viewingExerciseIndex === 0}
+                  className={`${viewingExerciseIndex === 0 ? 'text-zinc-600' : 'text-blue-400 hover:text-blue-300'}`}
+                >
+                  ← Previous
+                </button>
+                <button
+                  onClick={handleForwardClick}
+                  className="text-blue-400 hover:text-blue-300"
+                >
+                  Next →
+                </button>
+              </div>
+            ) : (
+              <button onClick={handleBackClick} className="text-red-400 hover:text-red-300">
+                Exit Routine
+              </button>
+            )}
+            <div className="text-zinc-400">Exercise {viewingExerciseIndex + 1}/{workout.exercises.length}</div>
           </div>
+
+          {/* READ ONLY Banner */}
+          {isReviewMode && (
+            <div className="bg-yellow-900 border border-yellow-600 rounded-lg p-3 mb-6">
+              <div className="text-yellow-200 text-sm font-semibold text-center">
+                📖 READ ONLY - Cannot edit completed sets
+              </div>
+            </div>
+          )}
 
           {/* Progress Bar */}
           <div className="mb-6">
@@ -624,7 +717,7 @@ export default function ActiveWorkoutPage() {
               </a>
             </div>
 
-            {currentExerciseInPair === 0 ? (
+            {!isReviewMode && currentExerciseInPair === 0 ? (
               <>
                 {/* Active: Show inputs */}
                 <div className="grid grid-cols-2 gap-3 mb-3">
@@ -714,7 +807,7 @@ export default function ActiveWorkoutPage() {
               </a>
             </div>
 
-            {currentExerciseInPair === 1 ? (
+            {!isReviewMode && currentExerciseInPair === 1 ? (
               <>
                 {/* Active: Show inputs */}
                 <div className="grid grid-cols-2 gap-3 mb-3">
@@ -794,10 +887,10 @@ export default function ActiveWorkoutPage() {
           </div>
 
           {/* Completed Sets */}
-          {completedPairs.length > 0 && (
+          {displayCompletedPairs.length > 0 && (
             <div className="bg-zinc-800 rounded-lg p-4 mb-4">
               <div className="text-zinc-400 text-sm mb-2">COMPLETED SETS</div>
-              {completedPairs.map((pair, index) => (
+              {displayCompletedPairs.map((pair, index) => (
                 <div key={index} className="mb-2">
                   <div className="text-green-400 text-sm font-semibold mb-1">Set {index + 1}:</div>
                   <div className="text-zinc-300 text-xs ml-2">
@@ -858,8 +951,13 @@ export default function ActiveWorkoutPage() {
     );
   }
 
-  const exercise = currentExercise as SingleExercise;
+  const exercise = (isReviewMode ? viewingExercise : currentExercise) as SingleExercise;
   const isWarmupSet = currentSetIndex === 0;
+
+  // In review mode, show cached completed sets
+  const displayCompletedSets = isReviewMode && viewingCachedData
+    ? viewingCachedData.completedSets || []
+    : completedSets;
 
   // Transition Screen (between exercises)
   if (isTransitioning) {
@@ -1005,11 +1103,38 @@ export default function ActiveWorkoutPage() {
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
-          <button onClick={handleBackClick} className="text-blue-400 hover:text-blue-300">
-            ← Back
-          </button>
-          <div className="text-zinc-400">Exercise {currentExerciseIndex + 1}/{workout.exercises.length}</div>
+          {isReviewMode ? (
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handleBackClick}
+                disabled={viewingExerciseIndex === 0}
+                className={`${viewingExerciseIndex === 0 ? 'text-zinc-600' : 'text-blue-400 hover:text-blue-300'}`}
+              >
+                ← Previous
+              </button>
+              <button
+                onClick={handleForwardClick}
+                className="text-blue-400 hover:text-blue-300"
+              >
+                Next →
+              </button>
+            </div>
+          ) : (
+            <button onClick={handleBackClick} className="text-red-400 hover:text-red-300">
+              Exit Routine
+            </button>
+          )}
+          <div className="text-zinc-400">Exercise {viewingExerciseIndex + 1}/{workout.exercises.length}</div>
         </div>
+
+        {/* READ ONLY Banner */}
+        {isReviewMode && (
+          <div className="bg-yellow-900 border border-yellow-600 rounded-lg p-3 mb-6">
+            <div className="text-yellow-200 text-sm font-semibold text-center">
+              📖 READ ONLY - Cannot edit completed sets
+            </div>
+          </div>
+        )}
 
         {/* Progress Bar */}
         <div className="mb-6">
@@ -1055,7 +1180,8 @@ export default function ActiveWorkoutPage() {
           </div>
         )}
 
-        {/* Current Set */}
+        {/* Current Set - Only show if not in review mode */}
+        {!isReviewMode && (
         <div className="bg-zinc-800 rounded-lg p-6 mb-6 border-2 border-orange-600">
           <div className="text-center mb-4">
             <div className="text-orange-400 text-lg font-semibold mb-2">
@@ -1132,12 +1258,13 @@ export default function ActiveWorkoutPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* Completed Sets */}
-        {completedSets.length > 0 && (
+        {displayCompletedSets.length > 0 && (
           <div className="bg-zinc-800 rounded-lg p-4 mb-6">
             <div className="text-zinc-400 text-sm mb-2">COMPLETED SETS</div>
-            {completedSets.map((set, index) => (
+            {displayCompletedSets.map((set, index) => (
               <div key={index} className="text-green-400 text-sm mb-1">
                 ✓ {index === 0 ? 'Warmup' : `Set ${index}`}: {set.weight} lbs × {set.reps} reps
               </div>
