@@ -70,10 +70,19 @@ export default function PostStretchesPage() {
   const progressPercentage = (currentProgress / totalItems) * 100;
 
   const handleNext = () => {
+    console.log('handleNext called', {
+      currentIndex,
+      stretchesLength: stretches.length,
+      isLast: currentIndex >= stretches.length - 1,
+      workoutName: workout.name,
+      encodedName: encodeURIComponent(workout.name)
+    });
+
     if (currentIndex < stretches.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
       // Move to summary
+      console.log('Navigating to summary...');
       router.push(`/workout/${encodeURIComponent(workout.name)}/summary`);
     }
   };

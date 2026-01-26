@@ -129,3 +129,74 @@ export interface WorkoutCardioLog {
   time: string; // e.g. "15 min"
   created_at: string;
 }
+
+// Routine Builder Types (v2.0)
+export interface ExerciseDB {
+  id: number;
+  name: string;
+  video_url: string | null;
+  tips: string | null;
+  muscle_groups: string | null;  // JSON string
+  equipment: string | null;
+  difficulty: string | null;
+  is_custom: number;  // SQLite boolean (0 or 1)
+  created_at: string;
+}
+
+export interface StretchDB {
+  id: number;
+  name: string;
+  duration: string;
+  video_url: string | null;
+  tips: string | null;
+  type: string;
+  muscle_groups: string | null;  // JSON array: ["hamstrings", "glutes", "lower back"]
+  is_custom: number;
+  created_at: string;
+}
+
+export interface CustomRoutine {
+  id: number;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RoutineExerciseConfig {
+  id: number;
+  routine_id: number;
+  exercise_id: number;
+  order_index: number;
+  exercise_type: 'single' | 'b2b';
+  sets: number | null;
+  target_reps: number | null;
+  target_weight: number | null;
+  warmup_weight: number | null;
+  rest_time: number | null;
+  b2b_partner_id: number | null;
+  b2b_sets: number | null;
+  b2b_target_reps: number | null;
+  b2b_target_weight: number | null;
+  b2b_warmup_weight: number | null;
+}
+
+export interface RoutineCardio {
+  id: number;
+  routine_id: number;
+  cardio_type: string;
+  duration: string;
+  intensity: string | null;
+  tips: string | null;
+}
+
+export interface FullRoutineData {
+  routine: CustomRoutine;
+  preWorkoutStretches: StretchDB[];
+  exercises: Array<{
+    config: RoutineExerciseConfig;
+    exercise: ExerciseDB;
+    b2bPartner?: ExerciseDB;
+  }>;
+  postWorkoutStretches: StretchDB[];
+  cardio?: RoutineCardio;
+}

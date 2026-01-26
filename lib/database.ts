@@ -188,6 +188,269 @@ export async function getLastExerciseLog(
   return result.rows[0] as any as WorkoutExerciseLog || null;
 }
 
+// ============================================================================
+// Routine Builder Database Functions (v2.0)
+// ============================================================================
+
+// Exercise CRUD
+export async function createExercise(data: {
+  name: string;
+  videoUrl?: string;
+  tips?: string;
+  muscleGroups?: string[];
+  equipment?: string;
+  difficulty?: string;
+}): Promise<number> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      INSERT INTO exercises (name, video_url, tips, muscle_groups, equipment, difficulty)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `,
+    args: [
+      data.name,
+      data.videoUrl || null,
+      data.tips || null,
+      data.muscleGroups ? JSON.stringify(data.muscleGroups) : null,
+      data.equipment || null,
+      data.difficulty || null
+    ]
+  });
+  return Number(result.lastInsertRowid);
+}
+
+export async function getAllExercises(): Promise<any[]> {
+  const db = getDatabase();
+  const result = await db.execute('SELECT * FROM exercises ORDER BY name');
+  return result.rows as any[];
+}
+
+export async function searchExercises(query: string): Promise<any[]> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT * FROM exercises WHERE name LIKE ? ORDER BY name',
+    args: [`%${query}%`]
+  });
+  return result.rows as any[];
+}
+
+export async function getExerciseById(id: number): Promise<any | null> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT * FROM exercises WHERE id = ?',
+    args: [id]
+  });
+  return result.rows[0] as any || null;
+}
+
+// Routine CRUD
+export async function createRoutine(name: string): Promise<number> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'INSERT INTO routines (name, is_custom) VALUES (?, 1)',
+    args: [name]
+  });
+  return Number(result.lastInsertRowid);
+}
+
+export async function getAllRoutines(): Promise<any[]> {
+  const db = getDatabase();
+  const result = await db.execute('SELECT * FROM routines ORDER BY is_custom DESC, created_at DESC');
+  return result.rows as any[];
+}
+
+export async function getRoutineById(id: number): Promise<any | null> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT * FROM routines WHERE id = ?',
+    args: [id]
+  });
+  return result.rows[0] as any || null;
+}
+
+export async function getRoutineByName(name: string): Promise<any | null> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT * FROM routines WHERE name = ?',
+    args: [name]
+  });
+  return result.rows[0] as any || null;
+}
+
+export async function deleteRoutine(id: number): Promise<void> {
+  const db = getDatabase();
+  await db.execute({
+    sql: 'DELETE FROM routines WHERE id = ?',
+    args: [id]
+  });
+}
+
+// Routine exercise management
+export async function addExerciseToRoutine(data: {
+  routineId: number;
+  exerciseId: number;
+  orderIndex: number;
+  exerciseType: 'single' | 'b2b';
+  sets?: number;
+  targetReps?: number;
+  targetWeight?: number;
+  warmupWeight?: number;
+  restTime?: number;
+  b2bPartnerId?: number;
+  b2bSets?: number;
+  b2bTargetReps?: number;
+  b2bTargetWeight?: number;
+  b2bWarmupWeight?: number;
+}): Promise<number> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      INSERT INTO routine_exercises (
+        routine_id, exercise_id, order_index, exercise_type,
+        sets, target_reps, target_weight, warmup_weight, rest_time,
+        b2b_partner_id, b2b_sets, b2b_target_reps, b2b_target_weight, b2b_warmup_weight
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    args: [
+      data.routineId,
+      data.exerciseId,
+      data.orderIndex,
+      data.exerciseType,
+      data.sets ?? null,
+      data.targetReps ?? null,
+      data.targetWeight ?? null,
+      data.warmupWeight ?? null,
+      data.restTime ?? null,
+      data.b2bPartnerId ?? null,
+      data.b2bSets ?? null,
+      data.b2bTargetReps ?? null,
+      data.b2bTargetWeight ?? null,
+      data.b2bWarmupWeight ?? null
+    ]
+  });
+  return Number(result.lastInsertRowid);
+}
+
+export async function getRoutineExercises(routineId: number): Promise<any[]> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      SELECT re.*, e.name as exercise_name, e.video_url, e.tips,
+             e2.name as b2b_partner_name, e2.video_url as b2b_video_url, e2.tips as b2b_tips
+      FROM routine_exercises re
+      JOIN exercises e ON re.exercise_id = e.id
+      LEFT JOIN exercises e2 ON re.b2b_partner_id = e2.id
+      WHERE re.routine_id = ?
+      ORDER BY re.order_index
+    `,
+    args: [routineId]
+  });
+  return result.rows as any[];
+}
+
+export async function removeExerciseFromRoutine(routineExerciseId: number): Promise<void> {
+  const db = getDatabase();
+  await db.execute({
+    sql: 'DELETE FROM routine_exercises WHERE id = ?',
+    args: [routineExerciseId]
+  });
+}
+
+// Stretch CRUD
+export async function createStretch(data: {
+  name: string;
+  duration: string;
+  type: string;
+  videoUrl?: string;
+  tips?: string;
+  muscleGroups?: string[];
+}): Promise<number> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      INSERT INTO stretches (name, duration, type, video_url, tips, muscle_groups)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `,
+    args: [
+      data.name,
+      data.duration,
+      data.type,
+      data.videoUrl || null,
+      data.tips || null,
+      data.muscleGroups ? JSON.stringify(data.muscleGroups) : null
+    ]
+  });
+  return Number(result.lastInsertRowid);
+}
+
+export async function getAllStretches(type?: 'pre_workout' | 'post_workout'): Promise<any[]> {
+  const db = getDatabase();
+  if (type) {
+    const result = await db.execute({
+      sql: 'SELECT * FROM stretches WHERE type = ? ORDER BY name',
+      args: [type]
+    });
+    return result.rows as any[];
+  } else {
+    const result = await db.execute('SELECT * FROM stretches ORDER BY name');
+    return result.rows as any[];
+  }
+}
+
+export async function getStretchById(id: number): Promise<any | null> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT * FROM stretches WHERE id = ?',
+    args: [id]
+  });
+  return result.rows[0] as any || null;
+}
+
+// Routine stretch management
+export async function addStretchToRoutine(
+  routineId: number,
+  stretchId: number,
+  type: 'pre' | 'post',
+  orderIndex: number
+): Promise<number> {
+  const db = getDatabase();
+  const tableName = type === 'pre' ? 'routine_pre_stretches' : 'routine_post_stretches';
+  const result = await db.execute({
+    sql: `INSERT INTO ${tableName} (routine_id, stretch_id, order_index) VALUES (?, ?, ?)`,
+    args: [routineId, stretchId, orderIndex]
+  });
+  return Number(result.lastInsertRowid);
+}
+
+export async function removeStretchFromRoutine(
+  routineId: number,
+  stretchId: number,
+  type: 'pre' | 'post'
+): Promise<void> {
+  const db = getDatabase();
+  const tableName = type === 'pre' ? 'routine_pre_stretches' : 'routine_post_stretches';
+  await db.execute({
+    sql: `DELETE FROM ${tableName} WHERE routine_id = ? AND stretch_id = ?`,
+    args: [routineId, stretchId]
+  });
+}
+
+export async function getRoutineStretches(routineId: number, type: 'pre' | 'post'): Promise<any[]> {
+  const db = getDatabase();
+  const tableName = type === 'pre' ? 'routine_pre_stretches' : 'routine_post_stretches';
+  const result = await db.execute({
+    sql: `
+      SELECT rs.*, s.name, s.duration, s.video_url, s.tips, s.muscle_groups
+      FROM ${tableName} rs
+      JOIN stretches s ON rs.stretch_id = s.id
+      WHERE rs.routine_id = ?
+      ORDER BY rs.order_index
+    `,
+    args: [routineId]
+  });
+  return result.rows as any[];
+}
+
 // Close database connection (for cleanup)
 export async function closeDatabase() {
   if (db) {

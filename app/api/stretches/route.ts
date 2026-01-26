@@ -1,0 +1,50 @@
+// app/api/stretches/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { getAllStretches, createStretch } from '@/lib/database';
+
+export async function GET(request: NextRequest) {
+  try {
+    const searchParams = request.nextUrl.searchParams;
+    const type = searchParams.get('type') as 'pre_workout' | 'post_workout' | null;
+
+    const stretches = await getAllStretches(type || undefined);
+    return NextResponse.json({ stretches });
+  } catch (error) {
+    console.error('Error fetching stretches:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch stretches' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { name, duration, type, muscleGroups, tips, videoUrl } = body;
+
+    if (!name || !duration || !type) {
+      return NextResponse.json(
+        { error: 'Name, duration, and type are required' },
+        { status: 400 }
+      );
+    }
+
+    const stretchId = await createStretch({
+      name,
+      duration,
+      type,
+      muscleGroups,
+      tips,
+      videoUrl
+    });
+
+    return NextResponse.json({ id: stretchId, success: true }, { status: 201 });
+  } catch (error) {
+    console.error('Error creating stretch:', error);
+    return NextResponse.json(
+      { error: 'Failed to create stretch' },
+      { status: 500 }
+    );
+  }
+}

@@ -296,7 +296,7 @@ export default function ActiveWorkoutPage() {
 
     const exercise = currentExercise as SingleExercise;
 
-    if (currentSetIndex < exercise.sets) {
+    if (currentSetIndex <= exercise.sets) {
       // More sets to go - start rest timer
       setIsResting(true);
       setRestTimeRemaining(exercise.restTime);
@@ -429,6 +429,8 @@ export default function ActiveWorkoutPage() {
       setIsResting(false);
       setIsTransitioning(true);
       setTransitionTimeRemaining(60);
+      // Keep viewing index synced so next exercise isn't in read-only mode
+      setViewingExerciseIndex(currentExerciseIndex);
     } else {
       console.log('All exercises done, going to cardio/stretches');
       // All exercises done - go to cardio or post-workout stretches
@@ -578,7 +580,7 @@ export default function ActiveWorkoutPage() {
             <div className="bg-zinc-800 rounded-lg p-4 text-center">
               <div className="text-zinc-400 text-sm mb-2">Next up:</div>
               <div className="text-white text-xl font-semibold">
-                Set {currentSetIndex + 1}
+                Set {currentSetIndex}
               </div>
               <div className="text-zinc-300 text-base">
                 {ex1.name} → {ex2.name}
@@ -1025,7 +1027,9 @@ export default function ActiveWorkoutPage() {
           <div className="text-center mb-8">
             <div className="text-green-500 text-6xl mb-2">✓</div>
             <div className="text-white text-2xl font-semibold">
-              {completedSets.length === 1 ? 'WARMUP SET' : `SET ${completedSets.length - 1}`} COMPLETE
+              {exercise.warmupWeight !== exercise.targetWeight && completedSets.length === 1
+                ? 'WARMUP SET'
+                : `SET ${exercise.warmupWeight !== exercise.targetWeight ? completedSets.length - 1 : completedSets.length}`} COMPLETE
             </div>
           </div>
 
@@ -1058,7 +1062,7 @@ export default function ActiveWorkoutPage() {
           <div className="bg-zinc-800 rounded-lg p-4 text-center">
             <div className="text-zinc-400 text-sm mb-2">Next up:</div>
             <div className="text-white text-xl font-semibold">
-              {currentSetIndex === 0 ? 'Set 1 (Working)' : `Set ${currentSetIndex + 1} (Working)`}
+              Set {currentSetIndex} (Working)
             </div>
             <div className="text-zinc-300 text-lg">
               {exercise.targetWeight} lbs × {exercise.targetReps} reps

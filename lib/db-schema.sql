@@ -61,3 +61,106 @@ CREATE INDEX IF NOT EXISTS idx_sessions_date ON workout_sessions(date_completed)
 CREATE INDEX IF NOT EXISTS idx_exercise_logs_session ON workout_exercise_logs(session_id);
 CREATE INDEX IF NOT EXISTS idx_exercise_logs_name ON workout_exercise_logs(exercise_name);
 CREATE INDEX IF NOT EXISTS idx_cardio_logs_session ON workout_cardio_logs(session_id);
+
+-- ============================================================================
+-- Routine Builder Tables (v2.0)
+-- ============================================================================
+
+-- Exercise library table
+CREATE TABLE IF NOT EXISTS exercises (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  video_url TEXT,
+  tips TEXT,
+  muscle_groups TEXT,  -- JSON array: ["chest", "triceps"]
+  equipment TEXT,      -- e.g., "Dumbbells", "Barbell", "Bodyweight"
+  difficulty TEXT,     -- "Beginner", "Intermediate", "Advanced"
+  is_custom INTEGER DEFAULT 1,  -- 1 = user-created, 0 = seed data
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Custom workout routines
+CREATE TABLE IF NOT EXISTS custom_routines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Stretches library
+CREATE TABLE IF NOT EXISTS stretches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  duration TEXT NOT NULL,
+  video_url TEXT,
+  tips TEXT,
+  type TEXT,  -- "pre_workout" or "post_workout"
+  muscle_groups TEXT,  -- JSON array: ["hamstrings", "glutes", "lower back"]
+  is_custom INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Junction: routines to pre-workout stretches
+CREATE TABLE IF NOT EXISTS routine_pre_stretches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  routine_id INTEGER NOT NULL,
+  stretch_id INTEGER NOT NULL,
+  order_index INTEGER NOT NULL,
+  FOREIGN KEY (routine_id) REFERENCES custom_routines(id) ON DELETE CASCADE,
+  FOREIGN KEY (stretch_id) REFERENCES stretches(id) ON DELETE CASCADE
+);
+
+-- Junction: routines to exercises
+CREATE TABLE IF NOT EXISTS routine_exercises (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  routine_id INTEGER NOT NULL,
+  exercise_id INTEGER NOT NULL,
+  order_index INTEGER NOT NULL,
+  exercise_type TEXT NOT NULL,  -- "single" or "b2b"
+
+  -- Single exercise config
+  sets INTEGER,
+  target_reps INTEGER,
+  target_weight REAL,
+  warmup_weight REAL,
+  rest_time INTEGER,  -- seconds
+
+  -- B2B partner (if exercise_type = "b2b")
+  b2b_partner_id INTEGER,
+  b2b_sets INTEGER,
+  b2b_target_reps INTEGER,
+  b2b_target_weight REAL,
+  b2b_warmup_weight REAL,
+
+  FOREIGN KEY (routine_id) REFERENCES custom_routines(id) ON DELETE CASCADE,
+  FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE,
+  FOREIGN KEY (b2b_partner_id) REFERENCES exercises(id) ON DELETE CASCADE
+);
+
+-- Junction: routines to post-workout stretches
+CREATE TABLE IF NOT EXISTS routine_post_stretches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  routine_id INTEGER NOT NULL,
+  stretch_id INTEGER NOT NULL,
+  order_index INTEGER NOT NULL,
+  FOREIGN KEY (routine_id) REFERENCES custom_routines(id) ON DELETE CASCADE,
+  FOREIGN KEY (stretch_id) REFERENCES stretches(id) ON DELETE CASCADE
+);
+
+-- Optional cardio for routines
+CREATE TABLE IF NOT EXISTS routine_cardio (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  routine_id INTEGER NOT NULL UNIQUE,
+  cardio_type TEXT NOT NULL,
+  duration TEXT NOT NULL,
+  intensity TEXT,
+  tips TEXT,
+  FOREIGN KEY (routine_id) REFERENCES custom_routines(id) ON DELETE CASCADE
+);
+
+-- Indexes for routine builder tables
+CREATE INDEX IF NOT EXISTS idx_exercises_name ON exercises(name);
+CREATE INDEX IF NOT EXISTS idx_exercises_muscle ON exercises(muscle_groups);
+CREATE INDEX IF NOT EXISTS idx_routine_exercises_routine ON routine_exercises(routine_id);
+CREATE INDEX IF NOT EXISTS idx_routine_exercises_order ON routine_exercises(routine_id, order_index);
+CREATE INDEX IF NOT EXISTS idx_stretches_type ON stretches(type);

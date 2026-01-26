@@ -10,6 +10,9 @@ export default function WorkoutDetailPage() {
   const router = useRouter();
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
+  const [routineId, setRoutineId] = useState<number | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     async function fetchWorkout() {
@@ -20,6 +23,15 @@ export default function WorkoutDetailPage() {
         }
         const data = await response.json();
         setWorkout(data.workout);
+
+        // Fetch routine ID from database
+        const routinesResponse = await fetch('/api/routines');
+        const routinesData = await routinesResponse.json();
+        const decodedName = decodeURIComponent(params.name as string);
+        const routine = routinesData.routines.find((r: any) => r.name === decodedName);
+        if (routine) {
+          setRoutineId(routine.id);
+        }
       } catch (error) {
         console.error('Error fetching workout:', error);
       } finally {
@@ -29,6 +41,36 @@ export default function WorkoutDetailPage() {
 
     fetchWorkout();
   }, [params.name]);
+
+  const handleDeleteClick = () => {
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!routineId) return;
+
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/routines/${routineId}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete routine');
+      }
+
+      // Redirect to home
+      router.push('/');
+    } catch (error) {
+      console.error('Error deleting routine:', error);
+      alert('Failed to delete routine. Please try again.');
+      setDeleting(false);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false);
+  };
 
   if (loading) {
     return (
@@ -56,9 +98,19 @@ export default function WorkoutDetailPage() {
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="mb-6">
-          <Link href="/" className="text-blue-400 hover:text-blue-300 mb-4 inline-block">
-            ← Back to workouts
-          </Link>
+          <div className="flex items-center justify-between mb-4">
+            <Link href="/" className="text-blue-400 hover:text-blue-300">
+              ← Back to workouts
+            </Link>
+            {routineId && (
+              <button
+                onClick={handleDeleteClick}
+                className="bg-red-900/50 hover:bg-red-900 text-red-300 hover:text-red-100 px-4 py-2 rounded text-sm font-semibold transition-colors"
+              >
+                Delete Routine
+              </button>
+            )}
+          </div>
           <h1 className="text-4xl font-bold text-white">{workout.name}</h1>
         </div>
 
@@ -135,6 +187,35 @@ export default function WorkoutDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+          <div className="bg-zinc-800 rounded-lg p-6 max-w-md w-full border-2 border-red-600">
+            <h2 className="text-2xl font-bold text-white mb-4">Delete Routine</h2>
+            <p className="text-zinc-300 mb-6">
+              This will permanently delete this routine. Are you sure you want to proceed?
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={handleCancelDelete}
+                disabled={deleting}
+                className="bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 disabled:cursor-not-allowed text-white py-3 rounded-lg font-semibold transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:cursor-not-allowed text-white py-3 rounded-lg font-bold transition-colors"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
