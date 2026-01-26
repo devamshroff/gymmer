@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Exercise, Stretch, Cardio } from '@/lib/types';
+import Header from '@/app/components/Header';
 
 export default function WorkoutDetailPage() {
   const params = useParams();
@@ -96,7 +97,8 @@ export default function WorkoutDetailPage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4 pb-32">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
+        <Header />
+        {/* Navigation */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <Link href="/" className="text-blue-400 hover:text-blue-300">

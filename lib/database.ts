@@ -124,14 +124,16 @@ export async function logCardio(data: {
   session_id: number;
   cardio_type: string;
   time: string;
+  speed?: number;
+  incline?: number;
 }): Promise<number> {
   const db = getDatabase();
   const result = await db.execute({
     sql: `
-      INSERT INTO workout_cardio_logs (session_id, cardio_type, time)
-      VALUES (?, ?, ?)
+      INSERT INTO workout_cardio_logs (session_id, cardio_type, time, speed, incline)
+      VALUES (?, ?, ?, ?, ?)
     `,
-    args: [data.session_id, data.cardio_type, data.time]
+    args: [data.session_id, data.cardio_type, data.time, data.speed ?? null, data.incline ?? null]
   });
 
   return Number(result.lastInsertRowid);

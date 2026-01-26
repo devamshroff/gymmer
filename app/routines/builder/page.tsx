@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
+import SupersetSelector from '@/app/components/SupersetSelector';
+import Header from '@/app/components/Header';
 
 export default function RoutineBuilderPage() {
   const router = useRouter();
@@ -14,13 +16,9 @@ export default function RoutineBuilderPage() {
   const [exercises, setExercises] = useState<any[]>([]);
   const [creating, setCreating] = useState(false);
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
+  const [showSupersetSelector, setShowSupersetSelector] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingExisting, setLoadingExisting] = useState(false);
-
-  // Superset state
-  const [supersetMode, setSupersetMode] = useState(false);
-  const [supersetStep, setSupersetStep] = useState<1 | 2>(1);
-  const [supersetExercise1, setSupersetExercise1] = useState<any>(null);
 
   // Load existing routine if ID is provided
   useEffect(() => {
@@ -92,63 +90,6 @@ export default function RoutineBuilderPage() {
 
     if (!routineId) return;
 
-    // If in superset mode
-    if (supersetMode) {
-      if (supersetStep === 1) {
-        // Store first exercise and prompt for second
-        setSupersetExercise1(exercise);
-        setSupersetStep(2);
-        setShowExerciseSelector(true);
-        return;
-      } else {
-        // We have both exercises, save the superset
-        try {
-          const response = await fetch(`/api/routines/${routineId}/exercises`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              exerciseId: supersetExercise1.id,
-              orderIndex: exercises.length,
-              exerciseType: 'b2b',
-              sets: 3,
-              targetReps: 10,
-              targetWeight: 0,
-              warmupWeight: 0,
-              restTime: 60,
-              b2bPartnerId: exercise.id,
-              b2bSets: 3,
-              b2bTargetReps: 10,
-              b2bTargetWeight: 0,
-              b2bWarmupWeight: 0
-            })
-          });
-
-          if (!response.ok) {
-            throw new Error('Failed to add superset to routine');
-          }
-
-          // Add superset to local list
-          setExercises([...exercises, {
-            type: 'b2b',
-            exercise1: supersetExercise1,
-            exercise2: exercise
-          }]);
-
-          // Reset superset state
-          setSupersetMode(false);
-          setSupersetStep(1);
-          setSupersetExercise1(null);
-        } catch (error) {
-          console.error('Error adding superset:', error);
-          alert('Failed to add superset to routine. Please try again.');
-          setSupersetMode(false);
-          setSupersetStep(1);
-          setSupersetExercise1(null);
-        }
-        return;
-      }
-    }
-
     // Regular single exercise
     try {
       const response = await fetch(`/api/routines/${routineId}/exercises`, {
@@ -162,7 +103,7 @@ export default function RoutineBuilderPage() {
           targetReps: 10,
           targetWeight: 0,
           warmupWeight: 0,
-          restTime: 90
+          restTime: 60
         })
       });
 
@@ -178,18 +119,46 @@ export default function RoutineBuilderPage() {
     }
   };
 
-  const handleStartSuperset = () => {
-    setSupersetMode(true);
-    setSupersetStep(1);
-    setSupersetExercise1(null);
-    setShowExerciseSelector(true);
-  };
+  const handleSelectSuperset = async (exercise1: any, exercise2: any) => {
+    setShowSupersetSelector(false);
 
-  const handleCancelSuperset = () => {
-    setSupersetMode(false);
-    setSupersetStep(1);
-    setSupersetExercise1(null);
-    setShowExerciseSelector(false);
+    if (!routineId) return;
+
+    try {
+      const response = await fetch(`/api/routines/${routineId}/exercises`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          exerciseId: exercise1.id,
+          orderIndex: exercises.length,
+          exerciseType: 'b2b',
+          sets: 3,
+          targetReps: 10,
+          targetWeight: 0,
+          warmupWeight: 0,
+          restTime: 30,
+          b2bPartnerId: exercise2.id,
+          b2bSets: 3,
+          b2bTargetReps: 10,
+          b2bTargetWeight: 0,
+          b2bWarmupWeight: 0
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add superset to routine');
+      }
+
+      // Add superset to local list
+      setExercises([...exercises, {
+        type: 'b2b',
+        exercise1,
+        exercise2
+      }]);
+    } catch (error) {
+      console.error('Error adding superset:', error);
+      alert('Failed to add superset to routine. Please try again.');
+    }
   };
 
   if (loadingExisting) {
@@ -282,7 +251,7 @@ export default function RoutineBuilderPage() {
                 + Exercise
               </button>
               <button
-                onClick={handleStartSuperset}
+                onClick={() => setShowSupersetSelector(true)}
                 className="bg-purple-600 hover:bg-purple-700 text-white py-4 rounded-lg text-lg font-bold transition-colors"
               >
                 + Superset
@@ -313,8 +282,15 @@ export default function RoutineBuilderPage() {
         {showExerciseSelector && (
           <ExerciseSelector
             onSelect={handleSelectExercise}
-            onCancel={supersetMode ? handleCancelSuperset : () => setShowExerciseSelector(false)}
-            title={supersetMode ? (supersetStep === 1 ? 'Select First Exercise' : 'Select Second Exercise') : undefined}
+            onCancel={() => setShowExerciseSelector(false)}
+          />
+        )}
+
+        {/* Superset Selector Modal */}
+        {showSupersetSelector && (
+          <SupersetSelector
+            onSelect={handleSelectSuperset}
+            onCancel={() => setShowSupersetSelector(false)}
           />
         )}
       </div>

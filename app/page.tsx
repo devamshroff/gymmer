@@ -62,7 +62,8 @@ export default function Home() {
     <div className="min-h-screen bg-zinc-900 p-4">
       <main className="max-w-2xl mx-auto py-8">
         <h1 className="text-4xl font-bold text-white mb-8 text-center">
-          Gym Tracker
+          <span className="block text-gray-200">welcome to</span>
+          <span className="text-emerald-700 font-bold">GYMMER</span>
         </h1>
 
         {/* Create New Routine Button */}

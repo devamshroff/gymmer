@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS workout_cardio_logs (
   session_id INTEGER NOT NULL,
   cardio_type TEXT NOT NULL,
   time TEXT NOT NULL, -- e.g. "15 min", "12 min"
+  speed REAL, -- e.g. 6.5 mph
+  incline REAL, -- e.g. 2.5 percent
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE
 );

@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Stretch } from '@/lib/types';
 import { initWorkoutSession } from '@/lib/workout-session';
+import Timer from '@/app/components/Timer';
 
 export default function StretchesPage() {
   const params = useParams();
@@ -55,15 +56,32 @@ export default function StretchesPage() {
     );
   }
 
-  const stretches = workout.preWorkoutStretches;
+  const stretches = workout.preWorkoutStretches || [];
+
+  // If no stretches, show message and skip to exercises
+  if (stretches.length === 0) {
+    return (
+      <div className="min-h-screen bg-zinc-900 flex flex-col items-center justify-center p-4">
+        <div className="text-white text-2xl mb-4">No pre-workout stretches</div>
+        <button
+          onClick={() => router.push(`/workout/${encodeURIComponent(workout.name)}/active`)}
+          className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-lg text-lg font-bold transition-colors"
+        >
+          Start Exercises →
+        </button>
+      </div>
+    );
+  }
+
   const currentStretch = stretches[currentIndex];
 
   // Calculate total workout items for progress
+  const postStretchCount = (workout.postWorkoutStretches || []).length;
   const totalItems =
-    workout.preWorkoutStretches.length +
+    stretches.length +
     workout.exercises.length +
     (workout.cardio ? 1 : 0) +
-    workout.postWorkoutStretches.length;
+    postStretchCount;
   const currentProgress = currentIndex + 1;
   const progressPercentage = (currentProgress / totalItems) * 100;
 
@@ -125,8 +143,11 @@ export default function StretchesPage() {
           <div className="text-center mb-6">
             <div className="text-6xl mb-4">🏃</div>
             <h2 className="text-3xl font-bold text-white mb-4">{currentStretch.name}</h2>
-            <div className="text-2xl text-blue-400 font-semibold">{currentStretch.duration}</div>
+            <div className="text-xl text-blue-400 font-semibold mb-4">{currentStretch.duration}</div>
           </div>
+
+          {/* Timer */}
+          <Timer key={currentIndex} duration={currentStretch.duration} />
 
           <div className="bg-zinc-900 rounded-lg p-4 mb-6">
             <div className="text-zinc-400 text-sm mb-2">Tips:</div>

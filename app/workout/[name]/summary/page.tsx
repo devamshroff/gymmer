@@ -204,7 +204,11 @@ export default function SummaryPage() {
             {sessionData.cardio && (
               <div className="mt-4 pt-4 border-t border-zinc-700">
                 <div className="text-white font-semibold mb-1">Cardio: {sessionData.cardio.type}</div>
-                <div className="text-zinc-400 text-sm">{sessionData.cardio.time}</div>
+                <div className="text-zinc-400 text-sm">
+                  {sessionData.cardio.time} min
+                  {sessionData.cardio.speed && ` • ${sessionData.cardio.speed} mph`}
+                  {sessionData.cardio.incline && ` • ${sessionData.cardio.incline}% incline`}
+                </div>
               </div>
             )}
           </div>

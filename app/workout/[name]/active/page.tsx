@@ -278,12 +278,8 @@ export default function ActiveWorkoutPage() {
           setIsTransitioning(true);
           setTransitionTimeRemaining(60);
         } else {
-          // All exercises done - go to cardio or post-workout stretches
-          if (workout!.cardio) {
-            router.push(`/workout/${encodeURIComponent(workout!.name)}/cardio`);
-          } else {
-            router.push(`/workout/${encodeURIComponent(workout!.name)}/post-stretches`);
-          }
+          // All exercises done - always go to cardio (optional)
+          router.push(`/workout/${encodeURIComponent(workout!.name)}/cardio`);
         }
       }
     }
@@ -333,12 +329,8 @@ export default function ActiveWorkoutPage() {
         setIsTransitioning(true);
         setTransitionTimeRemaining(60);
       } else {
-        // All exercises done - go to cardio or post-workout stretches
-        if (workout.cardio) {
-          router.push(`/workout/${encodeURIComponent(workout.name)}/cardio`);
-        } else {
-          router.push(`/workout/${encodeURIComponent(workout.name)}/post-stretches`);
-        }
+        // All exercises done - always go to cardio (optional)
+        router.push(`/workout/${encodeURIComponent(workout.name)}/cardio`);
       }
     }
   };
@@ -432,13 +424,9 @@ export default function ActiveWorkoutPage() {
       // Keep viewing index synced so next exercise isn't in read-only mode
       setViewingExerciseIndex(currentExerciseIndex);
     } else {
-      console.log('All exercises done, going to cardio/stretches');
-      // All exercises done - go to cardio or post-workout stretches
-      if (workout!.cardio) {
-        router.push(`/workout/${encodeURIComponent(workout!.name)}/cardio`);
-      } else {
-        router.push(`/workout/${encodeURIComponent(workout!.name)}/post-stretches`);
-      }
+      console.log('All exercises done, going to cardio');
+      // All exercises done - always go to cardio (optional)
+      router.push(`/workout/${encodeURIComponent(workout!.name)}/cardio`);
     }
   };
 
@@ -937,11 +925,8 @@ export default function ActiveWorkoutPage() {
                   setCurrentExerciseInPair(0);
                 }
               } else {
-                if (workout.cardio) {
-                  router.push(`/workout/${encodeURIComponent(workout.name)}/cardio`);
-                } else {
-                  router.push(`/workout/${encodeURIComponent(workout.name)}/post-stretches`);
-                }
+                // Always go to cardio (optional)
+                router.push(`/workout/${encodeURIComponent(workout.name)}/cardio`);
               }
             }}
             className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-lg font-semibold transition-colors"
@@ -1323,11 +1308,8 @@ export default function ActiveWorkoutPage() {
                   setCompletedPairs([]);
                 }
               } else {
-                if (workout.cardio) {
-                  router.push(`/workout/${encodeURIComponent(workout.name)}/cardio`);
-                } else {
-                  router.push(`/workout/${encodeURIComponent(workout.name)}/post-stretches`);
-                }
+                // Always go to cardio (optional)
+                router.push(`/workout/${encodeURIComponent(workout.name)}/cardio`);
               }
             }}
             className="bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-lg font-semibold transition-colors"

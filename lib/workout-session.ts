@@ -20,6 +20,8 @@ export interface WorkoutSessionData {
   cardio?: {
     type: string;
     time: string;
+    speed?: number;
+    incline?: number;
   };
 }
 
@@ -52,7 +54,7 @@ export function addExerciseToSession(exercise: SessionExerciseData): void {
   }
 }
 
-export function addCardioToSession(cardio: { type: string; time: string }): void {
+export function addCardioToSession(cardio: { type: string; time: string; speed?: number; incline?: number }): void {
   const session = getWorkoutSession();
   if (!session) return;
 

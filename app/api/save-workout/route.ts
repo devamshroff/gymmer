@@ -87,6 +87,8 @@ export async function POST(request: Request) {
         session_id: sessionId,
         cardio_type: sessionData.cardio.type,
         time: sessionData.cardio.time,
+        speed: sessionData.cardio.speed,
+        incline: sessionData.cardio.incline,
       });
     }
 

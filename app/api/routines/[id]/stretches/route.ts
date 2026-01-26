@@ -4,10 +4,11 @@ import { addStretchToRoutine, removeStretchFromRoutine } from '@/lib/database';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const routineId = parseInt(params.id);
+    const { id } = await params;
+    const routineId = parseInt(id);
     const body = await request.json();
     const { stretchId, type, orderIndex } = body;
 
@@ -18,9 +19,9 @@ export async function POST(
       );
     }
 
-    const id = await addStretchToRoutine(routineId, stretchId, type, orderIndex);
+    const insertId = await addStretchToRoutine(routineId, stretchId, type, orderIndex);
 
-    return NextResponse.json({ id, success: true }, { status: 201 });
+    return NextResponse.json({ id: insertId, success: true }, { status: 201 });
   } catch (error) {
     console.error('Error adding stretch to routine:', error);
     return NextResponse.json(
@@ -32,9 +33,10 @@ export async function POST(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const searchParams = request.nextUrl.searchParams;
     const stretchId = searchParams.get('stretchId');
     const type = searchParams.get('type');
@@ -46,7 +48,7 @@ export async function DELETE(
       );
     }
 
-    await removeStretchFromRoutine(parseInt(params.id), parseInt(stretchId), type as 'pre' | 'post');
+    await removeStretchFromRoutine(parseInt(id), parseInt(stretchId), type as 'pre' | 'post');
 
     return NextResponse.json({ success: true });
   } catch (error) {

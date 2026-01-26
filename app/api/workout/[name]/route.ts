@@ -57,7 +57,7 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
         targetReps: re.target_reps || 10,
         targetWeight: re.target_weight || 0,
         warmupWeight: re.warmup_weight || 0,
-        restTime: re.rest_time || 90,
+        restTime: re.rest_time || 60,
         videoUrl: re.video_url || '',
         tips: re.tips || ''
       };
@@ -65,7 +65,7 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
       // B2B exercise
       return {
         type: 'b2b' as const,
-        restTime: re.rest_time || 90,
+        restTime: re.rest_time || 30,
         exercises: [
           {
             name: re.exercise_name,
