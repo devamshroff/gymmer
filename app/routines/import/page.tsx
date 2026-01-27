@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Header from '@/app/components/Header';
 
 export default function ImportRoutinePage() {
   const router = useRouter();
@@ -60,6 +61,7 @@ export default function ImportRoutinePage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto py-8">
+        <Header />
         <h1 className="text-3xl font-bold text-white mb-2">Import Routine from JSON</h1>
         <p className="text-zinc-400 mb-6">
           Upload a workout plan JSON file to import it into your routines.

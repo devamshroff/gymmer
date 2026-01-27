@@ -1,15 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Stretch } from '@/lib/types';
 import { initWorkoutSession } from '@/lib/workout-session';
 import Timer from '@/app/components/Timer';
+import Header from '@/app/components/Header';
+import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 
-export default function StretchesPage() {
+function StretchesContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -25,6 +28,16 @@ export default function StretchesPage() {
         setWorkout(data.workout);
         // Initialize workout session when workout is loaded
         initWorkoutSession(data.workout.name);
+
+        // Check for index in URL (for navigation from other sections)
+        const indexParam = searchParams.get('index');
+        if (indexParam) {
+          const idx = parseInt(indexParam, 10);
+          const stretchCount = data.workout.preWorkoutStretches?.length || 0;
+          if (!isNaN(idx) && idx >= 0 && idx < stretchCount) {
+            setCurrentIndex(idx);
+          }
+        }
       } catch (error) {
         console.error('Error fetching workout:', error);
       } finally {
@@ -33,7 +46,7 @@ export default function StretchesPage() {
     }
 
     fetchWorkout();
-  }, [params.workoutName]);
+  }, [params.workoutName, searchParams]);
 
   if (loading) {
     return (
@@ -57,6 +70,7 @@ export default function StretchesPage() {
   }
 
   const stretches = workout.preWorkoutStretches || [];
+  const workoutName = encodeURIComponent(workout.name);
 
   // If no stretches, show message and skip to exercises
   if (stretches.length === 0) {
@@ -64,7 +78,7 @@ export default function StretchesPage() {
       <div className="min-h-screen bg-zinc-900 flex flex-col items-center justify-center p-4">
         <div className="text-white text-2xl mb-4">No pre-workout stretches</div>
         <button
-          onClick={() => router.push(`/workout/${encodeURIComponent(workout.name)}/active`)}
+          onClick={() => router.push(`/workout/${workoutName}/active`)}
           className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-lg text-lg font-bold transition-colors"
         >
           Start Exercises →
@@ -80,7 +94,7 @@ export default function StretchesPage() {
   const totalItems =
     stretches.length +
     workout.exercises.length +
-    (workout.cardio ? 1 : 0) +
+    1 + // cardio (always count it for progress)
     postStretchCount;
   const currentProgress = currentIndex + 1;
   const progressPercentage = (currentProgress / totalItems) * 100;
@@ -90,7 +104,7 @@ export default function StretchesPage() {
       setCurrentIndex(currentIndex + 1);
     } else {
       // Move to exercises
-      router.push(`/workout/${encodeURIComponent(workout.name)}/active`);
+      router.push(`/workout/${workoutName}/active`);
     }
   };
 
@@ -98,24 +112,25 @@ export default function StretchesPage() {
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1);
     }
+    // At index 0, previous is disabled (no previous section)
   };
 
   const handleSkipAll = () => {
-    router.push(`/workout/${encodeURIComponent(workout.name)}/active`);
+    router.push(`/workout/${workoutName}/active`);
   };
 
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <Link href={`/workout/${encodeURIComponent(workout.name)}`} className="text-blue-400 hover:text-blue-300">
-            ← Back
-          </Link>
-          <button onClick={handleSkipAll} className="text-zinc-400 hover:text-zinc-300">
-            Skip All →
-          </button>
-        </div>
+        <Header />
+        {/* Navigation */}
+        <WorkoutNavHeader
+          exitUrl={`/workout/${workoutName}`}
+          previousUrl={null} // Handle internally
+          onPrevious={currentIndex > 0 ? handlePrevious : undefined}
+          skipLabel="Skip All"
+          onSkip={handleSkipAll}
+        />
 
         {/* Title */}
         <div className="text-center mb-4">
@@ -146,8 +161,8 @@ export default function StretchesPage() {
             <div className="text-xl text-blue-400 font-semibold mb-4">{currentStretch.duration}</div>
           </div>
 
-          {/* Timer */}
-          <Timer key={currentIndex} duration={currentStretch.duration} />
+          {/* Timer - only shows if stretch has a timer value */}
+          <Timer key={currentIndex} timerSeconds={currentStretch.timerSeconds} />
 
           <div className="bg-zinc-900 rounded-lg p-4 mb-6">
             <div className="text-zinc-400 text-sm mb-2">Tips:</div>
@@ -186,5 +201,17 @@ export default function StretchesPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function StretchesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
+        <div className="text-white text-2xl">Loading...</div>
+      </div>
+    }>
+      <StretchesContent />
+    </Suspense>
   );
 }

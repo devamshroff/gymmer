@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS stretches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
   duration TEXT NOT NULL,
+  timer_seconds INTEGER DEFAULT 0,  -- 0 means no timer needed (rep-based), >0 means show timer
   video_url TEXT,
   tips TEXT,
   type TEXT,  -- "pre_workout" or "post_workout"

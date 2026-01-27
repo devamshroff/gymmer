@@ -3,31 +3,31 @@
 import { useState, useEffect, useCallback } from 'react';
 
 interface TimerProps {
-  duration: string; // e.g., "30 sec", "45 sec each side", "60 seconds"
+  timerSeconds: number; // Explicit timer value in seconds, 0 means no timer
   onComplete?: () => void;
 }
 
-function parseDuration(duration: string): number {
-  // Extract the first number from the duration string
-  const match = duration.match(/(\d+)/);
-  if (match) {
-    return parseInt(match[1], 10);
+export default function Timer({ timerSeconds, onComplete }: TimerProps) {
+  // Don't render anything if no timer is needed
+  if (!timerSeconds || timerSeconds <= 0) {
+    return null;
   }
-  return 30; // Default to 30 seconds
+
+  return <TimerContent timerSeconds={timerSeconds} onComplete={onComplete} />;
 }
 
-export default function Timer({ duration, onComplete }: TimerProps) {
-  const totalSeconds = parseDuration(duration);
+function TimerContent({ timerSeconds, onComplete }: { timerSeconds: number; onComplete?: () => void }) {
+  const totalSeconds = timerSeconds;
   const [secondsLeft, setSecondsLeft] = useState(totalSeconds);
   const [isRunning, setIsRunning] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
 
   useEffect(() => {
-    // Reset timer when duration changes
-    setSecondsLeft(parseDuration(duration));
+    // Reset timer when timerSeconds changes
+    setSecondsLeft(timerSeconds);
     setIsRunning(false);
     setHasStarted(false);
-  }, [duration]);
+  }, [timerSeconds]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;

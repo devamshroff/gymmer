@@ -1,22 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Exercise, SingleExercise, B2BExercise } from '@/lib/types';
 import { addExerciseToSession } from '@/lib/workout-session';
+import Header from '@/app/components/Header';
+import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 
 interface SetData {
   weight: number;
   reps: number;
 }
 
-export default function ActiveWorkoutPage() {
+function ActiveWorkoutContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
+  const [initialIndexSet, setInitialIndexSet] = useState(false);
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
   const [isResting, setIsResting] = useState(false);
   const [restTimeRemaining, setRestTimeRemaining] = useState(0);
@@ -59,14 +63,27 @@ export default function ActiveWorkoutPage() {
         const data = await response.json();
         setWorkout(data.workout);
 
-        // Initialize first exercise weight/reps
-        const firstExercise = data.workout.exercises[0];
-        if (firstExercise.type === 'single') {
+        // Check for index in URL (for navigation from other sections)
+        const indexParam = searchParams.get('index');
+        let startIndex = 0;
+        if (indexParam && !initialIndexSet) {
+          const idx = parseInt(indexParam, 10);
+          if (!isNaN(idx) && idx >= 0 && idx < data.workout.exercises.length) {
+            startIndex = idx;
+            setCurrentExerciseIndex(idx);
+            setViewingExerciseIndex(idx);
+          }
+          setInitialIndexSet(true);
+        }
+
+        // Initialize exercise at startIndex
+        const exercise = data.workout.exercises[startIndex];
+        if (exercise.type === 'single') {
           // Check if warmup is needed
-          const needsWarmup = firstExercise.warmupWeight !== firstExercise.targetWeight;
+          const needsWarmup = exercise.warmupWeight !== exercise.targetWeight;
           setSetData({
-            weight: needsWarmup ? firstExercise.warmupWeight : firstExercise.targetWeight,
-            reps: firstExercise.targetReps,
+            weight: needsWarmup ? exercise.warmupWeight : exercise.targetWeight,
+            reps: exercise.targetReps,
           });
           // If no warmup needed, start at set 1 instead of set 0
           if (!needsWarmup) {
@@ -74,7 +91,7 @@ export default function ActiveWorkoutPage() {
           }
         } else {
           // B2B exercise - no warmups, start at set 1
-          const b2bEx = firstExercise as B2BExercise;
+          const b2bEx = exercise as B2BExercise;
           setSetData1({
             weight: b2bEx.exercises[0].targetWeight,
             reps: b2bEx.exercises[0].targetReps,
@@ -94,7 +111,7 @@ export default function ActiveWorkoutPage() {
     }
 
     fetchWorkout();
-  }, [params.name]);
+  }, [params.name, searchParams, initialIndexSet]);
 
   // Rest timer countdown
   useEffect(() => {
@@ -436,9 +453,29 @@ export default function ActiveWorkoutPage() {
     // If viewing a previous exercise, go back one more
     if (viewingExerciseIndex > 0) {
       setViewingExerciseIndex(viewingExerciseIndex - 1);
+    } else if (workout) {
+      // At the first exercise, go back to pre-stretches (if any) or exit
+      const preStretchCount = workout.preWorkoutStretches?.length || 0;
+      if (preStretchCount > 0) {
+        router.push(`/stretches/${encodeURIComponent(workout.name)}?index=${preStretchCount - 1}`);
+      } else {
+        setShowExitConfirm(true);
+      }
+    }
+  };
+
+  // Handle going to previous section (for WorkoutNavHeader)
+  const handlePreviousSection = () => {
+    if (!workout) return;
+
+    if (viewingExerciseIndex > 0) {
+      setViewingExerciseIndex(viewingExerciseIndex - 1);
     } else {
-      // At the first exercise, show exit confirmation
-      setShowExitConfirm(true);
+      // Go to last pre-stretch
+      const preStretchCount = workout.preWorkoutStretches?.length || 0;
+      if (preStretchCount > 0) {
+        router.push(`/stretches/${encodeURIComponent(workout.name)}?index=${preStretchCount - 1}`);
+      }
     }
   };
 
@@ -449,9 +486,12 @@ export default function ActiveWorkoutPage() {
     }
   };
 
+  // Determine which exercise to display (for review mode vs active mode)
+  const exerciseToDisplay = isReviewMode ? viewingExercise : currentExercise;
+
   // Handle B2B/Superset exercises
-  if (currentExercise.type === 'b2b') {
-    const b2bExercise = (isReviewMode ? viewingExercise : currentExercise) as B2BExercise;
+  if (exerciseToDisplay.type === 'b2b') {
+    const b2bExercise = exerciseToDisplay as B2BExercise;
     const ex1 = b2bExercise.exercises[0];
     const ex2 = b2bExercise.exercises[1];
 
@@ -583,31 +623,15 @@ export default function ActiveWorkoutPage() {
     return (
       <div className="min-h-screen bg-zinc-900 p-4 pb-32">
         <div className="max-w-2xl mx-auto">
-          {/* Header */}
-          <div className="flex justify-between items-center mb-6">
-            {isReviewMode ? (
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={handleBackClick}
-                  disabled={viewingExerciseIndex === 0}
-                  className={`${viewingExerciseIndex === 0 ? 'text-zinc-600' : 'text-blue-400 hover:text-blue-300'}`}
-                >
-                  ← Previous
-                </button>
-                <button
-                  onClick={handleForwardClick}
-                  className="text-blue-400 hover:text-blue-300"
-                >
-                  Next →
-                </button>
-              </div>
-            ) : (
-              <button onClick={handleBackClick} className="text-red-400 hover:text-red-300">
-                Exit Routine
-              </button>
-            )}
-            <div className="text-zinc-400">Exercise {viewingExerciseIndex + 1}/{workout.exercises.length}</div>
-          </div>
+          <Header />
+          {/* Navigation */}
+          <WorkoutNavHeader
+            exitUrl={`/workout/${encodeURIComponent(workout.name)}`}
+            previousUrl={null}
+            onPrevious={handlePreviousSection}
+            onNext={isReviewMode ? () => setViewingExerciseIndex(viewingExerciseIndex + 1) : undefined}
+          />
+          <div className="text-zinc-400 text-right mb-4 -mt-4">Exercise {viewingExerciseIndex + 1}/{workout.exercises.length}</div>
 
           {/* READ ONLY Banner */}
           {isReviewMode && (
@@ -894,51 +918,54 @@ export default function ActiveWorkoutPage() {
             </div>
           )}
 
-          {/* Skip Exercise */}
-          <button
-            onClick={() => {
-              if (currentExerciseIndex < workout.exercises.length - 1) {
-                const nextExerciseIndex = currentExerciseIndex + 1;
-                setCurrentExerciseIndex(nextExerciseIndex);
-                setCompletedPairs([]);
+          {/* Skip Exercise (only in active mode, not review mode) */}
+          {!isReviewMode && (
+            <button
+              onClick={() => {
+                if (currentExerciseIndex < workout.exercises.length - 1) {
+                  const nextExerciseIndex = currentExerciseIndex + 1;
+                  setCurrentExerciseIndex(nextExerciseIndex);
+                  setViewingExerciseIndex(nextExerciseIndex);
+                  setCompletedPairs([]);
 
-                // Initialize next exercise
-                const nextExercise = workout.exercises[nextExerciseIndex];
-                if (nextExercise.type === 'single') {
-                  const needsWarmup = nextExercise.warmupWeight !== nextExercise.targetWeight;
-                  setSetData({
-                    weight: needsWarmup ? nextExercise.warmupWeight : nextExercise.targetWeight,
-                    reps: nextExercise.targetReps,
-                  });
-                  setCurrentSetIndex(needsWarmup ? 0 : 1);
+                  // Initialize next exercise
+                  const nextExercise = workout.exercises[nextExerciseIndex];
+                  if (nextExercise.type === 'single') {
+                    const needsWarmup = nextExercise.warmupWeight !== nextExercise.targetWeight;
+                    setSetData({
+                      weight: needsWarmup ? nextExercise.warmupWeight : nextExercise.targetWeight,
+                      reps: nextExercise.targetReps,
+                    });
+                    setCurrentSetIndex(needsWarmup ? 0 : 1);
+                  } else {
+                    const b2bEx = nextExercise as B2BExercise;
+                    setSetData1({
+                      weight: b2bEx.exercises[0].targetWeight,
+                      reps: b2bEx.exercises[0].targetReps,
+                    });
+                    setSetData2({
+                      weight: b2bEx.exercises[1].targetWeight,
+                      reps: b2bEx.exercises[1].targetReps,
+                    });
+                    setCurrentSetIndex(1);
+                    setCurrentExerciseInPair(0);
+                  }
                 } else {
-                  const b2bEx = nextExercise as B2BExercise;
-                  setSetData1({
-                    weight: b2bEx.exercises[0].targetWeight,
-                    reps: b2bEx.exercises[0].targetReps,
-                  });
-                  setSetData2({
-                    weight: b2bEx.exercises[1].targetWeight,
-                    reps: b2bEx.exercises[1].targetReps,
-                  });
-                  setCurrentSetIndex(1);
-                  setCurrentExerciseInPair(0);
+                  // Always go to cardio (optional)
+                  router.push(`/workout/${encodeURIComponent(workout.name)}/cardio`);
                 }
-              } else {
-                // Always go to cardio (optional)
-                router.push(`/workout/${encodeURIComponent(workout.name)}/cardio`);
-              }
-            }}
-            className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-lg font-semibold transition-colors"
-          >
-            Skip Exercise
-          </button>
+              }}
+              className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-lg font-semibold transition-colors"
+            >
+              Skip Exercise
+            </button>
+          )}
         </div>
       </div>
     );
   }
 
-  const exercise = (isReviewMode ? viewingExercise : currentExercise) as SingleExercise;
+  const exercise = exerciseToDisplay as SingleExercise;
   const isWarmupSet = currentSetIndex === 0;
 
   // In review mode, show cached completed sets
@@ -1090,31 +1117,15 @@ export default function ActiveWorkoutPage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4 pb-32">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          {isReviewMode ? (
-            <div className="flex items-center gap-4">
-              <button
-                onClick={handleBackClick}
-                disabled={viewingExerciseIndex === 0}
-                className={`${viewingExerciseIndex === 0 ? 'text-zinc-600' : 'text-blue-400 hover:text-blue-300'}`}
-              >
-                ← Previous
-              </button>
-              <button
-                onClick={handleForwardClick}
-                className="text-blue-400 hover:text-blue-300"
-              >
-                Next →
-              </button>
-            </div>
-          ) : (
-            <button onClick={handleBackClick} className="text-red-400 hover:text-red-300">
-              Exit Routine
-            </button>
-          )}
-          <div className="text-zinc-400">Exercise {viewingExerciseIndex + 1}/{workout.exercises.length}</div>
-        </div>
+        <Header />
+        {/* Navigation */}
+        <WorkoutNavHeader
+          exitUrl={`/workout/${encodeURIComponent(workout.name)}`}
+          previousUrl={null}
+          onPrevious={handlePreviousSection}
+          onNext={isReviewMode ? () => setViewingExerciseIndex(viewingExerciseIndex + 1) : undefined}
+        />
+        <div className="text-zinc-400 text-right mb-4 -mt-4">Exercise {viewingExerciseIndex + 1}/{workout.exercises.length}</div>
 
         {/* READ ONLY Banner */}
         {isReviewMode && (
@@ -1268,56 +1279,71 @@ export default function ActiveWorkoutPage() {
         </div>
 
         {/* Video and Skip */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className={isReviewMode ? '' : 'grid grid-cols-2 gap-4'}>
           <a
             href={exercise.videoUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="block bg-red-600 hover:bg-red-700 text-white text-center py-3 rounded-lg font-semibold transition-colors"
           >
-            📺 Video
+            📺 Watch Video
           </a>
-          <button
-            onClick={() => {
-              if (currentExerciseIndex < workout.exercises.length - 1) {
-                const nextExerciseIndex = currentExerciseIndex + 1;
-                setCurrentExerciseIndex(nextExerciseIndex);
-                setCompletedSets([]);
+          {!isReviewMode && (
+            <button
+              onClick={() => {
+                if (currentExerciseIndex < workout.exercises.length - 1) {
+                  const nextExerciseIndex = currentExerciseIndex + 1;
+                  setCurrentExerciseIndex(nextExerciseIndex);
+                  setViewingExerciseIndex(nextExerciseIndex);
+                  setCompletedSets([]);
 
-                // Initialize next exercise
-                const nextExercise = workout.exercises[nextExerciseIndex];
-                if (nextExercise.type === 'single') {
-                  const needsWarmup = nextExercise.warmupWeight !== nextExercise.targetWeight;
-                  setSetData({
-                    weight: needsWarmup ? nextExercise.warmupWeight : nextExercise.targetWeight,
-                    reps: nextExercise.targetReps,
-                  });
-                  setCurrentSetIndex(needsWarmup ? 0 : 1);
+                  // Initialize next exercise
+                  const nextExercise = workout.exercises[nextExerciseIndex];
+                  if (nextExercise.type === 'single') {
+                    const needsWarmup = nextExercise.warmupWeight !== nextExercise.targetWeight;
+                    setSetData({
+                      weight: needsWarmup ? nextExercise.warmupWeight : nextExercise.targetWeight,
+                      reps: nextExercise.targetReps,
+                    });
+                    setCurrentSetIndex(needsWarmup ? 0 : 1);
+                  } else {
+                    const b2bEx = nextExercise as B2BExercise;
+                    setSetData1({
+                      weight: b2bEx.exercises[0].targetWeight,
+                      reps: b2bEx.exercises[0].targetReps,
+                    });
+                    setSetData2({
+                      weight: b2bEx.exercises[1].targetWeight,
+                      reps: b2bEx.exercises[1].targetReps,
+                    });
+                    setCurrentSetIndex(1);
+                    setCurrentExerciseInPair(0);
+                    setCompletedPairs([]);
+                  }
                 } else {
-                  const b2bEx = nextExercise as B2BExercise;
-                  setSetData1({
-                    weight: b2bEx.exercises[0].targetWeight,
-                    reps: b2bEx.exercises[0].targetReps,
-                  });
-                  setSetData2({
-                    weight: b2bEx.exercises[1].targetWeight,
-                    reps: b2bEx.exercises[1].targetReps,
-                  });
-                  setCurrentSetIndex(1);
-                  setCurrentExerciseInPair(0);
-                  setCompletedPairs([]);
+                  // Always go to cardio (optional)
+                  router.push(`/workout/${encodeURIComponent(workout.name)}/cardio`);
                 }
-              } else {
-                // Always go to cardio (optional)
-                router.push(`/workout/${encodeURIComponent(workout.name)}/cardio`);
-              }
-            }}
-            className="bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-lg font-semibold transition-colors"
-          >
-            Skip Exercise
-          </button>
+              }}
+              className="bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-lg font-semibold transition-colors"
+            >
+              Skip Exercise
+            </button>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ActiveWorkoutPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
+        <div className="text-white text-2xl">Loading...</div>
+      </div>
+    }>
+      <ActiveWorkoutContent />
+    </Suspense>
   );
 }

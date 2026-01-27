@@ -3,6 +3,7 @@
 export interface Stretch {
   name: string;
   duration: string;
+  timerSeconds: number;  // 0 means no timer (rep-based), >0 shows timer
   videoUrl: string;
   tips: string;
 }

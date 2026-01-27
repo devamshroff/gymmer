@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import Header from '@/app/components/Header';
 
 interface Stretch {
   id: number;
@@ -155,6 +156,7 @@ export default function RoutineStretchesPage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-4xl mx-auto">
+        <Header />
         <h1 className="text-3xl font-bold text-white mb-2">Select Stretches</h1>
         <p className="text-zinc-400 mb-6">
           Choose stretches for your routine. You can select multiple.

@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
 import { getWorkoutSession, WorkoutSessionData } from '@/lib/workout-session';
+import Header from '@/app/components/Header';
 
 export default function SummaryPage() {
   const params = useParams();
@@ -124,6 +125,7 @@ export default function SummaryPage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto">
+        <Header />
         {/* Celebration Header */}
         <div className="text-center mb-8">
           <div className="text-8xl mb-4">🎉</div>

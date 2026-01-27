@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
 import { addCardioToSession } from '@/lib/workout-session';
+import Header from '@/app/components/Header';
+import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 
 const CARDIO_TYPES = [
   { value: 'Treadmill', label: 'Treadmill', icon: '🏃' },
@@ -101,21 +103,29 @@ export default function CardioPage() {
     router.push(`/workout/${encodeURIComponent(workout.name)}/post-stretches`);
   };
 
+  const handlePrevious = () => {
+    // Go back to last exercise
+    const exerciseCount = workout.exercises?.length || 0;
+    if (exerciseCount > 0) {
+      router.push(`/workout/${encodeURIComponent(workout.name)}/active?index=${exerciseCount - 1}`);
+    }
+  };
+
   // Get the selected cardio type info
   const selectedCardioInfo = CARDIO_TYPES.find(t => t.value === cardioType) || CARDIO_TYPES[0];
 
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <Link href={`/workout/${encodeURIComponent(workout.name)}`} className="text-blue-400 hover:text-blue-300">
-            ← Back
-          </Link>
-          <button onClick={handleSkip} className="text-zinc-400 hover:text-zinc-300">
-            Skip Cardio →
-          </button>
-        </div>
+        <Header />
+        {/* Navigation */}
+        <WorkoutNavHeader
+          exitUrl={`/workout/${encodeURIComponent(workout.name)}`}
+          previousUrl={null}
+          onPrevious={handlePrevious}
+          skipLabel="Skip Cardio"
+          onSkip={handleSkip}
+        />
 
         {/* Progress Bar */}
         <div className="mb-8">

@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
 import SupersetSelector from '@/app/components/SupersetSelector';
 import Header from '@/app/components/Header';
 
-export default function RoutineBuilderPage() {
+function RoutineBuilderContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const existingId = searchParams.get('id');
@@ -172,6 +172,7 @@ export default function RoutineBuilderPage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto">
+        <Header />
         <h1 className="text-3xl font-bold text-white mb-6">
           {routineId ? 'Edit Routine' : 'Create New Routine'}
         </h1>
@@ -295,5 +296,17 @@ export default function RoutineBuilderPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function RoutineBuilderPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
+        <div className="text-white text-xl">Loading...</div>
+      </div>
+    }>
+      <RoutineBuilderContent />
+    </Suspense>
   );
 }

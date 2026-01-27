@@ -85,7 +85,23 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
             videoUrl: re.b2b_video_url || '',
             tips: re.b2b_tips || ''
           }
-        ]
+        ] as [{
+          name: string;
+          sets: number;
+          targetReps: number;
+          targetWeight: number;
+          warmupWeight: number;
+          videoUrl: string;
+          tips: string;
+        }, {
+          name: string;
+          sets: number;
+          targetReps: number;
+          targetWeight: number;
+          warmupWeight: number;
+          videoUrl: string;
+          tips: string;
+        }]
       };
     }
   });
@@ -95,6 +111,7 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
   const preWorkoutStretches = preStretches.map((s: any) => ({
     name: s.name,
     duration: s.duration,
+    timerSeconds: s.timer_seconds || 0,
     videoUrl: s.video_url || '',
     tips: s.tips || ''
   }));
@@ -104,6 +121,7 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
   const postWorkoutStretches = postStretches.map((s: any) => ({
     name: s.name,
     duration: s.duration,
+    timerSeconds: s.timer_seconds || 0,
     videoUrl: s.video_url || '',
     tips: s.tips || ''
   }));

@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
 import { getWorkoutSession, clearWorkoutSession, WorkoutSessionData } from '@/lib/workout-session';
+import Header from '@/app/components/Header';
 
 export default function StatsPage() {
   const params = useParams();
@@ -112,7 +113,8 @@ export default function StatsPage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
+        <Header />
+        {/* Stats Header */}
         <div className="text-center mb-8">
           <div className="text-6xl mb-4">💪</div>
           <h1 className="text-3xl font-bold text-white mb-2">Workout Stats</h1>
