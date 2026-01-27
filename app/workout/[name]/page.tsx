@@ -105,12 +105,20 @@ export default function WorkoutDetailPage() {
               ← Back to workouts
             </Link>
             {routineId && (
-              <button
-                onClick={handleDeleteClick}
-                className="bg-red-900/50 hover:bg-red-900 text-red-300 hover:text-red-100 px-4 py-2 rounded text-sm font-semibold transition-colors"
-              >
-                Delete Routine
-              </button>
+              <div className="flex gap-2">
+                <Link
+                  href={`/routines/${routineId}/edit`}
+                  className="bg-blue-900/50 hover:bg-blue-900 text-blue-300 hover:text-blue-100 px-4 py-2 rounded text-sm font-semibold transition-colors"
+                >
+                  Edit Routine
+                </Link>
+                <button
+                  onClick={handleDeleteClick}
+                  className="bg-red-900/50 hover:bg-red-900 text-red-300 hover:text-red-100 px-4 py-2 rounded text-sm font-semibold transition-colors"
+                >
+                  Delete Routine
+                </button>
+              </div>
             )}
           </div>
           <h1 className="text-4xl font-bold text-white">{workout.name}</h1>

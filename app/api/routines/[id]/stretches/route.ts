@@ -1,6 +1,6 @@
 // app/api/routines/[id]/stretches/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { addStretchToRoutine, removeStretchFromRoutine } from '@/lib/database';
+import { addStretchToRoutine, removeStretchFromRoutine, reorderRoutineStretches } from '@/lib/database';
 
 export async function POST(
   request: NextRequest,
@@ -26,6 +26,43 @@ export async function POST(
     console.error('Error adding stretch to routine:', error);
     return NextResponse.json(
       { error: 'Failed to add stretch to routine' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const routineId = parseInt(id);
+
+    if (isNaN(routineId)) {
+      return NextResponse.json(
+        { error: 'Invalid routine ID' },
+        { status: 400 }
+      );
+    }
+
+    const body = await request.json();
+    const { type, order } = body;
+
+    if (!type || !order || !Array.isArray(order)) {
+      return NextResponse.json(
+        { error: 'Type and order array are required' },
+        { status: 400 }
+      );
+    }
+
+    await reorderRoutineStretches(routineId, type, order);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error reordering stretches:', error);
+    return NextResponse.json(
+      { error: 'Failed to reorder stretches' },
       { status: 500 }
     );
   }

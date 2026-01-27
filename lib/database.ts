@@ -461,6 +461,43 @@ export async function getRoutineStretches(routineId: number, type: 'pre' | 'post
   return result.rows as any[];
 }
 
+// Reorder exercises in a routine
+export async function reorderRoutineExercises(
+  routineId: number,
+  exerciseOrder: number[] // Array of routine_exercise IDs in new order
+): Promise<void> {
+  const db = getDatabase();
+  for (let i = 0; i < exerciseOrder.length; i++) {
+    await db.execute({
+      sql: 'UPDATE routine_exercises SET order_index = ? WHERE id = ? AND routine_id = ?',
+      args: [i, exerciseOrder[i], routineId]
+    });
+  }
+}
+
+// Reorder stretches in a routine
+export async function reorderRoutineStretches(
+  routineId: number,
+  type: 'pre' | 'post',
+  stretchOrder: number[] // Array of stretch IDs in new order
+): Promise<void> {
+  const db = getDatabase();
+  const tableName = type === 'pre' ? 'routine_pre_stretches' : 'routine_post_stretches';
+
+  // Delete existing and re-insert in new order
+  await db.execute({
+    sql: `DELETE FROM ${tableName} WHERE routine_id = ?`,
+    args: [routineId]
+  });
+
+  for (let i = 0; i < stretchOrder.length; i++) {
+    await db.execute({
+      sql: `INSERT INTO ${tableName} (routine_id, stretch_id, order_index) VALUES (?, ?, ?)`,
+      args: [routineId, stretchOrder[i], i]
+    });
+  }
+}
+
 // Close database connection (for cleanup)
 export async function closeDatabase() {
   if (db) {

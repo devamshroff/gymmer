@@ -1,6 +1,6 @@
 // app/api/routines/[id]/exercises/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { addExerciseToRoutine, removeExerciseFromRoutine, getRoutineExercises } from '@/lib/database';
+import { addExerciseToRoutine, removeExerciseFromRoutine, getRoutineExercises, reorderRoutineExercises } from '@/lib/database';
 
 export async function POST(
   request: NextRequest,
@@ -66,6 +66,43 @@ export async function POST(
     console.error('Error adding exercise to routine:', error);
     return NextResponse.json(
       { error: 'Failed to add exercise to routine' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const routineId = parseInt(id);
+
+    if (isNaN(routineId)) {
+      return NextResponse.json(
+        { error: 'Invalid routine ID' },
+        { status: 400 }
+      );
+    }
+
+    const body = await request.json();
+    const { order } = body;
+
+    if (!order || !Array.isArray(order)) {
+      return NextResponse.json(
+        { error: 'Order array is required' },
+        { status: 400 }
+      );
+    }
+
+    await reorderRoutineExercises(routineId, order);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error reordering exercises:', error);
+    return NextResponse.json(
+      { error: 'Failed to reorder exercises' },
       { status: 500 }
     );
   }
