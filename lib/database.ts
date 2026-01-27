@@ -287,6 +287,14 @@ export async function deleteRoutine(id: number): Promise<void> {
   });
 }
 
+export async function updateRoutineName(id: number, name: string): Promise<void> {
+  const db = getDatabase();
+  await db.execute({
+    sql: 'UPDATE routines SET name = ?, updated_at = datetime(\'now\') WHERE id = ?',
+    args: [name, id]
+  });
+}
+
 // Routine exercise management
 export async function addExerciseToRoutine(data: {
   routineId: number;

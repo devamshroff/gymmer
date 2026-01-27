@@ -2,11 +2,12 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import { WorkoutPlan, Stretch } from '@/lib/types';
-import Timer from '@/app/components/Timer';
 import Header from '@/app/components/Header';
 import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
+import StretchCard from '@/app/components/StretchCard';
+import LoadingScreen from '@/app/components/LoadingScreen';
+import ErrorScreen from '@/app/components/ErrorScreen';
 
 function PostStretchesContent() {
   const params = useParams();
@@ -46,24 +47,11 @@ function PostStretchesContent() {
   }, [params.name, searchParams]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
-        <div className="text-white text-2xl">Loading...</div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (!workout) {
-    return (
-      <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
-        <div className="text-center">
-          <div className="text-white text-2xl mb-4">Workout not found</div>
-          <Link href="/" className="text-blue-400 hover:text-blue-300">
-            Back to home
-          </Link>
-        </div>
-      </div>
-    );
+    return <ErrorScreen message="Workout not found" />;
   }
 
   const stretches = workout.postWorkoutStretches || [];
@@ -159,30 +147,11 @@ function PostStretchesContent() {
         </div>
 
         {/* Stretch Card */}
-        <div className="bg-zinc-800 rounded-lg p-8 border-2 border-blue-600 mb-8">
-          <div className="text-center mb-6">
-            <div className="text-6xl mb-4">🧘</div>
-            <h2 className="text-3xl font-bold text-white mb-4">{currentStretch.name}</h2>
-            <div className="text-xl text-blue-400 font-semibold mb-4">{currentStretch.duration}</div>
-          </div>
-
-          {/* Timer - only shows if stretch has a timer value */}
-          <Timer key={currentIndex} timerSeconds={currentStretch.timerSeconds} />
-
-          <div className="bg-zinc-900 rounded-lg p-4 mb-6">
-            <div className="text-zinc-400 text-sm mb-2">Tips:</div>
-            <p className="text-zinc-200 text-lg leading-relaxed">{currentStretch.tips}</p>
-          </div>
-
-          <a
-            href={currentStretch.videoUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block w-full bg-red-600 hover:bg-red-700 text-white text-center py-3 rounded-lg text-lg font-semibold transition-colors"
-          >
-            📺 Watch Video
-          </a>
-        </div>
+        <StretchCard
+          stretch={currentStretch}
+          timerKey={currentIndex}
+          variant="post"
+        />
 
         {/* Navigation Buttons */}
         <div className="grid grid-cols-2 gap-4">
@@ -206,11 +175,7 @@ function PostStretchesContent() {
 
 export default function PostStretchesPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
-        <div className="text-white text-2xl">Loading...</div>
-      </div>
-    }>
+    <Suspense fallback={<LoadingScreen />}>
       <PostStretchesContent />
     </Suspense>
   );

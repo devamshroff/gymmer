@@ -17,6 +17,8 @@ export default function Home() {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [lastWorkoutDates, setLastWorkoutDates] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState('');
 
   useEffect(() => {
     fetchRoutines();
@@ -47,6 +49,45 @@ export default function Home() {
       console.error('Error fetching routines:', error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function startEditing(routine: Routine, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setEditingId(routine.id);
+    setEditingName(routine.name);
+  }
+
+  function cancelEditing(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setEditingId(null);
+    setEditingName('');
+  }
+
+  async function saveRoutineName(routineId: number, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!editingName.trim()) return;
+
+    try {
+      const response = await fetch(`/api/routines/${routineId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editingName.trim() }),
+      });
+
+      if (response.ok) {
+        setRoutines(routines.map(r =>
+          r.id === routineId ? { ...r, name: editingName.trim() } : r
+        ));
+        setEditingId(null);
+        setEditingName('');
+      }
+    } catch (error) {
+      console.error('Error updating routine name:', error);
     }
   }
 
@@ -89,27 +130,81 @@ export default function Home() {
                     year: 'numeric',
                   })
                 : 'Never';
+              const isEditing = editingId === routine.id;
 
               return (
-                <Link
+                <div
                   key={`routine-${routine.id}`}
-                  href={`/workout/${encodeURIComponent(routine.name)}`}
-                  className="block bg-zinc-800 hover:bg-zinc-700 transition-colors rounded-lg p-6 border-2 border-zinc-700"
+                  className="bg-zinc-800 hover:bg-zinc-700 transition-colors rounded-lg p-6 border-2 border-zinc-700"
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <h2 className="text-2xl font-semibold text-white">
-                      {routine.name}
-                    </h2>
+                    {isEditing ? (
+                      <div className="flex items-center gap-2 flex-1">
+                        <input
+                          type="text"
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveRoutineName(routine.id, e as any);
+                            if (e.key === 'Escape') { setEditingId(null); setEditingName(''); }
+                          }}
+                          className="flex-1 bg-zinc-700 text-white text-xl font-semibold px-3 py-1 rounded border border-zinc-500 focus:outline-none focus:border-green-500"
+                          autoFocus
+                        />
+                        <button
+                          onClick={(e) => saveRoutineName(routine.id, e)}
+                          className="text-green-500 hover:text-green-400 p-1"
+                          title="Save"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={cancelEditing}
+                          className="text-zinc-400 hover:text-zinc-300 p-1"
+                          title="Cancel"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <Link
+                          href={`/workout/${encodeURIComponent(routine.name)}`}
+                          className="text-2xl font-semibold text-white hover:text-green-400 transition-colors"
+                        >
+                          {routine.name}
+                        </Link>
+                        <button
+                          onClick={(e) => startEditing(routine, e)}
+                          className="text-zinc-500 hover:text-zinc-300 p-1 ml-2"
+                          title="Edit name"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+                      </>
+                    )}
                   </div>
-                  <div className="flex justify-between items-center">
-                    <div className="text-zinc-400">
-                      {routine.description || '\u00A0'}
+                  <Link
+                    href={`/workout/${encodeURIComponent(routine.name)}`}
+                    className="block"
+                  >
+                    <div className="flex justify-between items-center">
+                      <div className="text-zinc-400">
+                        {routine.description || '\u00A0'}
+                      </div>
+                      <div className="text-sm text-zinc-500">
+                        Last: <span className={lastDate ? "text-blue-400" : "text-zinc-600"}>{formattedDate}</span>
+                      </div>
                     </div>
-                    <div className="text-sm text-zinc-500">
-                      Last: <span className={lastDate ? "text-blue-400" : "text-zinc-600"}>{formattedDate}</span>
-                    </div>
-                  </div>
-                </Link>
+                  </Link>
+                </div>
               );
             })
           )}
