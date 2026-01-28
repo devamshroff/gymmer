@@ -699,7 +699,20 @@ export async function cloneRoutine(routineId: number, newUserId: string, newName
   }
 
   const routine = original.rows[0] as any;
-  const clonedName = newName || routine.name;
+  let baseName = newName || routine.name;
+
+  // Find a unique name for this user
+  let clonedName = baseName;
+  let suffix = 1;
+  while (true) {
+    const existing = await db.execute({
+      sql: 'SELECT id FROM routines WHERE name = ? AND user_id = ?',
+      args: [clonedName, newUserId]
+    });
+    if (existing.rows.length === 0) break;
+    suffix++;
+    clonedName = `${baseName} (${suffix})`;
+  }
 
   // Create the new routine
   const newRoutineResult = await db.execute({

@@ -93,6 +93,9 @@ export default function QuickExerciseForm({ onSubmit, onCancel }: QuickExerciseF
             <label className="text-zinc-300 text-sm font-semibold block mb-2">
               Video URL
             </label>
+            <p className="text-zinc-500 text-xs mb-2">
+              If left empty, will default to YouTube search for "{name || 'exercise name'}"
+            </p>
             <input
               type="url"
               value={videoUrl}

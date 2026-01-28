@@ -26,6 +26,7 @@ interface UserInfo {
 export default function Home() {
   const [myRoutines, setMyRoutines] = useState<Routine[]>([]);
   const [favoritedRoutines, setFavoritedRoutines] = useState<Routine[]>([]);
+  const [publicRoutinesPreview, setPublicRoutinesPreview] = useState<Routine[]>([]);
   const [lastWorkoutDates, setLastWorkoutDates] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -66,6 +67,11 @@ export default function Home() {
       const favoritesResponse = await fetch('/api/routines/favorites');
       const favoritesData = await favoritesResponse.json();
       setFavoritedRoutines(favoritesData.routines || []);
+
+      // Fetch public routines preview (first 3)
+      const publicResponse = await fetch('/api/routines/public');
+      const publicData = await publicResponse.json();
+      setPublicRoutinesPreview((publicData.routines || []).slice(0, 3));
 
       // Combine all routines to fetch last workout dates
       const allRoutines = [...(routinesData.routines || []), ...(favoritesData.routines || [])];
@@ -287,17 +293,9 @@ export default function Home() {
         {/* Create New Routine Button */}
         <Link
           href="/routines/builder"
-          className="mb-4 block w-full bg-green-600 hover:bg-green-700 text-white text-center py-4 rounded-lg text-lg font-bold transition-colors"
+          className="mb-6 block w-full bg-green-600 hover:bg-green-700 text-white text-center py-4 rounded-lg text-lg font-bold transition-colors"
         >
           + Create New Routine
-        </Link>
-
-        {/* Browse Public Routines Button */}
-        <Link
-          href="/routines/browse"
-          className="mb-6 block w-full bg-purple-600 hover:bg-purple-700 text-white text-center py-3 rounded-lg text-lg font-semibold transition-colors"
-        >
-          Browse Public Routines
         </Link>
 
         {/* My Routines Section */}
@@ -335,6 +333,36 @@ export default function Home() {
         >
           Import Routine from JSON
         </Link>
+
+        {/* Public Routines Preview Section */}
+        {publicRoutinesPreview.length > 0 && (
+          <div className="mt-8 pt-8 border-t border-zinc-700">
+            <h2 className="text-xl font-semibold text-zinc-300 mb-4">Discover Public Routines</h2>
+            <div className="space-y-3">
+              {publicRoutinesPreview.map((routine) => (
+                <div
+                  key={`public-${routine.id}`}
+                  className="bg-zinc-800 rounded-lg p-4 border border-zinc-700"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-white">{routine.name}</h3>
+                      <p className="text-sm text-zinc-400">
+                        by <span className="text-purple-400">@{routine.creator_username || routine.creator_name || 'Anonymous'}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Link
+              href="/routines/browse"
+              className="mt-4 block w-full bg-purple-600 hover:bg-purple-700 text-white text-center py-3 rounded-lg font-semibold transition-colors"
+            >
+              Browse All Public Routines
+            </Link>
+          </div>
+        )}
       </main>
     </div>
   );

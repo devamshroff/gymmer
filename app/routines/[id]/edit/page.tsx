@@ -42,6 +42,7 @@ export default function EditRoutinePage() {
   const [postStretches, setPostStretches] = useState<RoutineStretch[]>([]);
   const [cardio, setCardio] = useState<RoutineCardio | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isPublic, setIsPublic] = useState(true);
 
   // Modal states
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
@@ -66,6 +67,7 @@ export default function EditRoutinePage() {
       const routineData = await routineRes.json();
       setRoutineName(routineData.routine.name);
       setExercises(routineData.exercises);
+      setIsPublic(routineData.routine.is_public === 1);
 
       // For stretches and cardio, load from workout API
       const workoutRes = await fetch(`/api/workout/${encodeURIComponent(routineData.routine.name)}`);
@@ -373,6 +375,19 @@ export default function EditRoutinePage() {
     }
   };
 
+  const handlePrivacyChange = async (newIsPublic: boolean) => {
+    try {
+      await fetch(`/api/routines/${routineId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPublic: newIsPublic })
+      });
+      setIsPublic(newIsPublic);
+    } catch (error) {
+      console.error('Error updating privacy:', error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
@@ -533,6 +548,26 @@ export default function EditRoutinePage() {
               No post-workout stretches
             </div>
           )}
+        </section>
+
+        {/* Privacy Setting */}
+        <section className="mb-8">
+          <div className="bg-zinc-800 rounded-lg p-4 border-2 border-zinc-700">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!isPublic}
+                onChange={(e) => handlePrivacyChange(!e.target.checked)}
+                className="w-5 h-5 rounded border-zinc-600 bg-zinc-900 text-green-600 focus:ring-green-500 focus:ring-offset-zinc-800 cursor-pointer"
+              />
+              <span className="text-zinc-300">
+                Make this routine private
+                <span className="block text-zinc-500 text-xs">
+                  Private routines won't appear in the public browse page
+                </span>
+              </span>
+            </label>
+          </div>
         </section>
 
         {/* Done Button */}

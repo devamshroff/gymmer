@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { WorkoutPlan } from '@/lib/types';
-import { getRoutineByName, getRoutineExercises, getRoutineStretches, getDatabase } from '@/lib/database';
+import { getRoutineByName, getRoutineExercises, getRoutineStretches, getDatabase, getRoutineById, isFavorited } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
 export async function GET(
@@ -18,11 +18,48 @@ export async function GET(
     const { name } = await params;
     const workoutName = decodeURIComponent(name);
 
+    // Check for routineId query param (used when starting public/favorited routines)
+    const url = new URL(request.url);
+    const routineIdParam = url.searchParams.get('routineId');
+
+    if (routineIdParam) {
+      const routineId = parseInt(routineIdParam);
+      if (!isNaN(routineId)) {
+        const routine = await getRoutineById(routineId);
+        if (routine) {
+          // Allow access if: user owns it, it's public, or user has favorited it
+          const isOwner = routine.user_id === user.id;
+          const isPublic = routine.is_public === 1;
+          const hasFavorited = await isFavorited(user.id, routineId);
+
+          if (isOwner || isPublic || hasFavorited) {
+            const workout = await loadRoutineFromDatabase(routine.id, routine.name);
+            return NextResponse.json({ workout });
+          }
+        }
+      }
+    }
+
     // First, check if routine exists in database for this user
     const routine = await getRoutineByName(workoutName, user.id);
 
     if (routine) {
       // Load from database
+      const workout = await loadRoutineFromDatabase(routine.id, workoutName);
+      return NextResponse.json({ workout });
+    }
+
+    // Check if it's a favorited routine by name
+    const db = getDatabase();
+    const favoritedRoutine = await db.execute({
+      sql: `SELECT r.* FROM routines r
+            JOIN routine_favorites rf ON r.id = rf.routine_id
+            WHERE r.name = ? AND rf.user_id = ?`,
+      args: [workoutName, user.id]
+    });
+
+    if (favoritedRoutine.rows.length > 0) {
+      const routine = favoritedRoutine.rows[0] as any;
       const workout = await loadRoutineFromDatabase(routine.id, workoutName);
       return NextResponse.json({ workout });
     }

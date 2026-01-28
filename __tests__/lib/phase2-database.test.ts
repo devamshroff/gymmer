@@ -1,0 +1,384 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Mock the libsql client
+const mockExecute = vi.fn();
+const mockClose = vi.fn();
+
+vi.mock('@libsql/client', () => ({
+  createClient: vi.fn(() => ({
+    execute: mockExecute,
+    close: mockClose,
+  })),
+}));
+
+// Import after mocking
+import {
+  setUsername,
+  getUsernameExists,
+  getUserWithUsername,
+  getPublicRoutines,
+  addFavorite,
+  removeFavorite,
+  isFavorited,
+  getFavoritedRoutines,
+  cloneRoutine,
+  setRoutinePublic,
+} from '@/lib/database';
+
+describe('Phase 2: Username Functions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExecute.mockResolvedValue({ rows: [] });
+  });
+
+  describe('setUsername', () => {
+    it('updates user with new username', async () => {
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+
+      await setUsername('user-123', 'johndoe');
+
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: expect.stringContaining('UPDATE users SET username'),
+        args: ['johndoe', 'user-123'],
+      });
+    });
+  });
+
+  describe('getUsernameExists', () => {
+    it('returns true when username exists', async () => {
+      mockExecute.mockResolvedValueOnce({ rows: [{ 1: 1 }] });
+
+      const exists = await getUsernameExists('johndoe');
+
+      expect(exists).toBe(true);
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: 'SELECT 1 FROM users WHERE username = ?',
+        args: ['johndoe'],
+      });
+    });
+
+    it('returns false when username does not exist', async () => {
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+
+      const exists = await getUsernameExists('nonexistent');
+
+      expect(exists).toBe(false);
+    });
+  });
+
+  describe('getUserWithUsername', () => {
+    it('returns user data with username', async () => {
+      const userData = {
+        id: 'user-123',
+        email: 'john@example.com',
+        username: 'johndoe',
+        name: 'John Doe',
+        image: null,
+      };
+      mockExecute.mockResolvedValueOnce({ rows: [userData] });
+
+      const user = await getUserWithUsername('user-123');
+
+      expect(user).toEqual(userData);
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: expect.stringContaining('SELECT'),
+        args: ['user-123'],
+      });
+    });
+
+    it('returns null when user not found', async () => {
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+
+      const user = await getUserWithUsername('nonexistent');
+
+      expect(user).toBeNull();
+    });
+  });
+});
+
+describe('Phase 2: Public Routines Functions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExecute.mockResolvedValue({ rows: [] });
+  });
+
+  describe('getPublicRoutines', () => {
+    it('returns all public routines', async () => {
+      const routines = [
+        { id: 1, name: 'Routine 1', is_public: 1, creator_username: 'user1' },
+        { id: 2, name: 'Routine 2', is_public: 1, creator_username: 'user2' },
+      ];
+      mockExecute.mockResolvedValueOnce({ rows: routines });
+
+      const result = await getPublicRoutines();
+
+      expect(result).toEqual(routines);
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: expect.stringContaining('WHERE r.is_public = 1'),
+        args: [],
+      });
+    });
+
+    it('excludes specific user when provided', async () => {
+      const routines = [
+        { id: 2, name: 'Routine 2', is_public: 1, creator_username: 'user2' },
+      ];
+      mockExecute.mockResolvedValueOnce({ rows: routines });
+
+      const result = await getPublicRoutines('user1-id');
+
+      expect(result).toEqual(routines);
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: expect.stringContaining('r.user_id != ?'),
+        args: ['user1-id'],
+      });
+    });
+  });
+
+  describe('setRoutinePublic', () => {
+    it('sets routine to public', async () => {
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+
+      await setRoutinePublic(1, 'user-123', true);
+
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: expect.stringContaining('UPDATE routines SET is_public'),
+        args: [1, 1, 'user-123'],
+      });
+    });
+
+    it('sets routine to private', async () => {
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+
+      await setRoutinePublic(1, 'user-123', false);
+
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: expect.stringContaining('UPDATE routines SET is_public'),
+        args: [0, 1, 'user-123'],
+      });
+    });
+  });
+});
+
+describe('Phase 2: Favorites Functions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExecute.mockResolvedValue({ rows: [] });
+  });
+
+  describe('addFavorite', () => {
+    it('adds a favorite entry', async () => {
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+
+      await addFavorite('user-123', 5);
+
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: expect.stringContaining('INSERT OR IGNORE INTO routine_favorites'),
+        args: ['user-123', 5],
+      });
+    });
+  });
+
+  describe('removeFavorite', () => {
+    it('removes a favorite entry', async () => {
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+
+      await removeFavorite('user-123', 5);
+
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: expect.stringContaining('DELETE FROM routine_favorites'),
+        args: ['user-123', 5],
+      });
+    });
+  });
+
+  describe('isFavorited', () => {
+    it('returns true when favorited', async () => {
+      mockExecute.mockResolvedValueOnce({ rows: [{ 1: 1 }] });
+
+      const result = await isFavorited('user-123', 5);
+
+      expect(result).toBe(true);
+    });
+
+    it('returns false when not favorited', async () => {
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+
+      const result = await isFavorited('user-123', 5);
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('getFavoritedRoutines', () => {
+    it('returns favorited routines with creator info', async () => {
+      const favorites = [
+        {
+          id: 1,
+          name: 'Favorite Routine',
+          creator_username: 'creator1',
+          creator_name: 'Creator One',
+          is_favorited: 1,
+        },
+      ];
+      mockExecute.mockResolvedValueOnce({ rows: favorites });
+
+      const result = await getFavoritedRoutines('user-123');
+
+      expect(result).toEqual(favorites);
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: expect.stringContaining('routine_favorites rf'),
+        args: ['user-123'],
+      });
+    });
+
+    it('returns empty array when no favorites', async () => {
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+
+      const result = await getFavoritedRoutines('user-123');
+
+      expect(result).toEqual([]);
+    });
+  });
+});
+
+describe('Phase 2: Clone Routine', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExecute.mockResolvedValue({ rows: [] });
+  });
+
+  describe('cloneRoutine', () => {
+    it('clones a routine with all associated data', async () => {
+      // Mock getting original routine
+      mockExecute.mockResolvedValueOnce({
+        rows: [{ id: 1, name: 'Original Routine', description: 'Test' }],
+      });
+      // Mock checking for existing name (no conflict)
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+      // Mock creating new routine
+      mockExecute.mockResolvedValueOnce({ lastInsertRowid: 10 });
+      // Mock getting exercises
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+      // Mock getting pre-stretches
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+      // Mock getting post-stretches
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+      // Mock getting cardio
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+
+      const newId = await cloneRoutine(1, 'new-user');
+
+      expect(newId).toBe(10);
+    });
+
+    it('appends number suffix when name already exists', async () => {
+      // Mock getting original routine
+      mockExecute.mockResolvedValueOnce({
+        rows: [{ id: 1, name: 'Push Day', description: null }],
+      });
+      // Mock checking for existing name - conflict found
+      mockExecute.mockResolvedValueOnce({ rows: [{ id: 5 }] });
+      // Mock checking with (2) suffix - no conflict
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+      // Mock creating new routine
+      mockExecute.mockResolvedValueOnce({ lastInsertRowid: 11 });
+      // Mock getting exercises
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+      // Mock getting pre-stretches
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+      // Mock getting post-stretches
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+      // Mock getting cardio
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+
+      await cloneRoutine(1, 'new-user');
+
+      // Verify the INSERT was called with the suffixed name
+      const insertCall = mockExecute.mock.calls.find(
+        (call) => call[0].sql.includes('INSERT INTO routines')
+      );
+      expect(insertCall[0].args).toContain('Push Day (2)');
+    });
+
+    it('throws error when original routine not found', async () => {
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+
+      await expect(cloneRoutine(999, 'user-123')).rejects.toThrow('Routine not found');
+    });
+
+    it('clones exercises from original routine', async () => {
+      // Mock getting original routine
+      mockExecute.mockResolvedValueOnce({
+        rows: [{ id: 1, name: 'Test Routine', description: null }],
+      });
+      // Mock checking for existing name
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+      // Mock creating new routine
+      mockExecute.mockResolvedValueOnce({ lastInsertRowid: 20 });
+      // Mock getting exercises with data
+      mockExecute.mockResolvedValueOnce({
+        rows: [
+          {
+            exercise_id: 1,
+            order_index: 0,
+            exercise_type: 'single',
+            sets: 3,
+            target_reps: 10,
+            target_weight: 100,
+            warmup_weight: 50,
+            rest_time: 60,
+            b2b_partner_id: null,
+            b2b_sets: null,
+            b2b_target_reps: null,
+            b2b_target_weight: null,
+            b2b_warmup_weight: null,
+          },
+        ],
+      });
+      // Mock inserting exercise
+      mockExecute.mockResolvedValueOnce({ lastInsertRowid: 1 });
+      // Mock getting pre-stretches
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+      // Mock getting post-stretches
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+      // Mock getting cardio
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+
+      await cloneRoutine(1, 'new-user');
+
+      // Verify exercise was cloned
+      const exerciseInsertCall = mockExecute.mock.calls.find(
+        (call) => call[0].sql.includes('INSERT INTO routine_exercises')
+      );
+      expect(exerciseInsertCall).toBeDefined();
+    });
+
+    it('allows custom name when cloning', async () => {
+      // Mock getting original routine
+      mockExecute.mockResolvedValueOnce({
+        rows: [{ id: 1, name: 'Original Name', description: null }],
+      });
+      // Mock checking for existing name
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+      // Mock creating new routine
+      mockExecute.mockResolvedValueOnce({ lastInsertRowid: 30 });
+      // Mock getting exercises
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+      // Mock getting pre-stretches
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+      // Mock getting post-stretches
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+      // Mock getting cardio
+      mockExecute.mockResolvedValueOnce({ rows: [] });
+
+      await cloneRoutine(1, 'new-user', 'My Custom Name');
+
+      // Verify the INSERT used custom name
+      const insertCall = mockExecute.mock.calls.find(
+        (call) => call[0].sql.includes('INSERT INTO routines')
+      );
+      expect(insertCall[0].args).toContain('My Custom Name');
+    });
+  });
+});
