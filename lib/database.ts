@@ -287,11 +287,31 @@ export async function deleteRoutine(id: number): Promise<void> {
   });
 }
 
-export async function updateRoutineName(id: number, name: string): Promise<void> {
+export async function updateRoutineName(id: number, newName: string): Promise<void> {
   const db = getDatabase();
+
+  // Get the old name first
+  const oldRoutine = await db.execute({
+    sql: 'SELECT name FROM routines WHERE id = ?',
+    args: [id]
+  });
+
+  if (oldRoutine.rows.length === 0) {
+    throw new Error('Routine not found');
+  }
+
+  const oldName = (oldRoutine.rows[0] as any).name;
+
+  // Update the routine name
   await db.execute({
     sql: 'UPDATE routines SET name = ?, updated_at = datetime(\'now\') WHERE id = ?',
-    args: [name, id]
+    args: [newName, id]
+  });
+
+  // Update workout history to use the new name
+  await db.execute({
+    sql: 'UPDATE workout_sessions SET workout_plan_name = ? WHERE workout_plan_name = ?',
+    args: [newName, oldName]
   });
 }
 
