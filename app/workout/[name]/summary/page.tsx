@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
@@ -11,6 +11,7 @@ export default function SummaryPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionData, setSessionData] = useState<WorkoutSessionData | null>(null);
@@ -19,9 +20,15 @@ export default function SummaryPage() {
   const [totalVolume, setTotalVolume] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
 
+  // Prevent double-save in React Strict Mode / re-renders
+  const hasSavedRef = useRef(false);
+
   // Get routineId from URL params (for public/favorited routines)
   const routineIdParam = searchParams.get('routineId');
 
+  // ---------------------------
+  // Fetch workout
+  // ---------------------------
   useEffect(() => {
     async function fetchWorkout() {
       try {
@@ -29,10 +36,10 @@ export default function SummaryPage() {
         if (routineIdParam) {
           apiUrl += `?routineId=${routineIdParam}`;
         }
+
         const response = await fetch(apiUrl);
-        if (!response.ok) {
-          throw new Error('Workout not found');
-        }
+        if (!response.ok) throw new Error('Workout not found');
+
         const data = await response.json();
         setWorkout(data.workout);
       } catch (error) {
@@ -43,10 +50,12 @@ export default function SummaryPage() {
     }
 
     fetchWorkout();
-  }, [params.name]);
+  }, [params.name, routineIdParam]);
 
+  // ---------------------------
+  // Load session + compute stats
+  // ---------------------------
   useEffect(() => {
-    // Load session data from localStorage
     const session = getWorkoutSession();
     if (!session) {
       console.error('No session data found');
@@ -82,32 +91,63 @@ export default function SummaryPage() {
     setTotalDuration(durationMinutes);
   }, []);
 
-  const handleCompleteWorkout = async () => {
+  // ---------------------------
+  // AUTO-SAVE WORKOUT (with duplicate protection)
+  // ---------------------------
+  useEffect(() => {
     if (!sessionData) return;
+    if (hasSavedRef.current) return; // React Strict Mode protection
 
-    setSaving(true);
-    try {
-      const response = await fetch('/api/save-workout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sessionData),
-      });
+    const sessionKey = `workout-saved-${sessionData.startTime}`;
 
-      if (!response.ok) {
-        throw new Error('Failed to save workout');
-      }
-
+    // Prevent saving same session twice (refresh / navigation)
+    if (localStorage.getItem(sessionKey)) {
+      console.log('⚠️ Workout already saved, skipping');
+      hasSavedRef.current = true;
       setSaved(true);
-      // Navigate to stats page
-      router.push(`/workout/${encodeURIComponent(workout!.name)}/stats`);
-    } catch (error) {
-      console.error('Error saving workout:', error);
-      alert('Failed to save workout. Please try again.');
-    } finally {
-      setSaving(false);
+      return;
     }
+
+    const saveWorkout = async () => {
+      setSaving(true);
+      hasSavedRef.current = true;
+
+      try {
+        const response = await fetch('/api/save-workout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sessionData),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to save workout');
+        }
+
+        // Mark as saved in localStorage
+        localStorage.setItem(sessionKey, 'true');
+        setSaved(true);
+        console.log('✅ Workout auto-saved');
+      } catch (error) {
+        console.error('❌ Error saving workout:', error);
+        hasSavedRef.current = false; // allow retry if needed
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    saveWorkout();
+  }, [sessionData]);
+
+  // ---------------------------
+  // Complete workout = just go home
+  // ---------------------------
+  const handleCompleteWorkout = () => {
+    router.push('/');
   };
 
+  // ---------------------------
+  // UI STATES
+  // ---------------------------
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
@@ -133,6 +173,7 @@ export default function SummaryPage() {
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto">
         <Header />
+
         {/* Celebration Header */}
         <div className="text-center mb-8">
           <div className="text-8xl mb-4">🎉</div>
@@ -159,6 +200,12 @@ export default function SummaryPage() {
               <div className="text-zinc-500 text-sm mt-2">
                 Duration: {totalDuration} minutes
               </div>
+
+              {/* Save status indicator */}
+              <div className="text-xs mt-2">
+                {saving && <span className="text-yellow-400">Saving workout...</span>}
+                {saved && <span className="text-green-400">✓ Workout saved</span>}
+              </div>
             </div>
           ) : (
             <div className="text-center text-zinc-400">Loading session data...</div>
@@ -174,9 +221,15 @@ export default function SummaryPage() {
                 const exerciseVolume =
                   (exercise.warmup ? exercise.warmup.weight * exercise.warmup.reps : 0) +
                   exercise.sets.reduce((sum, set) => sum + set.weight * set.reps, 0) +
-                  (exercise.b2bPartner ?
-                    (exercise.b2bPartner.warmup ? exercise.b2bPartner.warmup.weight * exercise.b2bPartner.warmup.reps : 0) +
-                    exercise.b2bPartner.sets.reduce((sum, set) => sum + set.weight * set.reps, 0)
+                  (exercise.b2bPartner
+                    ? (exercise.b2bPartner.warmup
+                        ? exercise.b2bPartner.warmup.weight *
+                          exercise.b2bPartner.warmup.reps
+                        : 0) +
+                      exercise.b2bPartner.sets.reduce(
+                        (sum, set) => sum + set.weight * set.reps,
+                        0
+                      )
                     : 0);
 
                 return (
@@ -187,22 +240,27 @@ export default function SummaryPage() {
                         : `B2B: ${exercise.name} / ${exercise.b2bPartner?.name}`}
                     </div>
                     <div className="text-zinc-400 text-sm mb-2">
-                      {exercise.sets.length} sets • {Math.round(exerciseVolume).toLocaleString()} lbs volume
+                      {exercise.sets.length} sets •{' '}
+                      {Math.round(exerciseVolume).toLocaleString()} lbs volume
                     </div>
                     <div className="space-y-1 text-xs">
                       {exercise.warmup && (
                         <div className="text-zinc-500">
-                          Warmup: {exercise.warmup.weight} lbs × {exercise.warmup.reps} reps
+                          Warmup: {exercise.warmup.weight} lbs ×{' '}
+                          {exercise.warmup.reps} reps
                         </div>
                       )}
                       {exercise.sets.map((set, setIndex) => (
                         <div key={setIndex} className="text-zinc-300">
                           Set {setIndex + 1}: {set.weight} lbs × {set.reps} reps
-                          {exercise.b2bPartner && exercise.b2bPartner.sets[setIndex] && (
-                            <span className="text-purple-400">
-                              {' + '}{exercise.b2bPartner.sets[setIndex].weight} lbs × {exercise.b2bPartner.sets[setIndex].reps} reps
-                            </span>
-                          )}
+                          {exercise.b2bPartner &&
+                            exercise.b2bPartner.sets[setIndex] && (
+                              <span className="text-purple-400">
+                                {' + '}
+                                {exercise.b2bPartner.sets[setIndex].weight} lbs ×{' '}
+                                {exercise.b2bPartner.sets[setIndex].reps} reps
+                              </span>
+                            )}
                         </div>
                       ))}
                     </div>
@@ -210,35 +268,31 @@ export default function SummaryPage() {
                 );
               })}
             </div>
+
             {sessionData.cardio && (
               <div className="mt-4 pt-4 border-t border-zinc-700">
-                <div className="text-white font-semibold mb-1">Cardio: {sessionData.cardio.type}</div>
+                <div className="text-white font-semibold mb-1">
+                  Cardio: {sessionData.cardio.type}
+                </div>
                 <div className="text-zinc-400 text-sm">
                   {sessionData.cardio.time} min
                   {sessionData.cardio.speed && ` • ${sessionData.cardio.speed} mph`}
-                  {sessionData.cardio.incline && ` • ${sessionData.cardio.incline}% incline`}
+                  {sessionData.cardio.incline &&
+                    ` • ${sessionData.cardio.incline}% incline`}
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* Complete Workout Button */}
+        {/* Finish Button */}
         <button
           onClick={handleCompleteWorkout}
-          disabled={saving}
-          className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-not-allowed text-white py-4 rounded-lg text-xl font-bold transition-colors mb-4"
+          className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-lg text-xl font-bold transition-colors mb-4"
         >
-          {saving ? 'Saving...' : '🎉 Complete Workout!'}
+          ✅ Finish & Go Home
         </button>
 
-        {/* Back to Home */}
-        <Link
-          href="/"
-          className="block w-full bg-zinc-700 hover:bg-zinc-600 text-white text-center py-4 rounded-lg text-lg font-semibold transition-colors"
-        >
-          ← Back to Home
-        </Link>
       </div>
     </div>
   );
