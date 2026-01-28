@@ -1,10 +1,15 @@
 // app/api/routines/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllRoutines, createRoutine } from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
+
   try {
-    const routines = await getAllRoutines();
+    const routines = await getAllRoutines(user.id);
     return NextResponse.json({ routines });
   } catch (error) {
     console.error('Error fetching routines:', error);
@@ -16,11 +21,15 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
+
   let routineName = '';
 
   try {
     const body = await request.json();
-    const { name } = body;
+    const { name, isPublic = true } = body;
     routineName = name;
 
     if (!name) {
@@ -30,7 +39,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const routineId = await createRoutine(name);
+    const routineId = await createRoutine(name, user.id, isPublic);
 
     return NextResponse.json({ id: routineId, success: true }, { status: 201 });
   } catch (error: any) {

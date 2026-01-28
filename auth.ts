@@ -1,5 +1,6 @@
 import NextAuth from "next-auth"
 import Google from "next-auth/providers/google"
+import { upsertUser } from "./lib/database"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -26,10 +27,33 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return "/login?error=AccessDenied";
       }
 
+      // Create or update user record in our database
+      try {
+        await upsertUser({
+          id: user.email, // Use email as ID
+          email: user.email,
+          name: user.name || null,
+          image: user.image || null,
+        });
+      } catch (error) {
+        console.error("Error upserting user:", error);
+        // Don't block sign-in if DB fails
+      }
+
       return true;
     },
+    async jwt({ token, user }) {
+      // Add user ID (email) to token on first sign in
+      if (user?.email) {
+        token.userId = user.email;
+      }
+      return token;
+    },
     async session({ session, token }) {
-      // Add user info to session if needed
+      // Add user ID to session for use in API routes
+      if (token.userId) {
+        session.user.id = token.userId as string;
+      }
       return session;
     },
   },

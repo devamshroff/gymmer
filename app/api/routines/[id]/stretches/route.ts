@@ -1,14 +1,26 @@
 // app/api/routines/[id]/stretches/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { addStretchToRoutine, removeStretchFromRoutine, reorderRoutineStretches } from '@/lib/database';
+import { addStretchToRoutine, removeStretchFromRoutine, reorderRoutineStretches, getRoutineById } from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
+
   try {
     const { id } = await params;
     const routineId = parseInt(id);
+
+    // Verify user owns this routine
+    const routine = await getRoutineById(routineId, user.id);
+    if (!routine) {
+      return NextResponse.json({ error: 'Routine not found' }, { status: 404 });
+    }
+
     const body = await request.json();
     const { stretchId, type, orderIndex } = body;
 
@@ -35,6 +47,10 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
+
   try {
     const { id } = await params;
     const routineId = parseInt(id);
@@ -44,6 +60,12 @@ export async function PUT(
         { error: 'Invalid routine ID' },
         { status: 400 }
       );
+    }
+
+    // Verify user owns this routine
+    const routine = await getRoutineById(routineId, user.id);
+    if (!routine) {
+      return NextResponse.json({ error: 'Routine not found' }, { status: 404 });
     }
 
     const body = await request.json();
@@ -72,8 +94,20 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
+
   try {
     const { id } = await params;
+    const routineId = parseInt(id);
+
+    // Verify user owns this routine
+    const routine = await getRoutineById(routineId, user.id);
+    if (!routine) {
+      return NextResponse.json({ error: 'Routine not found' }, { status: 404 });
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const stretchId = searchParams.get('stretchId');
     const type = searchParams.get('type');
@@ -85,7 +119,7 @@ export async function DELETE(
       );
     }
 
-    await removeStretchFromRoutine(parseInt(id), parseInt(stretchId), type as 'pre' | 'post');
+    await removeStretchFromRoutine(routineId, parseInt(stretchId), type as 'pre' | 'post');
 
     return NextResponse.json({ success: true });
   } catch (error) {

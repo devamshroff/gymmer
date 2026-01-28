@@ -15,24 +15,69 @@ export function getDatabase(): Client {
   return db;
 }
 
-// Query functions
-export async function getLastWorkoutDate(workoutPlanName: string): Promise<string | null> {
+// ============================================================================
+// User Management Functions
+// ============================================================================
+
+export async function upsertUser(data: {
+  id: string;
+  email: string;
+  name?: string | null;
+  image?: string | null;
+}): Promise<void> {
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      INSERT INTO users (id, email, name, image, updated_at)
+      VALUES (?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(id) DO UPDATE SET
+        email = excluded.email,
+        name = excluded.name,
+        image = excluded.image,
+        updated_at = datetime('now')
+    `,
+    args: [data.id, data.email, data.name || null, data.image || null]
+  });
+}
+
+export async function getUserById(id: string): Promise<any | null> {
   const db = getDatabase();
   const result = await db.execute({
-    sql: `
-      SELECT date_completed
-      FROM workout_sessions
-      WHERE workout_plan_name = ?
-      ORDER BY date_completed DESC
-      LIMIT 1
-    `,
-    args: [workoutPlanName]
+    sql: 'SELECT * FROM users WHERE id = ?',
+    args: [id]
   });
+  return result.rows[0] as any || null;
+}
 
+export async function getUserByEmail(email: string): Promise<any | null> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT * FROM users WHERE email = ?',
+    args: [email]
+  });
+  return result.rows[0] as any || null;
+}
+
+// ============================================================================
+// Workout History Functions
+// ============================================================================
+
+export async function getLastWorkoutDate(workoutPlanName: string, userId?: string): Promise<string | null> {
+  const db = getDatabase();
+
+  // If userId provided, filter by user; otherwise get any (for backwards compatibility)
+  const sql = userId
+    ? `SELECT date_completed FROM workout_sessions WHERE workout_plan_name = ? AND user_id = ? ORDER BY date_completed DESC LIMIT 1`
+    : `SELECT date_completed FROM workout_sessions WHERE workout_plan_name = ? ORDER BY date_completed DESC LIMIT 1`;
+
+  const args = userId ? [workoutPlanName, userId] : [workoutPlanName];
+
+  const result = await db.execute({ sql, args });
   return result.rows[0]?.date_completed as string || null;
 }
 
 export async function createWorkoutSession(data: {
+  user_id: string;
   workout_plan_name: string;
   date_completed: string;
   total_duration_minutes?: number;
@@ -41,10 +86,11 @@ export async function createWorkoutSession(data: {
   const db = getDatabase();
   const result = await db.execute({
     sql: `
-      INSERT INTO workout_sessions (workout_plan_name, date_completed, total_duration_minutes, total_strain)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO workout_sessions (user_id, workout_plan_name, date_completed, total_duration_minutes, total_strain)
+      VALUES (?, ?, ?, ?, ?)
     `,
     args: [
+      data.user_id,
       data.workout_plan_name,
       data.date_completed,
       data.total_duration_minutes || null,
@@ -172,20 +218,32 @@ export async function getWorkoutSession(sessionId: number): Promise<(WorkoutSess
 
 export async function getLastExerciseLog(
   workoutPlanName: string,
-  exerciseName: string
+  exerciseName: string,
+  userId?: string
 ): Promise<WorkoutExerciseLog | null> {
   const db = getDatabase();
-  const result = await db.execute({
-    sql: `
+
+  // If userId provided, filter by user
+  const sql = userId
+    ? `
+      SELECT el.*
+      FROM workout_exercise_logs el
+      JOIN workout_sessions ws ON el.session_id = ws.id
+      WHERE ws.workout_plan_name = ? AND el.exercise_name = ? AND ws.user_id = ?
+      ORDER BY ws.date_completed DESC
+      LIMIT 1
+    `
+    : `
       SELECT el.*
       FROM workout_exercise_logs el
       JOIN workout_sessions ws ON el.session_id = ws.id
       WHERE ws.workout_plan_name = ? AND el.exercise_name = ?
       ORDER BY ws.date_completed DESC
       LIMIT 1
-    `,
-    args: [workoutPlanName, exerciseName]
-  });
+    `;
+
+  const args = userId ? [workoutPlanName, exerciseName, userId] : [workoutPlanName, exerciseName];
+  const result = await db.execute({ sql, args });
 
   return result.rows[0] as any as WorkoutExerciseLog || null;
 }
@@ -246,72 +304,80 @@ export async function getExerciseById(id: number): Promise<any | null> {
 }
 
 // Routine CRUD
-export async function createRoutine(name: string): Promise<number> {
+export async function createRoutine(name: string, userId: string, isPublic: boolean = true): Promise<number> {
   const db = getDatabase();
   const result = await db.execute({
-    sql: 'INSERT INTO routines (name, is_custom) VALUES (?, 1)',
-    args: [name]
+    sql: 'INSERT INTO routines (name, user_id, is_public) VALUES (?, ?, ?)',
+    args: [name, userId, isPublic ? 1 : 0]
   });
   return Number(result.lastInsertRowid);
 }
 
-export async function getAllRoutines(): Promise<any[]> {
+export async function getAllRoutines(userId: string): Promise<any[]> {
   const db = getDatabase();
-  const result = await db.execute('SELECT * FROM routines ORDER BY is_custom DESC, created_at DESC');
+  const result = await db.execute({
+    sql: 'SELECT * FROM routines WHERE user_id = ? ORDER BY created_at DESC',
+    args: [userId]
+  });
   return result.rows as any[];
 }
 
-export async function getRoutineById(id: number): Promise<any | null> {
+export async function getRoutineById(id: number, userId?: string): Promise<any | null> {
+  const db = getDatabase();
+
+  // If userId provided, verify ownership
+  const sql = userId
+    ? 'SELECT * FROM routines WHERE id = ? AND user_id = ?'
+    : 'SELECT * FROM routines WHERE id = ?';
+
+  const args = userId ? [id, userId] : [id];
+  const result = await db.execute({ sql, args });
+  return result.rows[0] as any || null;
+}
+
+export async function getRoutineByName(name: string, userId: string): Promise<any | null> {
   const db = getDatabase();
   const result = await db.execute({
-    sql: 'SELECT * FROM routines WHERE id = ?',
-    args: [id]
+    sql: 'SELECT * FROM routines WHERE name = ? AND user_id = ?',
+    args: [name, userId]
   });
   return result.rows[0] as any || null;
 }
 
-export async function getRoutineByName(name: string): Promise<any | null> {
+export async function deleteRoutine(id: number, userId: string): Promise<void> {
   const db = getDatabase();
-  const result = await db.execute({
-    sql: 'SELECT * FROM routines WHERE name = ?',
-    args: [name]
-  });
-  return result.rows[0] as any || null;
-}
-
-export async function deleteRoutine(id: number): Promise<void> {
-  const db = getDatabase();
+  // Only delete if the routine belongs to the user
   await db.execute({
-    sql: 'DELETE FROM routines WHERE id = ?',
-    args: [id]
+    sql: 'DELETE FROM routines WHERE id = ? AND user_id = ?',
+    args: [id, userId]
   });
 }
 
-export async function updateRoutineName(id: number, newName: string): Promise<void> {
+export async function updateRoutineName(id: number, newName: string, userId: string): Promise<void> {
   const db = getDatabase();
 
-  // Get the old name first
+  // Get the old name first (verify ownership)
   const oldRoutine = await db.execute({
-    sql: 'SELECT name FROM routines WHERE id = ?',
-    args: [id]
+    sql: 'SELECT name FROM routines WHERE id = ? AND user_id = ?',
+    args: [id, userId]
   });
 
   if (oldRoutine.rows.length === 0) {
-    throw new Error('Routine not found');
+    throw new Error('Routine not found or you do not have permission');
   }
 
   const oldName = (oldRoutine.rows[0] as any).name;
 
   // Update the routine name
   await db.execute({
-    sql: 'UPDATE routines SET name = ?, updated_at = datetime(\'now\') WHERE id = ?',
-    args: [newName, id]
+    sql: 'UPDATE routines SET name = ?, updated_at = datetime(\'now\') WHERE id = ? AND user_id = ?',
+    args: [newName, id, userId]
   });
 
-  // Update workout history to use the new name
+  // Update workout history to use the new name (only for this user)
   await db.execute({
-    sql: 'UPDATE workout_sessions SET workout_plan_name = ? WHERE workout_plan_name = ?',
-    args: [newName, oldName]
+    sql: 'UPDATE workout_sessions SET workout_plan_name = ? WHERE workout_plan_name = ? AND user_id = ?',
+    args: [newName, oldName, userId]
   });
 }
 
@@ -524,4 +590,198 @@ export async function closeDatabase() {
     await db.close();
     db = null;
   }
+}
+
+// ============================================================================
+// Phase 2: Username & Sharing Functions
+// ============================================================================
+
+// Username management
+export async function setUsername(userId: string, username: string): Promise<void> {
+  const db = getDatabase();
+  await db.execute({
+    sql: `UPDATE users SET username = ?, updated_at = datetime('now') WHERE id = ?`,
+    args: [username, userId]
+  });
+}
+
+export async function getUsernameExists(username: string): Promise<boolean> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT 1 FROM users WHERE username = ?',
+    args: [username]
+  });
+  return result.rows.length > 0;
+}
+
+export async function getUserWithUsername(userId: string): Promise<any | null> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT id, email, username, name, image FROM users WHERE id = ?',
+    args: [userId]
+  });
+  return result.rows[0] as any || null;
+}
+
+// Public routines
+export async function getPublicRoutines(excludeUserId?: string): Promise<any[]> {
+  const db = getDatabase();
+
+  const sql = excludeUserId
+    ? `SELECT r.*, u.username as creator_username, u.name as creator_name
+       FROM routines r
+       JOIN users u ON r.user_id = u.id
+       WHERE r.is_public = 1 AND r.user_id != ?
+       ORDER BY r.created_at DESC`
+    : `SELECT r.*, u.username as creator_username, u.name as creator_name
+       FROM routines r
+       JOIN users u ON r.user_id = u.id
+       WHERE r.is_public = 1
+       ORDER BY r.created_at DESC`;
+
+  const args = excludeUserId ? [excludeUserId] : [];
+  const result = await db.execute({ sql, args });
+  return result.rows as any[];
+}
+
+// Favorites management
+export async function addFavorite(userId: string, routineId: number): Promise<void> {
+  const db = getDatabase();
+  await db.execute({
+    sql: `INSERT OR IGNORE INTO routine_favorites (user_id, routine_id) VALUES (?, ?)`,
+    args: [userId, routineId]
+  });
+}
+
+export async function removeFavorite(userId: string, routineId: number): Promise<void> {
+  const db = getDatabase();
+  await db.execute({
+    sql: `DELETE FROM routine_favorites WHERE user_id = ? AND routine_id = ?`,
+    args: [userId, routineId]
+  });
+}
+
+export async function isFavorited(userId: string, routineId: number): Promise<boolean> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT 1 FROM routine_favorites WHERE user_id = ? AND routine_id = ?',
+    args: [userId, routineId]
+  });
+  return result.rows.length > 0;
+}
+
+export async function getFavoritedRoutines(userId: string): Promise<any[]> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `SELECT r.*, u.username as creator_username, u.name as creator_name, 1 as is_favorited
+          FROM routine_favorites rf
+          JOIN routines r ON rf.routine_id = r.id
+          JOIN users u ON r.user_id = u.id
+          WHERE rf.user_id = ?
+          ORDER BY rf.created_at DESC`,
+    args: [userId]
+  });
+  return result.rows as any[];
+}
+
+// Clone a routine to a new user
+export async function cloneRoutine(routineId: number, newUserId: string, newName?: string): Promise<number> {
+  const db = getDatabase();
+
+  // Get the original routine
+  const original = await db.execute({
+    sql: 'SELECT * FROM routines WHERE id = ?',
+    args: [routineId]
+  });
+
+  if (original.rows.length === 0) {
+    throw new Error('Routine not found');
+  }
+
+  const routine = original.rows[0] as any;
+  const clonedName = newName || routine.name;
+
+  // Create the new routine
+  const newRoutineResult = await db.execute({
+    sql: `INSERT INTO routines (user_id, name, description, is_public, created_at, updated_at)
+          VALUES (?, ?, ?, 0, datetime('now'), datetime('now'))`,
+    args: [newUserId, clonedName, routine.description]
+  });
+  const newRoutineId = Number(newRoutineResult.lastInsertRowid);
+
+  // Clone exercises
+  const exercises = await db.execute({
+    sql: 'SELECT * FROM routine_exercises WHERE routine_id = ?',
+    args: [routineId]
+  });
+
+  for (const ex of exercises.rows) {
+    const e = ex as any;
+    await db.execute({
+      sql: `INSERT INTO routine_exercises (
+        routine_id, exercise_id, order_index, exercise_type,
+        sets, target_reps, target_weight, warmup_weight, rest_time,
+        b2b_partner_id, b2b_sets, b2b_target_reps, b2b_target_weight, b2b_warmup_weight
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        newRoutineId, e.exercise_id, e.order_index, e.exercise_type,
+        e.sets, e.target_reps, e.target_weight, e.warmup_weight, e.rest_time,
+        e.b2b_partner_id, e.b2b_sets, e.b2b_target_reps, e.b2b_target_weight, e.b2b_warmup_weight
+      ]
+    });
+  }
+
+  // Clone pre-workout stretches
+  const preStretches = await db.execute({
+    sql: 'SELECT * FROM routine_pre_stretches WHERE routine_id = ?',
+    args: [routineId]
+  });
+
+  for (const s of preStretches.rows) {
+    const stretch = s as any;
+    await db.execute({
+      sql: 'INSERT INTO routine_pre_stretches (routine_id, stretch_id, order_index) VALUES (?, ?, ?)',
+      args: [newRoutineId, stretch.stretch_id, stretch.order_index]
+    });
+  }
+
+  // Clone post-workout stretches
+  const postStretches = await db.execute({
+    sql: 'SELECT * FROM routine_post_stretches WHERE routine_id = ?',
+    args: [routineId]
+  });
+
+  for (const s of postStretches.rows) {
+    const stretch = s as any;
+    await db.execute({
+      sql: 'INSERT INTO routine_post_stretches (routine_id, stretch_id, order_index) VALUES (?, ?, ?)',
+      args: [newRoutineId, stretch.stretch_id, stretch.order_index]
+    });
+  }
+
+  // Clone cardio
+  const cardio = await db.execute({
+    sql: 'SELECT * FROM routine_cardio WHERE routine_id = ?',
+    args: [routineId]
+  });
+
+  if (cardio.rows.length > 0) {
+    const c = cardio.rows[0] as any;
+    await db.execute({
+      sql: `INSERT INTO routine_cardio (routine_id, cardio_type, duration, intensity, tips)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: [newRoutineId, c.cardio_type, c.duration, c.intensity, c.tips]
+    });
+  }
+
+  return newRoutineId;
+}
+
+// Update routine privacy
+export async function setRoutinePublic(routineId: number, userId: string, isPublic: boolean): Promise<void> {
+  const db = getDatabase();
+  await db.execute({
+    sql: `UPDATE routines SET is_public = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?`,
+    args: [isPublic ? 1 : 0, routineId, userId]
+  });
 }

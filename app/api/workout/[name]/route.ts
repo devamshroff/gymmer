@@ -4,17 +4,22 @@ import fs from 'fs';
 import path from 'path';
 import { WorkoutPlan } from '@/lib/types';
 import { getRoutineByName, getRoutineExercises, getRoutineStretches, getDatabase } from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ name: string }> }
 ) {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
+
   try {
     const { name } = await params;
     const workoutName = decodeURIComponent(name);
 
-    // First, check if routine exists in database
-    const routine = await getRoutineByName(workoutName);
+    // First, check if routine exists in database for this user
+    const routine = await getRoutineByName(workoutName, user.id);
 
     if (routine) {
       // Load from database
@@ -22,7 +27,7 @@ export async function GET(
       return NextResponse.json({ workout });
     }
 
-    // Fall back to JSON files
+    // Fall back to JSON files (for backwards compatibility during migration)
     const workoutPlansDir = path.join(process.cwd(), 'public', 'workout-plans');
     const files = fs.readdirSync(workoutPlansDir).filter(file => file.endsWith('.json'));
 

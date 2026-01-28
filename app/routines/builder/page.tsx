@@ -19,6 +19,7 @@ function RoutineBuilderContent() {
   const [showSupersetSelector, setShowSupersetSelector] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingExisting, setLoadingExisting] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(false);
 
   // Load existing routine if ID is provided
   useEffect(() => {
@@ -66,7 +67,7 @@ function RoutineBuilderContent() {
       const response = await fetch('/api/routines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: routineName.trim() })
+        body: JSON.stringify({ name: routineName.trim(), isPublic: !isPrivate })
       });
 
       if (!response.ok) {
@@ -194,6 +195,21 @@ function RoutineBuilderContent() {
               className="w-full bg-zinc-900 text-white px-4 py-3 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-green-500"
               autoFocus
             />
+
+            <label className="flex items-center gap-3 mb-4 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isPrivate}
+                onChange={(e) => setIsPrivate(e.target.checked)}
+                className="w-5 h-5 rounded border-zinc-600 bg-zinc-900 text-green-600 focus:ring-green-500 focus:ring-offset-zinc-800 cursor-pointer"
+              />
+              <span className="text-zinc-300 text-sm">
+                Make this routine private
+                <span className="block text-zinc-500 text-xs">
+                  Private routines won't appear in the public browse page
+                </span>
+              </span>
+            </label>
 
             {error && (
               <div className="bg-red-900/50 border-2 border-red-500 text-red-200 px-4 py-3 rounded-lg mb-4">

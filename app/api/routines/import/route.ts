@@ -1,8 +1,13 @@
 // app/api/routines/import/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
 export async function POST(request: NextRequest) {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
+
   try {
     const body = await request.json();
     const { workoutPlan, fileName } = body;
@@ -16,10 +21,10 @@ export async function POST(request: NextRequest) {
 
     const db = getDatabase();
 
-    // Check if routine already exists
+    // Check if routine already exists for this user
     const existing = await db.execute({
-      sql: 'SELECT id FROM routines WHERE name = ?',
-      args: [workoutPlan.name]
+      sql: 'SELECT id FROM routines WHERE name = ? AND user_id = ?',
+      args: [workoutPlan.name, user.id]
     });
 
     if (existing.rows.length > 0) {
@@ -29,11 +34,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create routine
+    // Create routine for this user
     const routineResult = await db.execute({
-      sql: `INSERT INTO routines (name, description, is_custom, source_file)
-            VALUES (?, ?, 0, ?)`,
-      args: [workoutPlan.name, workoutPlan.description || null, fileName]
+      sql: `INSERT INTO routines (name, user_id, description)
+            VALUES (?, ?, ?)`,
+      args: [workoutPlan.name, user.id, workoutPlan.description || null]
     });
     const routineId = Number(routineResult.lastInsertRowid);
 
@@ -154,7 +159,7 @@ async function getOrCreateExercise(db: any, name: string): Promise<number> {
   }
 
   const result = await db.execute({
-    sql: 'INSERT INTO exercises (name, is_custom) VALUES (?, 0)',
+    sql: 'INSERT INTO exercises (name) VALUES (?)',
     args: [name]
   });
 
@@ -172,8 +177,8 @@ async function getOrCreateStretch(db: any, stretch: any, type: string): Promise<
   }
 
   const result = await db.execute({
-    sql: `INSERT INTO stretches (name, duration, type, video_url, tips, is_custom)
-          VALUES (?, ?, ?, ?, ?, 0)`,
+    sql: `INSERT INTO stretches (name, duration, type, video_url, tips)
+          VALUES (?, ?, ?, ?, ?)`,
     args: [
       stretch.name,
       stretch.duration,

@@ -1,12 +1,32 @@
--- SQLite Database Schema for Gymmer v1.0
+-- SQLite Database Schema for Gymmer v2.0 (Multi-User)
+
+-- ============================================================================
+-- Users Table
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,  -- Use email as ID for simplicity
+  email TEXT NOT NULL UNIQUE,
+  username TEXT UNIQUE,  -- Public display name (required for sharing)
+  name TEXT,
+  image TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ============================================================================
+-- Workout History Tables
+-- ============================================================================
 
 CREATE TABLE IF NOT EXISTS workout_sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,  -- Owner of this workout session
   workout_plan_name TEXT NOT NULL,
   date_completed TEXT NOT NULL, -- ISO 8601 format
   total_duration_minutes INTEGER,
   total_strain INTEGER,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS workout_exercise_logs (
@@ -57,7 +77,8 @@ CREATE TABLE IF NOT EXISTS workout_cardio_logs (
   FOREIGN KEY (session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE
 );
 
--- Indexes for faster queries
+-- Indexes for workout history
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON workout_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_workout_name ON workout_sessions(workout_plan_name);
 CREATE INDEX IF NOT EXISTS idx_sessions_date ON workout_sessions(date_completed);
 CREATE INDEX IF NOT EXISTS idx_exercise_logs_session ON workout_exercise_logs(session_id);
@@ -65,10 +86,9 @@ CREATE INDEX IF NOT EXISTS idx_exercise_logs_name ON workout_exercise_logs(exerc
 CREATE INDEX IF NOT EXISTS idx_cardio_logs_session ON workout_cardio_logs(session_id);
 
 -- ============================================================================
--- Routine Builder Tables (v2.0)
+-- Exercise & Stretch Libraries (Shared across all users)
 -- ============================================================================
 
--- Exercise library table
 CREATE TABLE IF NOT EXISTS exercises (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
@@ -77,19 +97,9 @@ CREATE TABLE IF NOT EXISTS exercises (
   muscle_groups TEXT,  -- JSON array: ["chest", "triceps"]
   equipment TEXT,      -- e.g., "Dumbbells", "Barbell", "Bodyweight"
   difficulty TEXT,     -- "Beginner", "Intermediate", "Advanced"
-  is_custom INTEGER DEFAULT 1,  -- 1 = user-created, 0 = seed data
   created_at TEXT DEFAULT (datetime('now'))
 );
 
--- Custom workout routines
-CREATE TABLE IF NOT EXISTS custom_routines (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL UNIQUE,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
-);
-
--- Stretches library
 CREATE TABLE IF NOT EXISTS stretches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
@@ -99,8 +109,38 @@ CREATE TABLE IF NOT EXISTS stretches (
   tips TEXT,
   type TEXT,  -- "pre_workout" or "post_workout"
   muscle_groups TEXT,  -- JSON array: ["hamstrings", "glutes", "lower back"]
-  is_custom INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Indexes for exercise/stretch libraries
+CREATE INDEX IF NOT EXISTS idx_exercises_name ON exercises(name);
+CREATE INDEX IF NOT EXISTS idx_exercises_muscle ON exercises(muscle_groups);
+CREATE INDEX IF NOT EXISTS idx_stretches_type ON stretches(type);
+
+-- ============================================================================
+-- Routines (Owned by users)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS routines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,  -- Owner of this routine
+  name TEXT NOT NULL,
+  description TEXT,
+  is_public INTEGER DEFAULT 1,  -- 1 = public (default), 0 = private
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  UNIQUE(user_id, name)  -- Each user can only have one routine with a given name
+);
+
+-- Favorites: users can favorite public routines from other users
+CREATE TABLE IF NOT EXISTS routine_favorites (
+  user_id TEXT NOT NULL,
+  routine_id INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, routine_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE CASCADE
 );
 
 -- Junction: routines to pre-workout stretches
@@ -109,7 +149,7 @@ CREATE TABLE IF NOT EXISTS routine_pre_stretches (
   routine_id INTEGER NOT NULL,
   stretch_id INTEGER NOT NULL,
   order_index INTEGER NOT NULL,
-  FOREIGN KEY (routine_id) REFERENCES custom_routines(id) ON DELETE CASCADE,
+  FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE CASCADE,
   FOREIGN KEY (stretch_id) REFERENCES stretches(id) ON DELETE CASCADE
 );
 
@@ -135,7 +175,7 @@ CREATE TABLE IF NOT EXISTS routine_exercises (
   b2b_target_weight REAL,
   b2b_warmup_weight REAL,
 
-  FOREIGN KEY (routine_id) REFERENCES custom_routines(id) ON DELETE CASCADE,
+  FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE CASCADE,
   FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE,
   FOREIGN KEY (b2b_partner_id) REFERENCES exercises(id) ON DELETE CASCADE
 );
@@ -146,7 +186,7 @@ CREATE TABLE IF NOT EXISTS routine_post_stretches (
   routine_id INTEGER NOT NULL,
   stretch_id INTEGER NOT NULL,
   order_index INTEGER NOT NULL,
-  FOREIGN KEY (routine_id) REFERENCES custom_routines(id) ON DELETE CASCADE,
+  FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE CASCADE,
   FOREIGN KEY (stretch_id) REFERENCES stretches(id) ON DELETE CASCADE
 );
 
@@ -158,12 +198,10 @@ CREATE TABLE IF NOT EXISTS routine_cardio (
   duration TEXT NOT NULL,
   intensity TEXT,
   tips TEXT,
-  FOREIGN KEY (routine_id) REFERENCES custom_routines(id) ON DELETE CASCADE
+  FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE CASCADE
 );
 
--- Indexes for routine builder tables
-CREATE INDEX IF NOT EXISTS idx_exercises_name ON exercises(name);
-CREATE INDEX IF NOT EXISTS idx_exercises_muscle ON exercises(muscle_groups);
+-- Indexes for routines
+CREATE INDEX IF NOT EXISTS idx_routines_user ON routines(user_id);
 CREATE INDEX IF NOT EXISTS idx_routine_exercises_routine ON routine_exercises(routine_id);
 CREATE INDEX IF NOT EXISTS idx_routine_exercises_order ON routine_exercises(routine_id, order_index);
-CREATE INDEX IF NOT EXISTS idx_stretches_type ON stretches(type);

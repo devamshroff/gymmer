@@ -1,11 +1,16 @@
 // app/api/routines/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getRoutineById, getRoutineExercises, deleteRoutine, updateRoutineName } from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
+
   try {
     const { id } = await params;
     const routineId = parseInt(id);
@@ -17,7 +22,7 @@ export async function GET(
       );
     }
 
-    const routine = await getRoutineById(routineId);
+    const routine = await getRoutineById(routineId, user.id);
 
     if (!routine) {
       return NextResponse.json(
@@ -45,6 +50,10 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
+
   try {
     const { id } = await params;
     const routineId = parseInt(id);
@@ -66,7 +75,7 @@ export async function PUT(
       );
     }
 
-    const routine = await getRoutineById(routineId);
+    const routine = await getRoutineById(routineId, user.id);
     if (!routine) {
       return NextResponse.json(
         { error: 'Routine not found' },
@@ -74,7 +83,7 @@ export async function PUT(
       );
     }
 
-    await updateRoutineName(routineId, name.trim());
+    await updateRoutineName(routineId, name.trim(), user.id);
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -90,6 +99,10 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
+
   try {
     const { id } = await params;
     const routineId = parseInt(id);
@@ -101,7 +114,7 @@ export async function DELETE(
       );
     }
 
-    await deleteRoutine(routineId);
+    await deleteRoutine(routineId, user.id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

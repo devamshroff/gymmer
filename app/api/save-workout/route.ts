@@ -2,8 +2,13 @@
 import { NextResponse } from 'next/server';
 import { createWorkoutSession, logExercise, logCardio } from '@/lib/database';
 import { WorkoutSessionData } from '@/lib/workout-session';
+import { requireAuth } from '@/lib/auth-utils';
 
 export async function POST(request: Request) {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
+
   try {
     const sessionData: WorkoutSessionData = await request.json();
 
@@ -33,6 +38,7 @@ export async function POST(request: Request) {
 
     // Create workout session
     const sessionId = await createWorkoutSession({
+      user_id: user.id,
       workout_plan_name: sessionData.workoutName,
       date_completed: endTime.toISOString(),
       total_duration_minutes: totalDurationMinutes,

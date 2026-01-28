@@ -1,8 +1,12 @@
 // app/api/exercises/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllExercises, searchExercises, createExercise } from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
 export async function GET(request: NextRequest) {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('q');
@@ -22,6 +26,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+
   try {
     const body = await request.json();
     const { name, videoUrl, tips, muscleGroups, equipment, difficulty } = body;

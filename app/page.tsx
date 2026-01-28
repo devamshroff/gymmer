@@ -2,38 +2,77 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import UsernameSetup from './components/UsernameSetup';
 
 interface Routine {
   id: number;
   name: string;
   description: string | null;
-  is_custom: number;
-  source_file: string | null;
+  is_public: number;
+  user_id: string;
+  creator_username?: string;
+  creator_name?: string;
+  is_favorited?: number;
   created_at: string;
   updated_at: string;
 }
 
+interface UserInfo {
+  id: string;
+  username: string | null;
+  hasUsername: boolean;
+}
+
 export default function Home() {
-  const [routines, setRoutines] = useState<Routine[]>([]);
+  const [myRoutines, setMyRoutines] = useState<Routine[]>([]);
+  const [favoritedRoutines, setFavoritedRoutines] = useState<Routine[]>([]);
   const [lastWorkoutDates, setLastWorkoutDates] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const [showUsernameSetup, setShowUsernameSetup] = useState(false);
 
   useEffect(() => {
-    fetchRoutines();
+    fetchUserInfo();
   }, []);
+
+  async function fetchUserInfo() {
+    try {
+      const response = await fetch('/api/user');
+      if (response.ok) {
+        const data = await response.json();
+        setUserInfo(data);
+        if (!data.hasUsername) {
+          setShowUsernameSetup(true);
+        } else {
+          fetchRoutines();
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching user info:', error);
+      fetchRoutines();
+    }
+  }
 
   async function fetchRoutines() {
     try {
-      // Fetch all routines from database
+      // Fetch user's own routines
       const routinesResponse = await fetch('/api/routines');
       const routinesData = await routinesResponse.json();
-      setRoutines(routinesData.routines);
+      setMyRoutines(routinesData.routines || []);
+
+      // Fetch favorited routines
+      const favoritesResponse = await fetch('/api/routines/favorites');
+      const favoritesData = await favoritesResponse.json();
+      setFavoritedRoutines(favoritesData.routines || []);
+
+      // Combine all routines to fetch last workout dates
+      const allRoutines = [...(routinesData.routines || []), ...(favoritesData.routines || [])];
 
       // Fetch last workout date for each routine
       const dates: Record<string, string | null> = {};
-      for (const routine of routinesData.routines) {
+      for (const routine of allRoutines) {
         try {
           const historyResponse = await fetch(`/api/workout-history?name=${encodeURIComponent(routine.name)}`);
           const historyData = await historyResponse.json();
@@ -50,6 +89,12 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleUsernameComplete(username: string) {
+    setUserInfo(prev => prev ? { ...prev, username, hasUsername: true } : null);
+    setShowUsernameSetup(false);
+    fetchRoutines();
   }
 
   function startEditing(routine: Routine, e: React.MouseEvent) {
@@ -80,7 +125,7 @@ export default function Home() {
       });
 
       if (response.ok) {
-        setRoutines(routines.map(r =>
+        setMyRoutines(myRoutines.map(r =>
           r.id === routineId ? { ...r, name: editingName.trim() } : r
         ));
         setEditingId(null);
@@ -91,6 +136,24 @@ export default function Home() {
     }
   }
 
+  async function removeFavorite(routineId: number) {
+    try {
+      const response = await fetch(`/api/routines/${routineId}/favorite`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setFavoritedRoutines(favoritedRoutines.filter(r => r.id !== routineId));
+      }
+    } catch (error) {
+      console.error('Error removing favorite:', error);
+    }
+  }
+
+  if (showUsernameSetup) {
+    return <UsernameSetup onComplete={handleUsernameComplete} />;
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
@@ -98,6 +161,114 @@ export default function Home() {
       </div>
     );
   }
+
+  const renderRoutineCard = (routine: Routine, isOwned: boolean) => {
+    const lastDate = lastWorkoutDates[routine.name];
+    const formattedDate = lastDate
+      ? new Date(lastDate).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        })
+      : 'Never';
+    const isEditing = editingId === routine.id;
+
+    return (
+      <div
+        key={`routine-${routine.id}`}
+        className="bg-zinc-800 hover:bg-zinc-700 transition-colors rounded-lg p-6 border-2 border-zinc-700"
+      >
+        <div className="flex items-center justify-between mb-2">
+          {isEditing && isOwned ? (
+            <div className="flex items-center gap-2 flex-1">
+              <input
+                type="text"
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveRoutineName(routine.id, e as any);
+                  if (e.key === 'Escape') { setEditingId(null); setEditingName(''); }
+                }}
+                className="flex-1 bg-zinc-700 text-white text-xl font-semibold px-3 py-1 rounded border border-zinc-500 focus:outline-none focus:border-green-500"
+                autoFocus
+              />
+              <button
+                onClick={(e) => saveRoutineName(routine.id, e)}
+                className="text-green-500 hover:text-green-400 p-1"
+                title="Save"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </button>
+              <button
+                onClick={cancelEditing}
+                className="text-zinc-400 hover:text-zinc-300 p-1"
+                title="Cancel"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <>
+              <Link
+                href={`/workout/${encodeURIComponent(routine.name)}`}
+                className="text-2xl font-semibold text-white hover:text-green-400 transition-colors"
+              >
+                {routine.name}
+              </Link>
+              <div className="flex items-center gap-2">
+                {isOwned ? (
+                  <button
+                    onClick={(e) => startEditing(routine, e)}
+                    className="text-zinc-500 hover:text-zinc-300 p-1"
+                    title="Edit name"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => removeFavorite(routine.id)}
+                    className="text-red-500 hover:text-red-400 p-1"
+                    title="Remove from favorites"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+        <Link
+          href={`/workout/${encodeURIComponent(routine.name)}`}
+          className="block"
+        >
+          <div className="flex justify-between items-center">
+            <div className="text-zinc-400">
+              {!isOwned && routine.creator_username && (
+                <span className="text-sm">by @{routine.creator_username}</span>
+              )}
+              {!isOwned && !routine.creator_username && routine.creator_name && (
+                <span className="text-sm">by {routine.creator_name}</span>
+              )}
+              {isOwned && routine.description && routine.description}
+              {isOwned && !routine.description && '\u00A0'}
+            </div>
+            <div className="text-sm text-zinc-500">
+              Last: <span className={lastDate ? "text-blue-400" : "text-zinc-600"}>{formattedDate}</span>
+            </div>
+          </div>
+        </Link>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
@@ -107,118 +278,60 @@ export default function Home() {
           <span className="text-emerald-700 font-bold">GYMMER</span>
         </h1>
 
-        <h3>
-          <span className="block text-gray-200 text-center">Routines are currently shared across all users. Feel free to use one of mine.</span>
-          <span className="block text-gray-200 text-center">Use [NAME] [Routine Name] to help differentiate.</span>
-          <span className="block text-gray-200 text-center">Accounts coming soon.</span>
-        </h3>
+        {userInfo?.username && (
+          <p className="text-center text-zinc-400 mb-6">
+            Logged in as <span className="text-green-400">@{userInfo.username}</span>
+          </p>
+        )}
 
         {/* Create New Routine Button */}
         <Link
           href="/routines/builder"
-          className="mb-6 block w-full bg-green-600 hover:bg-green-700 text-white text-center py-4 rounded-lg text-lg font-bold transition-colors"
+          className="mb-4 block w-full bg-green-600 hover:bg-green-700 text-white text-center py-4 rounded-lg text-lg font-bold transition-colors"
         >
           + Create New Routine
         </Link>
 
-        <div className="space-y-4">
-          {routines.length === 0 ? (
-            <div className="text-center text-zinc-400 text-lg">
-              No routines found. Create a custom routine or import your workout plans.
-            </div>
-          ) : (
-            routines.map((routine) => {
-              const lastDate = lastWorkoutDates[routine.name];
-              const formattedDate = lastDate
-                ? new Date(lastDate).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })
-                : 'Never';
-              const isEditing = editingId === routine.id;
+        {/* Browse Public Routines Button */}
+        <Link
+          href="/routines/browse"
+          className="mb-6 block w-full bg-purple-600 hover:bg-purple-700 text-white text-center py-3 rounded-lg text-lg font-semibold transition-colors"
+        >
+          Browse Public Routines
+        </Link>
 
-              return (
-                <div
-                  key={`routine-${routine.id}`}
-                  className="bg-zinc-800 hover:bg-zinc-700 transition-colors rounded-lg p-6 border-2 border-zinc-700"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    {isEditing ? (
-                      <div className="flex items-center gap-2 flex-1">
-                        <input
-                          type="text"
-                          value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') saveRoutineName(routine.id, e as any);
-                            if (e.key === 'Escape') { setEditingId(null); setEditingName(''); }
-                          }}
-                          className="flex-1 bg-zinc-700 text-white text-xl font-semibold px-3 py-1 rounded border border-zinc-500 focus:outline-none focus:border-green-500"
-                          autoFocus
-                        />
-                        <button
-                          onClick={(e) => saveRoutineName(routine.id, e)}
-                          className="text-green-500 hover:text-green-400 p-1"
-                          title="Save"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={cancelEditing}
-                          className="text-zinc-400 hover:text-zinc-300 p-1"
-                          title="Cancel"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <Link
-                          href={`/workout/${encodeURIComponent(routine.name)}`}
-                          className="text-2xl font-semibold text-white hover:text-green-400 transition-colors"
-                        >
-                          {routine.name}
-                        </Link>
-                        <button
-                          onClick={(e) => startEditing(routine, e)}
-                          className="text-zinc-500 hover:text-zinc-300 p-1 ml-2"
-                          title="Edit name"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                          </svg>
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  <Link
-                    href={`/workout/${encodeURIComponent(routine.name)}`}
-                    className="block"
-                  >
-                    <div className="flex justify-between items-center">
-                      <div className="text-zinc-400">
-                        {routine.description || '\u00A0'}
-                      </div>
-                      <div className="text-sm text-zinc-500">
-                        Last: <span className={lastDate ? "text-blue-400" : "text-zinc-600"}>{formattedDate}</span>
-                      </div>
-                    </div>
-                  </Link>
-                </div>
-              );
-            })
-          )}
+        {/* My Routines Section */}
+        <div className="mb-8">
+          <h2 className="text-xl font-semibold text-zinc-300 mb-4">My Routines</h2>
+          <div className="space-y-4">
+            {myRoutines.length === 0 ? (
+              <div className="text-center text-zinc-500 text-lg py-4">
+                No routines yet. Create one above or browse public routines.
+              </div>
+            ) : (
+              myRoutines.map((routine) => renderRoutineCard(routine, true))
+            )}
+          </div>
         </div>
+
+        {/* Favorited Routines Section */}
+        {favoritedRoutines.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold text-zinc-300 mb-4 flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+              </svg>
+              Favorited Routines
+            </h2>
+            <div className="space-y-4">
+              {favoritedRoutines.map((routine) => renderRoutineCard(routine, false))}
+            </div>
+          </div>
+        )}
 
         <Link
           href="/routines/import"
-          className="mt-8 block w-full bg-blue-600 hover:bg-blue-700 text-white text-center py-4 rounded-lg text-lg font-semibold transition-colors"
+          className="mt-4 block w-full bg-blue-600 hover:bg-blue-700 text-white text-center py-4 rounded-lg text-lg font-semibold transition-colors"
         >
           Import Routine from JSON
         </Link>

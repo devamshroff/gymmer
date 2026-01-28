@@ -1,8 +1,13 @@
 // app/api/last-exercise/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getLastExerciseLog } from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
 export async function GET(request: NextRequest) {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const workoutName = searchParams.get('workoutName');
@@ -15,7 +20,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const lastLog = await getLastExerciseLog(workoutName, exerciseName);
+    const lastLog = await getLastExerciseLog(workoutName, exerciseName, user.id);
 
     return NextResponse.json({ lastLog });
   } catch (error) {

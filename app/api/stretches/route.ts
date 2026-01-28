@@ -1,8 +1,12 @@
 // app/api/stretches/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllStretches, createStretch } from '@/lib/database';
+import { requireAuth } from '@/lib/auth-utils';
 
 export async function GET(request: NextRequest) {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const type = searchParams.get('type') as 'pre_workout' | 'post_workout' | null;
@@ -19,6 +23,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authResult = await requireAuth();
+  if ('error' in authResult) return authResult.error;
+
   try {
     const body = await request.json();
     const { name, duration, type, muscleGroups, tips, videoUrl } = body;
