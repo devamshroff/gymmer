@@ -53,10 +53,18 @@ function ActiveWorkoutContent() {
   const [completedExercisesCache, setCompletedExercisesCache] = useState<CompletedExerciseCache[]>([]);
   const [viewingExerciseIndex, setViewingExerciseIndex] = useState(0); // Which exercise we're viewing (can be past/current)
 
+  // Get routineId from URL params (for public/favorited routines)
+  const routineIdParam = searchParams.get('routineId');
+  const routineQuery = routineIdParam ? `?routineId=${routineIdParam}` : '';
+
   useEffect(() => {
     async function fetchWorkout() {
       try {
-        const response = await fetch(`/api/workout/${params.name}`);
+        let apiUrl = `/api/workout/${params.name}`;
+        if (routineIdParam) {
+          apiUrl += `?routineId=${routineIdParam}`;
+        }
+        const response = await fetch(apiUrl);
         if (!response.ok) {
           throw new Error('Workout not found');
         }
@@ -296,7 +304,7 @@ function ActiveWorkoutContent() {
           setTransitionTimeRemaining(60);
         } else {
           // All exercises done - always go to cardio (optional)
-          router.push(`/workout/${encodeURIComponent(workout!.name)}/cardio`);
+          router.push(`/workout/${encodeURIComponent(workout!.name)}/cardio${routineQuery}`);
         }
       }
     }
@@ -347,7 +355,7 @@ function ActiveWorkoutContent() {
         setTransitionTimeRemaining(60);
       } else {
         // All exercises done - always go to cardio (optional)
-        router.push(`/workout/${encodeURIComponent(workout.name)}/cardio`);
+        router.push(`/workout/${encodeURIComponent(workout.name)}/cardio${routineQuery}`);
       }
     }
   };
@@ -443,7 +451,7 @@ function ActiveWorkoutContent() {
     } else {
       console.log('All exercises done, going to cardio');
       // All exercises done - always go to cardio (optional)
-      router.push(`/workout/${encodeURIComponent(workout!.name)}/cardio`);
+      router.push(`/workout/${encodeURIComponent(workout!.name)}/cardio${routineQuery}`);
     }
   };
 
@@ -457,7 +465,7 @@ function ActiveWorkoutContent() {
       // At the first exercise, go back to pre-stretches (if any) or exit
       const preStretchCount = workout.preWorkoutStretches?.length || 0;
       if (preStretchCount > 0) {
-        router.push(`/stretches/${encodeURIComponent(workout.name)}?index=${preStretchCount - 1}`);
+        router.push(`/stretches/${encodeURIComponent(workout.name)}?index=${preStretchCount - 1}${routineIdParam ? `&routineId=${routineIdParam}` : ''}`);
       } else {
         setShowExitConfirm(true);
       }
@@ -474,7 +482,7 @@ function ActiveWorkoutContent() {
       // Go to last pre-stretch
       const preStretchCount = workout.preWorkoutStretches?.length || 0;
       if (preStretchCount > 0) {
-        router.push(`/stretches/${encodeURIComponent(workout.name)}?index=${preStretchCount - 1}`);
+        router.push(`/stretches/${encodeURIComponent(workout.name)}?index=${preStretchCount - 1}${routineIdParam ? `&routineId=${routineIdParam}` : ''}`);
       }
     }
   };
@@ -626,7 +634,7 @@ function ActiveWorkoutContent() {
           <Header />
           {/* Navigation */}
           <WorkoutNavHeader
-            exitUrl={`/workout/${encodeURIComponent(workout.name)}`}
+            exitUrl={`/workout/${encodeURIComponent(workout.name)}${routineQuery}`}
             previousUrl={null}
             onPrevious={handlePreviousSection}
             onNext={isReviewMode ? () => setViewingExerciseIndex(viewingExerciseIndex + 1) : undefined}
@@ -952,7 +960,7 @@ function ActiveWorkoutContent() {
                   }
                 } else {
                   // Always go to cardio (optional)
-                  router.push(`/workout/${encodeURIComponent(workout.name)}/cardio`);
+                  router.push(`/workout/${encodeURIComponent(workout.name)}/cardio${routineQuery}`);
                 }
               }}
               className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-lg font-semibold transition-colors"
@@ -1120,7 +1128,7 @@ function ActiveWorkoutContent() {
         <Header />
         {/* Navigation */}
         <WorkoutNavHeader
-          exitUrl={`/workout/${encodeURIComponent(workout.name)}`}
+          exitUrl={`/workout/${encodeURIComponent(workout.name)}${routineQuery}`}
           previousUrl={null}
           onPrevious={handlePreviousSection}
           onNext={isReviewMode ? () => setViewingExerciseIndex(viewingExerciseIndex + 1) : undefined}
@@ -1322,7 +1330,7 @@ function ActiveWorkoutContent() {
                   }
                 } else {
                   // Always go to cardio (optional)
-                  router.push(`/workout/${encodeURIComponent(workout.name)}/cardio`);
+                  router.push(`/workout/${encodeURIComponent(workout.name)}/cardio${routineQuery}`);
                 }
               }}
               className="bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-lg font-semibold transition-colors"

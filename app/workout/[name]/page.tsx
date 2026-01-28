@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Exercise, Stretch, Cardio } from '@/lib/types';
 import Header from '@/app/components/Header';
@@ -9,29 +9,44 @@ import Header from '@/app/components/Header';
 export default function WorkoutDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [routineId, setRoutineId] = useState<number | null>(null);
+  const [isPublicRoutine, setIsPublicRoutine] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     async function fetchWorkout() {
       try {
-        const response = await fetch(`/api/workout/${params.name}`);
+        // Check for routineId in query params (for public/favorited routines)
+        const routineIdParam = searchParams.get('routineId');
+
+        // Build API URL with routineId if present
+        let apiUrl = `/api/workout/${params.name}`;
+        if (routineIdParam) {
+          apiUrl += `?routineId=${routineIdParam}`;
+          setRoutineId(parseInt(routineIdParam));
+          setIsPublicRoutine(true);
+        }
+
+        const response = await fetch(apiUrl);
         if (!response.ok) {
           throw new Error('Workout not found');
         }
         const data = await response.json();
         setWorkout(data.workout);
 
-        // Fetch routine ID from database
-        const routinesResponse = await fetch('/api/routines');
-        const routinesData = await routinesResponse.json();
-        const decodedName = decodeURIComponent(params.name as string);
-        const routine = routinesData.routines.find((r: any) => r.name === decodedName);
-        if (routine) {
-          setRoutineId(routine.id);
+        // Only fetch routine ID from user's routines if not a public routine
+        if (!routineIdParam) {
+          const routinesResponse = await fetch('/api/routines');
+          const routinesData = await routinesResponse.json();
+          const decodedName = decodeURIComponent(params.name as string);
+          const routine = routinesData.routines.find((r: any) => r.name === decodedName);
+          if (routine) {
+            setRoutineId(routine.id);
+          }
         }
       } catch (error) {
         console.error('Error fetching workout:', error);
@@ -41,7 +56,7 @@ export default function WorkoutDetailPage() {
     }
 
     fetchWorkout();
-  }, [params.name]);
+  }, [params.name, searchParams]);
 
   const handleDeleteClick = () => {
     setShowDeleteModal(true);
@@ -104,7 +119,7 @@ export default function WorkoutDetailPage() {
             <Link href="/" className="text-blue-400 hover:text-blue-300">
               ← Back to workouts
             </Link>
-            {routineId && (
+            {routineId && !isPublicRoutine && (
               <div className="flex gap-2">
                 <Link
                   href={`/routines/${routineId}/edit`}
@@ -189,7 +204,10 @@ export default function WorkoutDetailPage() {
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-zinc-900 border-t border-zinc-800">
           <div className="max-w-2xl mx-auto">
             <button
-              onClick={() => router.push(`/stretches/${encodeURIComponent(workout.name)}`)}
+              onClick={() => {
+                const url = `/stretches/${encodeURIComponent(workout.name)}${routineId ? `?routineId=${routineId}` : ''}`;
+                router.push(url);
+              }}
               className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-lg text-xl font-bold transition-colors"
             >
               Start Workout

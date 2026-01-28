@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 
 interface PublicRoutine {
   id: number;
@@ -15,11 +14,19 @@ interface PublicRoutine {
 }
 
 export default function BrowseRoutinesPage() {
-  const router = useRouter();
   const [routines, setRoutines] = useState<PublicRoutine[]>([]);
   const [favoritedIds, setFavoritedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [actionInProgress, setActionInProgress] = useState<number | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  // Auto-dismiss toast after 3 seconds
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   useEffect(() => {
     fetchPublicRoutines();
@@ -83,15 +90,14 @@ export default function BrowseRoutinesPage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        router.push(`/routines/${data.routineId}`);
+        setToast({ message: 'Saved to your routines!', type: 'success' });
       } else {
         const data = await response.json();
-        alert(data.error || 'Failed to clone routine');
+        setToast({ message: data.error || 'Failed to clone routine', type: 'error' });
       }
     } catch (error) {
       console.error('Error cloning routine:', error);
-      alert('Failed to clone routine');
+      setToast({ message: 'Failed to clone routine', type: 'error' });
     } finally {
       setActionInProgress(null);
     }
@@ -107,6 +113,28 @@ export default function BrowseRoutinesPage() {
 
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg ${
+            toast.type === 'success'
+              ? 'bg-green-600 text-white'
+              : 'bg-red-600 text-white'
+          }`}>
+            {toast.type === 'success' ? (
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+            <span className="font-medium">{toast.message}</span>
+          </div>
+        </div>
+      )}
+
       <main className="max-w-2xl mx-auto py-8">
         <div className="flex items-center gap-4 mb-8">
           <Link

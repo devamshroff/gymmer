@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
 import { addCardioToSession } from '@/lib/workout-session';
@@ -20,9 +20,14 @@ const CARDIO_TYPES = [
 export default function CardioPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [isDone, setIsDone] = useState(false);
+
+  // Get routineId from URL params (for public/favorited routines)
+  const routineIdParam = searchParams.get('routineId');
+  const routineQuery = routineIdParam ? `?routineId=${routineIdParam}` : '';
 
   // Cardio inputs
   const [cardioType, setCardioType] = useState('Treadmill');
@@ -33,7 +38,11 @@ export default function CardioPage() {
   useEffect(() => {
     async function fetchWorkout() {
       try {
-        const response = await fetch(`/api/workout/${params.name}`);
+        let apiUrl = `/api/workout/${params.name}`;
+        if (routineIdParam) {
+          apiUrl += `?routineId=${routineIdParam}`;
+        }
+        const response = await fetch(apiUrl);
         if (!response.ok) {
           throw new Error('Workout not found');
         }
@@ -95,19 +104,19 @@ export default function CardioPage() {
 
     setIsDone(true);
     setTimeout(() => {
-      router.push(`/workout/${encodeURIComponent(workout.name)}/post-stretches`);
+      router.push(`/workout/${encodeURIComponent(workout.name)}/post-stretches${routineQuery}`);
     }, 1000);
   };
 
   const handleSkip = () => {
-    router.push(`/workout/${encodeURIComponent(workout.name)}/post-stretches`);
+    router.push(`/workout/${encodeURIComponent(workout.name)}/post-stretches${routineQuery}`);
   };
 
   const handlePrevious = () => {
     // Go back to last exercise
     const exerciseCount = workout.exercises?.length || 0;
     if (exerciseCount > 0) {
-      router.push(`/workout/${encodeURIComponent(workout.name)}/active?index=${exerciseCount - 1}`);
+      router.push(`/workout/${encodeURIComponent(workout.name)}/active?index=${exerciseCount - 1}${routineIdParam ? `&routineId=${routineIdParam}` : ''}`);
     }
   };
 
@@ -120,7 +129,7 @@ export default function CardioPage() {
         <Header />
         {/* Navigation */}
         <WorkoutNavHeader
-          exitUrl={`/workout/${encodeURIComponent(workout.name)}`}
+          exitUrl={`/workout/${encodeURIComponent(workout.name)}${routineQuery}`}
           previousUrl={null}
           onPrevious={handlePrevious}
           skipLabel="Skip Cardio"

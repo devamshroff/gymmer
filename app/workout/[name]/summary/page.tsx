@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
 import { getWorkoutSession, WorkoutSessionData } from '@/lib/workout-session';
@@ -10,6 +10,7 @@ import Header from '@/app/components/Header';
 export default function SummaryPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionData, setSessionData] = useState<WorkoutSessionData | null>(null);
@@ -18,11 +19,17 @@ export default function SummaryPage() {
   const [totalVolume, setTotalVolume] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
 
+  // Get routineId from URL params (for public/favorited routines)
+  const routineIdParam = searchParams.get('routineId');
 
   useEffect(() => {
     async function fetchWorkout() {
       try {
-        const response = await fetch(`/api/workout/${params.name}`);
+        let apiUrl = `/api/workout/${params.name}`;
+        if (routineIdParam) {
+          apiUrl += `?routineId=${routineIdParam}`;
+        }
+        const response = await fetch(apiUrl);
         if (!response.ok) {
           throw new Error('Workout not found');
         }

@@ -17,10 +17,18 @@ function PostStretchesContent() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  // Get routineId from URL params (for public/favorited routines)
+  const routineIdParam = searchParams.get('routineId');
+  const routineQuery = routineIdParam ? `?routineId=${routineIdParam}` : '';
+
   useEffect(() => {
     async function fetchWorkout() {
       try {
-        const response = await fetch(`/api/workout/${params.name}`);
+        let apiUrl = `/api/workout/${params.name}`;
+        if (routineIdParam) {
+          apiUrl += `?routineId=${routineIdParam}`;
+        }
+        const response = await fetch(apiUrl);
         if (!response.ok) {
           throw new Error('Workout not found');
         }
@@ -44,7 +52,7 @@ function PostStretchesContent() {
     }
 
     fetchWorkout();
-  }, [params.name, searchParams]);
+  }, [params.name, searchParams, routineIdParam]);
 
   if (loading) {
     return <LoadingScreen />;
@@ -63,7 +71,7 @@ function PostStretchesContent() {
       <div className="min-h-screen bg-zinc-900 flex flex-col items-center justify-center p-4">
         <div className="text-white text-2xl mb-4">No post-workout stretches</div>
         <button
-          onClick={() => router.push(`/workout/${workoutName}/summary`)}
+          onClick={() => router.push(`/workout/${workoutName}/summary${routineQuery}`)}
           className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg text-lg font-bold transition-colors"
         >
           View Summary →
@@ -95,7 +103,7 @@ function PostStretchesContent() {
       setCurrentIndex(currentIndex + 1);
     } else {
       // Move to summary
-      router.push(`/workout/${workoutName}/summary`);
+      router.push(`/workout/${workoutName}/summary${routineQuery}`);
     }
   };
 
@@ -104,12 +112,12 @@ function PostStretchesContent() {
       setCurrentIndex(currentIndex - 1);
     } else {
       // At index 0, go back to cardio
-      router.push(`/workout/${workoutName}/cardio`);
+      router.push(`/workout/${workoutName}/cardio${routineQuery}`);
     }
   };
 
   const handleSkipAll = () => {
-    router.push(`/workout/${workoutName}/summary`);
+    router.push(`/workout/${workoutName}/summary${routineQuery}`);
   };
 
   return (
@@ -118,7 +126,7 @@ function PostStretchesContent() {
         <Header />
         {/* Navigation */}
         <WorkoutNavHeader
-          exitUrl={`/workout/${workoutName}`}
+          exitUrl={`/workout/${workoutName}${routineQuery}`}
           previousUrl={null}
           onPrevious={handlePrevious}
           skipLabel="Skip All"
