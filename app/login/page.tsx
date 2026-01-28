@@ -17,7 +17,6 @@ function LoginContent() {
       <div className="text-center max-w-md w-full">
         <h1 className="text-5xl font-bold text-emerald-600 mb-2">GYMMER</h1>
         <p className="text-zinc-400 text-lg mb-12">flow and progress</p>
-
         {error === "AccessDenied" && (
           <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-6">
             You&apos;re not authorized to access Gymmer. Contact the admin to get added to the whitelist.
@@ -36,11 +35,11 @@ function LoginContent() {
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path
-              fill="#3369c0"
+              fill="#4285F4"
               d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
             />
             <path
-              fill="#066e22"
+              fill="#34A853"
               d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
             />
             <path
@@ -69,7 +68,7 @@ export default function LoginPage() {
     <Suspense fallback={
       <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4">
         <div className="text-center">
-          <h1 className="text-5xl font-bold text-emerald-500 mb-2">GYMMER</h1>
+          <h1 className="text-5xl font-bold text-white mb-2">Gymmer</h1>
           <p className="text-zinc-400 text-lg">Loading...</p>
         </div>
       </div>

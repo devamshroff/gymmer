@@ -108,7 +108,7 @@ export default function Home() {
         </h1>
 
         <h3>
-          <span className="block text-gray-200 text-center">Routines are currently shared across all users.</span>
+          <span className="block text-gray-200 text-center">Routines are currently shared across all users. Feel free to use one of mine.</span>
           <span className="block text-gray-200 text-center">Use [NAME] [Routine Name] to help differentiate.</span>
           <span className="block text-gray-200 text-center">Accounts coming soon.</span>
         </h3>
