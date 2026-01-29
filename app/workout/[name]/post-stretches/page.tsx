@@ -85,6 +85,61 @@ function PostStretchesContent() {
   const stretches = workout.postWorkoutStretches || [];
   const workoutName = encodeURIComponent(workout.name);
 
+  const runWithChangeWarning = (action: () => void) => {
+    if (hasChangeWarningAck(workout.name, routineIdParam)) {
+      action();
+      return;
+    }
+    pendingChangeRef.current = action;
+    setShowChangeWarning(true);
+  };
+
+  const handleWarningContinue = () => {
+    acknowledgeChangeWarning(workout.name, routineIdParam);
+    setShowChangeWarning(false);
+    const action = pendingChangeRef.current;
+    pendingChangeRef.current = null;
+    action?.();
+  };
+
+  const handleWarningCancel = () => {
+    pendingChangeRef.current = null;
+    setShowChangeWarning(false);
+  };
+
+  const openStretchSelector = (mode: 'add' | 'replace') => {
+    runWithChangeWarning(() => {
+      setStretchActionMode(mode);
+      setShowStretchSelector(true);
+    });
+  };
+
+  const handleSelectStretch = (stretch: StretchOption) => {
+    if (!stretchActionMode) return;
+    const updatedStretch: Stretch = {
+      name: stretch.name,
+      duration: stretch.duration,
+      timerSeconds: 0,
+      videoUrl: stretch.video_url || '',
+      tips: stretch.tips || ''
+    };
+
+    const updatedStretches = [...stretches];
+    const insertIndex = Math.min(currentIndex + 1, updatedStretches.length);
+
+    if (stretchActionMode === 'add') {
+      updatedStretches.splice(insertIndex, 0, updatedStretch);
+    } else {
+      updatedStretches[currentIndex] = updatedStretch;
+    }
+
+    const updatedWorkout = { ...workout, postWorkoutStretches: updatedStretches };
+    setWorkout(updatedWorkout);
+    saveSessionWorkout(updatedWorkout, routineIdParam);
+    setStretchActionMode(null);
+    setShowStretchSelector(false);
+  };
+
   // If no stretches, show message and skip to summary
   if (stretches.length === 0) {
     return (
@@ -183,66 +238,6 @@ function PostStretchesContent() {
 
   const handleSkipAll = () => {
     router.push(`/workout/${workoutName}/summary${routineQuery}`);
-  };
-
-  const runWithChangeWarning = (action: () => void) => {
-    if (!workout) return;
-    if (hasChangeWarningAck(workout.name, routineIdParam)) {
-      action();
-      return;
-    }
-    pendingChangeRef.current = action;
-    setShowChangeWarning(true);
-  };
-
-  const handleWarningContinue = () => {
-    if (!workout) {
-      setShowChangeWarning(false);
-      return;
-    }
-    acknowledgeChangeWarning(workout.name, routineIdParam);
-    setShowChangeWarning(false);
-    const action = pendingChangeRef.current;
-    pendingChangeRef.current = null;
-    action?.();
-  };
-
-  const handleWarningCancel = () => {
-    pendingChangeRef.current = null;
-    setShowChangeWarning(false);
-  };
-
-  const openStretchSelector = (mode: 'add' | 'replace') => {
-    runWithChangeWarning(() => {
-      setStretchActionMode(mode);
-      setShowStretchSelector(true);
-    });
-  };
-
-  const handleSelectStretch = (stretch: StretchOption) => {
-    if (!workout || !stretchActionMode) return;
-    const updatedStretch: Stretch = {
-      name: stretch.name,
-      duration: stretch.duration,
-      timerSeconds: 0,
-      videoUrl: stretch.video_url || '',
-      tips: stretch.tips || ''
-    };
-
-    const updatedStretches = [...stretches];
-    const insertIndex = Math.min(currentIndex + 1, updatedStretches.length);
-
-    if (stretchActionMode === 'add') {
-      updatedStretches.splice(insertIndex, 0, updatedStretch);
-    } else {
-      updatedStretches[currentIndex] = updatedStretch;
-    }
-
-    const updatedWorkout = { ...workout, postWorkoutStretches: updatedStretches };
-    setWorkout(updatedWorkout);
-    saveSessionWorkout(updatedWorkout, routineIdParam);
-    setStretchActionMode(null);
-    setShowStretchSelector(false);
   };
 
   return (

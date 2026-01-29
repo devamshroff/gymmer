@@ -180,14 +180,14 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <div className="text-sm text-zinc-500">
               Last:{' '}
-              <span className={lastDate ? "text-blue-400" : "text-zinc-600"}>
+              <span className={lastDate ? "text-blue-300" : "text-zinc-600"}>
                 {formattedDate}
               </span>
             </div>
             {!isOwned && (
               <button
                 onClick={() => removeFavorite(routine.id)}
-                className="text-red-500 hover:text-red-400 p-1"
+                className="text-red-400 hover:text-red-300 p-1"
                 title="Remove from favorites"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
@@ -200,20 +200,20 @@ export default function Home() {
         <div className="flex flex-wrap gap-2">
           <Link
             href={previewHref}
-            className="px-4 py-2 rounded-lg font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+            className="px-4 py-2 rounded-lg font-medium bg-amber-700 hover:bg-amber-600 text-white transition-colors"
           >
             Preview
           </Link>
           <Link
             href={startHref}
-            className="px-4 py-2 rounded-lg font-medium bg-green-600 hover:bg-green-700 text-white transition-colors"
+            className="px-4 py-2 rounded-lg font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors"
           >
             Start
           </Link>
           {isOwned && (
             <Link
               href={`/routines/${routine.id}/edit`}
-              className="px-4 py-2 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+              className="px-4 py-2 rounded-lg font-medium bg-blue-900 hover:bg-blue-800 text-white transition-colors"
             >
               Edit
             </Link>
@@ -228,22 +228,31 @@ export default function Home() {
       <main className="max-w-2xl mx-auto py-8">
         <h1 className="text-4xl font-bold text-white mb-8 text-center">
           <span className="block text-gray-200">welcome to</span>
-          <span className="text-emerald-700 font-bold">GYMMER</span>
+          <span className="text-emerald-600 font-bold">GYMMER</span>
         </h1>
 
         {userInfo?.username && (
           <p className="text-center text-zinc-400 mb-6">
-            Logged in as <span className="text-green-400">@{userInfo.username}</span>
+            Logged in as <span className="text-emerald-300">@{userInfo.username}</span>
           </p>
         )}
 
         {/* Create New Routine Button */}
         <button
           onClick={() => setShowCreateModal(true)}
-          className="mb-6 block w-full bg-green-600 hover:bg-green-700 text-white text-center py-4 rounded-lg text-lg font-bold transition-colors"
+          className="mb-3 block w-full bg-purple-950 hover:bg-purple-900 text-white text-center py-4 rounded-lg text-lg font-bold transition-colors"
         >
           + Create New Routine
         </button>
+
+        <div className="mb-8 flex justify-end">
+          <Link
+            href="/routines/import"
+            className="inline-flex items-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 text-sm font-semibold transition-colors"
+          >
+            Import Routine from JSON
+          </Link>
+        </div>
 
         {/* My Routines Section */}
         <div className="mb-8">
@@ -263,7 +272,7 @@ export default function Home() {
         {favoritedRoutines.length > 0 && (
           <div className="mb-8">
             <h2 className="text-xl font-semibold text-zinc-300 mb-4 flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 24 24">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-300" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
               </svg>
               Favorited Routines
@@ -274,17 +283,16 @@ export default function Home() {
           </div>
         )}
 
-        <Link
-          href="/routines/import"
-          className="mt-4 block w-full bg-blue-600 hover:bg-blue-700 text-white text-center py-4 rounded-lg text-lg font-semibold transition-colors"
-        >
-          Import Routine from JSON
-        </Link>
-
         {/* Public Routines Preview Section */}
         {publicRoutinesPreview.length > 0 && (
           <div className="mt-8 pt-8 border-t border-zinc-700">
             <h2 className="text-xl font-semibold text-zinc-300 mb-4">Discover Public Routines</h2>
+            <Link
+              href="/routines/browse"
+              className="mb-4 block w-full bg-purple-800 hover:bg-purple-700 text-white text-center py-3 rounded-lg font-semibold transition-colors"
+            >
+              Browse All Public Routines
+            </Link>
             <div className="space-y-3">
               {publicRoutinesPreview.map((routine) => (
                 <div
@@ -295,19 +303,13 @@ export default function Home() {
                     <div>
                       <h3 className="text-lg font-semibold text-white">{routine.name}</h3>
                       <p className="text-sm text-zinc-400">
-                        by <span className="text-purple-400">@{routine.creator_username || routine.creator_name || 'Anonymous'}</span>
+                        by <span className="text-purple-300">@{routine.creator_username || routine.creator_name || 'Anonymous'}</span>
                       </p>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-            <Link
-              href="/routines/browse"
-              className="mt-4 block w-full bg-purple-600 hover:bg-purple-700 text-white text-center py-3 rounded-lg font-semibold transition-colors"
-            >
-              Browse All Public Routines
-            </Link>
           </div>
         )}
 
@@ -321,13 +323,13 @@ export default function Home() {
               <div className="space-y-3">
                 <button
                   onClick={() => router.push('/routines/builder')}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg text-lg font-semibold"
+                  className="w-full bg-green-700 hover:bg-green-600 text-white py-3 rounded-lg text-lg font-semibold"
                 >
                   Manual Builder
                 </button>
                 <button
                   onClick={() => router.push('/routines/ai')}
-                  className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-lg text-lg font-semibold"
+                  className="w-full bg-emerald-800 hover:bg-emerald-700 text-white py-3 rounded-lg text-lg font-semibold"
                 >
                   AI-Assisted
                 </button>
