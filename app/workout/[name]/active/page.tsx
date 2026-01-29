@@ -13,6 +13,27 @@ interface SetData {
   reps: number;
 }
 
+function normalizeDateString(value: string): string {
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(value)) {
+    return `${value.replace(' ', 'T')}Z`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return `${value}T00:00:00Z`;
+  }
+  return value;
+}
+
+function formatLocalDate(value?: string | null): string {
+  if (!value) return 'Unknown date';
+  const date = new Date(normalizeDateString(value));
+  if (Number.isNaN(date.getTime())) return 'Unknown date';
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 function ActiveWorkoutContent() {
   const params = useParams();
   const router = useRouter();
@@ -41,6 +62,7 @@ function ActiveWorkoutContent() {
 
   // Last exercise log from database
   const [lastExerciseLog, setLastExerciseLog] = useState<any>(null);
+  const [lastPartnerExerciseLog, setLastPartnerExerciseLog] = useState<any>(null);
 
   // Review mode: cache completed exercises and track viewing
   type CompletedExerciseCache = {
@@ -179,31 +201,39 @@ function ActiveWorkoutContent() {
     }
   }, [isTransitioning, transitionTimeRemaining, workout, currentExerciseIndex]);
 
-  // Fetch last exercise log from database when exercise changes
+  // Fetch last exercise log(s) from database when exercise changes
   useEffect(() => {
     async function fetchLastExerciseLog() {
       if (!workout) return;
 
       const currentExercise = workout.exercises[currentExerciseIndex];
-      let exerciseName = '';
+
+      const fetchLog = async (exerciseName: string) => {
+        try {
+          const response = await fetch(
+            `/api/last-exercise?exerciseName=${encodeURIComponent(exerciseName)}`
+          );
+          if (!response.ok) return null;
+          const data = await response.json();
+          return data.lastLog;
+        } catch (error) {
+          console.error('Error fetching last exercise log:', error);
+          return null;
+        }
+      };
 
       if (currentExercise.type === 'single') {
-        exerciseName = currentExercise.name;
+        const log = await fetchLog(currentExercise.name);
+        setLastExerciseLog(log);
+        setLastPartnerExerciseLog(null);
       } else {
-        // For B2B, use the first exercise name
-        exerciseName = (currentExercise as B2BExercise).exercises[0].name;
-      }
-
-      try {
-        const response = await fetch(
-          `/api/last-exercise?workoutName=${encodeURIComponent(workout.name)}&exerciseName=${encodeURIComponent(exerciseName)}`
-        );
-        if (response.ok) {
-          const data = await response.json();
-          setLastExerciseLog(data.lastLog);
-        }
-      } catch (error) {
-        console.error('Error fetching last exercise log:', error);
+        const b2bExercise = currentExercise as B2BExercise;
+        const [log1, log2] = await Promise.all([
+          fetchLog(b2bExercise.exercises[0].name),
+          fetchLog(b2bExercise.exercises[1].name),
+        ]);
+        setLastExerciseLog(log1);
+        setLastPartnerExerciseLog(log2);
       }
     }
 
@@ -237,6 +267,8 @@ function ActiveWorkoutContent() {
   const isReviewMode = viewingExerciseIndex < currentExerciseIndex;
   const viewingExercise = workout.exercises[viewingExerciseIndex];
   const viewingCachedData = completedExercisesCache.find(cache => cache.exerciseIndex === viewingExerciseIndex);
+  const lastExerciseDate = lastExerciseLog?.completed_at || lastExerciseLog?.created_at;
+  const lastPartnerExerciseDate = lastPartnerExerciseLog?.completed_at || lastPartnerExerciseLog?.created_at;
 
   // Calculate total workout items for progress
   const totalItems =
@@ -672,47 +704,63 @@ function ActiveWorkoutContent() {
           </div>
 
           {/* Last Time Section for B2B */}
-          {lastExerciseLog && (
+          {(lastExerciseLog || lastPartnerExerciseLog) && (
             <div className="bg-zinc-800 rounded-lg p-4 mb-6 border border-zinc-700">
-              <div className="text-zinc-400 text-sm mb-3">
-                LAST TIME ({new Date(lastExerciseLog.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})
-              </div>
+              <div className="text-zinc-400 text-sm mb-3">LAST TIME</div>
               <div className="grid grid-cols-2 gap-4">
                 {/* Exercise 1 Last Time */}
                 <div>
-                  <div className="text-purple-400 text-xs font-semibold mb-2">{ex1.name}</div>
-                  <div className="space-y-1">
-                    {[1, 2, 3, 4].map((setNum) => {
-                      const weight = lastExerciseLog[`set${setNum}_weight`];
-                      const reps = lastExerciseLog[`set${setNum}_reps`];
-                      if (weight !== null && reps !== null) {
-                        return (
-                          <div key={setNum} className="text-zinc-300 text-xs">
-                            Set {setNum}: {weight} × {reps}
-                          </div>
-                        );
-                      }
-                      return null;
-                    })}
-                  </div>
+                  <div className="text-purple-400 text-xs font-semibold mb-1">{ex1.name}</div>
+                  {lastExerciseLog ? (
+                    <>
+                      <div className="text-zinc-500 text-xs mb-2">
+                        {formatLocalDate(lastExerciseDate)}
+                      </div>
+                      <div className="space-y-1">
+                        {[1, 2, 3, 4].map((setNum) => {
+                          const weight = lastExerciseLog[`set${setNum}_weight`];
+                          const reps = lastExerciseLog[`set${setNum}_reps`];
+                          if (weight !== null && reps !== null) {
+                            return (
+                              <div key={setNum} className="text-zinc-300 text-xs">
+                                Set {setNum}: {weight} × {reps}
+                              </div>
+                            );
+                          }
+                          return null;
+                        })}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-zinc-500 text-xs">No history yet</div>
+                  )}
                 </div>
                 {/* Exercise 2 Last Time */}
                 <div>
-                  <div className="text-purple-400 text-xs font-semibold mb-2">{ex2.name}</div>
-                  <div className="space-y-1">
-                    {[1, 2, 3, 4].map((setNum) => {
-                      const weight = lastExerciseLog[`b2b_set${setNum}_weight`];
-                      const reps = lastExerciseLog[`b2b_set${setNum}_reps`];
-                      if (weight !== null && reps !== null) {
-                        return (
-                          <div key={setNum} className="text-zinc-300 text-xs">
-                            Set {setNum}: {weight} × {reps}
-                          </div>
-                        );
-                      }
-                      return null;
-                    })}
-                  </div>
+                  <div className="text-purple-400 text-xs font-semibold mb-1">{ex2.name}</div>
+                  {lastPartnerExerciseLog ? (
+                    <>
+                      <div className="text-zinc-500 text-xs mb-2">
+                        {formatLocalDate(lastPartnerExerciseDate)}
+                      </div>
+                      <div className="space-y-1">
+                        {[1, 2, 3, 4].map((setNum) => {
+                          const weight = lastPartnerExerciseLog[`set${setNum}_weight`];
+                          const reps = lastPartnerExerciseLog[`set${setNum}_reps`];
+                          if (weight !== null && reps !== null) {
+                            return (
+                              <div key={setNum} className="text-zinc-300 text-xs">
+                                Set {setNum}: {weight} × {reps}
+                              </div>
+                            );
+                          }
+                          return null;
+                        })}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-zinc-500 text-xs">No history yet</div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1164,7 +1212,7 @@ function ActiveWorkoutContent() {
         {lastExerciseLog && (
           <div className="bg-zinc-800 rounded-lg p-4 mb-6 border border-zinc-700">
             <div className="text-zinc-400 text-sm mb-2">
-              LAST TIME ({new Date(lastExerciseLog.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})
+              LAST TIME ({formatLocalDate(lastExerciseDate)})
             </div>
             <div className="space-y-1">
               {lastExerciseLog.warmup_weight !== null && lastExerciseLog.warmup_reps !== null && (

@@ -217,35 +217,65 @@ export async function getWorkoutSession(sessionId: number): Promise<(WorkoutSess
 }
 
 export async function getLastExerciseLog(
-  workoutPlanName: string,
   exerciseName: string,
   userId?: string
 ): Promise<WorkoutExerciseLog | null> {
   const db = getDatabase();
 
-  // If userId provided, filter by user
   const sql = userId
     ? `
-      SELECT el.*
+      SELECT el.*,
+        ws.date_completed as completed_at,
+        CASE
+          WHEN el.exercise_name = ? THEN 'primary'
+          WHEN el.b2b_partner_name = ? THEN 'partner'
+        END AS matched_role
       FROM workout_exercise_logs el
       JOIN workout_sessions ws ON el.session_id = ws.id
-      WHERE ws.workout_plan_name = ? AND el.exercise_name = ? AND ws.user_id = ?
+      WHERE ws.user_id = ? AND (el.exercise_name = ? OR el.b2b_partner_name = ?)
       ORDER BY ws.date_completed DESC
       LIMIT 1
     `
     : `
-      SELECT el.*
+      SELECT el.*,
+        ws.date_completed as completed_at,
+        CASE
+          WHEN el.exercise_name = ? THEN 'primary'
+          WHEN el.b2b_partner_name = ? THEN 'partner'
+        END AS matched_role
       FROM workout_exercise_logs el
       JOIN workout_sessions ws ON el.session_id = ws.id
-      WHERE ws.workout_plan_name = ? AND el.exercise_name = ?
+      WHERE el.exercise_name = ? OR el.b2b_partner_name = ?
       ORDER BY ws.date_completed DESC
       LIMIT 1
     `;
 
-  const args = userId ? [workoutPlanName, exerciseName, userId] : [workoutPlanName, exerciseName];
+  const args = userId
+    ? [exerciseName, exerciseName, userId, exerciseName, exerciseName]
+    : [exerciseName, exerciseName, exerciseName, exerciseName];
   const result = await db.execute({ sql, args });
+  const row = result.rows[0] as any;
 
-  return result.rows[0] as any as WorkoutExerciseLog || null;
+  if (!row) return null;
+
+  if (row.matched_role === 'partner') {
+    return {
+      ...row,
+      exercise_name: exerciseName,
+      warmup_weight: row.b2b_warmup_weight,
+      warmup_reps: row.b2b_warmup_reps,
+      set1_weight: row.b2b_set1_weight,
+      set1_reps: row.b2b_set1_reps,
+      set2_weight: row.b2b_set2_weight,
+      set2_reps: row.b2b_set2_reps,
+      set3_weight: row.b2b_set3_weight,
+      set3_reps: row.b2b_set3_reps,
+      set4_weight: row.b2b_set4_weight,
+      set4_reps: row.b2b_set4_reps,
+    } as WorkoutExerciseLog;
+  }
+
+  return row as WorkoutExerciseLog;
 }
 
 // ============================================================================

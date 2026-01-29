@@ -10,17 +10,16 @@ export async function GET(request: NextRequest) {
 
   try {
     const searchParams = request.nextUrl.searchParams;
-    const workoutName = searchParams.get('workoutName');
     const exerciseName = searchParams.get('exerciseName');
 
-    if (!workoutName || !exerciseName) {
+    if (!exerciseName) {
       return NextResponse.json(
-        { error: 'Workout name and exercise name are required' },
+        { error: 'Exercise name is required' },
         { status: 400 }
       );
     }
 
-    const lastLog = await getLastExerciseLog(workoutName, exerciseName, user.id);
+    const lastLog = await getLastExerciseLog(exerciseName, user.id);
 
     return NextResponse.json({ lastLog });
   } catch (error) {

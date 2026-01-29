@@ -13,12 +13,34 @@ interface PublicRoutine {
   created_at: string;
 }
 
+function normalizeDateString(value: string): string {
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(value)) {
+    return `${value.replace(' ', 'T')}Z`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return `${value}T00:00:00Z`;
+  }
+  return value;
+}
+
+function formatLocalDate(value?: string | null): string {
+  if (!value) return 'Never';
+  const date = new Date(normalizeDateString(value));
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 export default function BrowseRoutinesPage() {
   const [routines, setRoutines] = useState<PublicRoutine[]>([]);
   const [favoritedIds, setFavoritedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [actionInProgress, setActionInProgress] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [lastWorkoutDates, setLastWorkoutDates] = useState<Record<number, string | null>>({});
 
   // Auto-dismiss toast after 3 seconds
   useEffect(() => {
@@ -37,7 +59,8 @@ export default function BrowseRoutinesPage() {
       const response = await fetch('/api/routines/public');
       if (response.ok) {
         const data = await response.json();
-        setRoutines(data.routines || []);
+        const publicRoutines = data.routines || [];
+        setRoutines(publicRoutines);
 
         // Check which ones are already favorited
         const favResponse = await fetch('/api/routines/favorites');
@@ -46,6 +69,23 @@ export default function BrowseRoutinesPage() {
           const favIds = new Set((favData.routines || []).map((r: any) => r.id));
           setFavoritedIds(favIds as Set<number>);
         }
+
+        const dates: Record<number, string | null> = {};
+        await Promise.all(
+          publicRoutines.map(async (routine: PublicRoutine) => {
+            try {
+              const historyResponse = await fetch(
+                `/api/workout-history?name=${encodeURIComponent(routine.name)}`
+              );
+              const historyData = await historyResponse.json();
+              dates[routine.id] = historyData.lastDate || null;
+            } catch (error) {
+              console.error(`Error fetching history for ${routine.name}:`, error);
+              dates[routine.id] = null;
+            }
+          })
+        );
+        setLastWorkoutDates(dates);
       }
     } catch (error) {
       console.error('Error fetching public routines:', error);
@@ -161,6 +201,8 @@ export default function BrowseRoutinesPage() {
             {routines.map((routine) => {
               const isFavorited = favoritedIds.has(routine.id);
               const isProcessing = actionInProgress === routine.id;
+              const lastDate = lastWorkoutDates[routine.id] || null;
+              const formattedDate = formatLocalDate(lastDate);
 
               return (
                 <div
@@ -178,6 +220,12 @@ export default function BrowseRoutinesPage() {
                           @{routine.creator_username || routine.creator_name || 'Anonymous'}
                         </span>
                       </p>
+                    </div>
+                    <div className="text-sm text-zinc-500">
+                      Last:{' '}
+                      <span className={lastDate ? 'text-blue-400' : 'text-zinc-600'}>
+                        {formattedDate}
+                      </span>
                     </div>
                   </div>
 
