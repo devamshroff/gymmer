@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-utils';
-import { getAllExercises } from '@/lib/database';
+import { getAllExercises, getUserGoals } from '@/lib/database';
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
@@ -12,9 +12,11 @@ function extractJson(content: string): string {
   return content;
 }
 
-function buildSystemPrompt(exerciseNames: string[]): string {
+function buildSystemPrompt(exerciseNames: string[], goalsText?: string | null): string {
+  const goalsLine = goalsText ? `User goals: ${goalsText}` : 'User goals: (not provided)';
   return [
-    'You are a fitness coach generating a workout routine JSON.',
+    'You are a gym trainer helping users make consistent, incremental progress.',
+    'Generate a workout routine JSON.',
     'Output ONLY valid JSON with this exact shape:',
     '{',
     '  "name": string,',
@@ -33,6 +35,7 @@ function buildSystemPrompt(exerciseNames: string[]): string {
     'Incorporate user goals, target muscles, disliked exercises, restrictions, available equipment, location, and time constraints when provided.',
     'Prefer existing exercises from the list below when possible.',
     'If a needed exercise is not in the list, you may invent a new one with a clear name.',
+    goalsLine,
     `Available exercises: ${exerciseNames.join(', ')}`,
     'No markdown, no explanations, JSON only.'
   ].join('\n');
@@ -41,6 +44,7 @@ function buildSystemPrompt(exerciseNames: string[]): string {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth();
   if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
 
   if (!process.env.OPENAI_API_KEY) {
     return NextResponse.json(
@@ -62,6 +66,7 @@ export async function POST(request: NextRequest) {
 
     const allExercises = await getAllExercises();
     const exerciseNames = allExercises.map((exercise) => exercise.name);
+    const goalsText = await getUserGoals(user.id);
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -72,7 +77,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         model: DEFAULT_MODEL,
         messages: [
-          { role: 'system', content: buildSystemPrompt(exerciseNames) },
+          { role: 'system', content: buildSystemPrompt(exerciseNames, goalsText) },
           { role: 'user', content: prompt }
         ],
         temperature: 0.4,

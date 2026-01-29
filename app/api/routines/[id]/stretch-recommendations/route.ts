@@ -5,6 +5,7 @@ import {
   getAllStretches,
   getRoutineById,
   getRoutineExercises,
+  getUserGoals,
 } from '@/lib/database';
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
@@ -45,10 +46,13 @@ function buildSystemPrompt(
   routineDescription?: string | null,
   exerciseCount?: number,
   preStretchNames?: string[],
-  postStretchNames?: string[]
+  postStretchNames?: string[],
+  goalsText?: string | null
 ): string {
+  const goalsLine = goalsText ? `User goals: ${goalsText}` : 'User goals: (not provided)';
   return [
-    'You are a fitness coach recommending stretches for a workout.',
+    'You are a gym trainer helping users make consistent, incremental progress.',
+    'Recommend stretches for this workout.',
     'Given the exercise list, provide pre-workout and post-workout stretches.',
     'Ensure every primary muscle used in the exercises has at least one stretch in pre-workout and one in post-workout.',
     'Return ONLY valid JSON with this exact shape:',
@@ -69,6 +73,7 @@ function buildSystemPrompt(
       ? `Available post-workout stretches: ${postStretchNames.join(', ')}`
       : 'Available post-workout stretches: (none)',
     'Prefer existing stretches from the lists above when possible. If a needed stretch is missing, suggest a new one.',
+    goalsLine,
     `Exercises: ${exercises.join(', ')}`
   ].join('\n');
 }
@@ -174,6 +179,7 @@ export async function POST(
     const postStretchNames = allStretches
       .filter((stretch) => stretch.type === 'post_workout')
       .map((stretch) => stretch.name);
+    const goalsText = await getUserGoals(user.id);
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -192,7 +198,8 @@ export async function POST(
               routine.description,
               exercises.length,
               preStretchNames,
-              postStretchNames
+              postStretchNames,
+              goalsText
             )
           },
           { role: 'user', content: 'Recommend stretches for this routine.' },

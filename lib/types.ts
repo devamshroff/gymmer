@@ -18,6 +18,7 @@ export interface SingleExercise {
   restTime: number;  // seconds
   videoUrl: string;
   tips: string;
+  isBodyweight?: boolean;
 }
 
 export interface B2BExercise {
@@ -31,6 +32,7 @@ export interface B2BExercise {
       warmupWeight: number;
       videoUrl: string;
       tips: string;
+      isBodyweight?: boolean;
     },
     {
       name: string;
@@ -40,6 +42,7 @@ export interface B2BExercise {
       warmupWeight: number;
       videoUrl: string;
       tips: string;
+      isBodyweight?: boolean;
     }
   ];
   restTime: number;  // seconds between pairs
@@ -84,6 +87,7 @@ export interface WorkoutSession {
   date_completed: string; // ISO 8601
   total_duration_minutes: number | null;
   total_strain: number | null;
+  session_mode?: string | null;
   created_at: string;
 }
 

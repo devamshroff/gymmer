@@ -29,7 +29,11 @@ export default function CardioPage() {
 
   // Get routineId from URL params (for public/favorited routines)
   const routineIdParam = searchParams.get('routineId');
-  const routineQuery = routineIdParam ? `?routineId=${routineIdParam}` : '';
+  const sessionModeParam = searchParams.get('mode');
+  const routineQueryParams = new URLSearchParams();
+  if (routineIdParam) routineQueryParams.set('routineId', routineIdParam);
+  if (sessionModeParam) routineQueryParams.set('mode', sessionModeParam);
+  const routineQuery = routineQueryParams.toString() ? `?${routineQueryParams.toString()}` : '';
 
   // Cardio inputs
   const [cardioType, setCardioType] = useState('Treadmill');

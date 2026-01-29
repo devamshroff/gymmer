@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT UNIQUE,  -- Public display name (required for sharing)
   name TEXT,
   image TEXT,
+  goals_text TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -25,6 +26,7 @@ CREATE TABLE IF NOT EXISTS workout_sessions (
   date_completed TEXT NOT NULL, -- ISO 8601 format
   total_duration_minutes INTEGER,
   total_strain INTEGER,
+  session_mode TEXT, -- 'incremental', 'maintenance', 'light'
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
@@ -83,6 +85,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_workout_name ON workout_sessions(workout
 CREATE INDEX IF NOT EXISTS idx_sessions_date ON workout_sessions(date_completed);
 CREATE INDEX IF NOT EXISTS idx_exercise_logs_session ON workout_exercise_logs(session_id);
 CREATE INDEX IF NOT EXISTS idx_exercise_logs_name ON workout_exercise_logs(exercise_name);
+CREATE INDEX IF NOT EXISTS idx_exercise_logs_partner_name ON workout_exercise_logs(b2b_partner_name);
 CREATE INDEX IF NOT EXISTS idx_cardio_logs_session ON workout_cardio_logs(session_id);
 
 -- ============================================================================
@@ -126,6 +129,7 @@ CREATE TABLE IF NOT EXISTS routines (
   user_id TEXT NOT NULL,  -- Owner of this routine
   name TEXT NOT NULL,
   description TEXT,
+  notes TEXT,
   is_public INTEGER DEFAULT 1,  -- 1 = public (default), 0 = private
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),

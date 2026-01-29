@@ -28,7 +28,7 @@ export default function StretchCard({
   timerKey = 0,
   variant = 'pre',
 }: StretchCardProps) {
-  const borderColor = variant === 'pre' ? 'border-green-600' : 'border-blue-600';
+  const borderColor = 'border-blue-800';
   const emoji = variant === 'pre' ? '🏃' : '🧘';
   const tips = getFormTips(stretch.tips);
   const videoHref = getVideoUrl(stretch.name, stretch.videoUrl);
@@ -38,7 +38,7 @@ export default function StretchCard({
       <div className="text-center mb-6">
         <div className="text-6xl mb-4">{emoji}</div>
         <h2 className="text-3xl font-bold text-white mb-4">{stretch.name}</h2>
-        <div className="text-xl text-blue-400 font-semibold mb-4">{stretch.duration}</div>
+        <div className="text-xl text-blue-300 font-semibold mb-4">{stretch.duration}</div>
       </div>
 
       {/* Timer - only shows if stretch has a timer value */}

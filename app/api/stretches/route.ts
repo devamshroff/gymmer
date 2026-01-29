@@ -1,6 +1,6 @@
 // app/api/stretches/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllStretches, createStretch } from '@/lib/database';
+import { getAllStretches, createStretch, getUserGoals } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 import { generateFormTips } from '@/lib/form-tips';
 
@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth();
   if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
 
   try {
     const body = await request.json();
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     const normalizedTips = typeof tips === 'string' ? tips.trim() : '';
+    const goalsText = await getUserGoals(user.id);
     const fallbackTips = normalizedTips
       ? normalizedTips
       : await generateFormTips({
@@ -47,6 +49,7 @@ export async function POST(request: NextRequest) {
           duration,
           stretchType: type,
           muscleGroups: Array.isArray(muscleGroups) ? muscleGroups : undefined,
+          goalsText,
         });
 
     const stretchId = await createStretch({

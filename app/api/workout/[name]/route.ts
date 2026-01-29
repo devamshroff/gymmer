@@ -101,7 +101,8 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
         warmupWeight: re.warmup_weight || 0,
         restTime: re.rest_time || 60,
         videoUrl: re.video_url || '',
-        tips: re.tips || ''
+        tips: re.tips || '',
+        isBodyweight: (re.exercise_equipment || '').toLowerCase() === 'bodyweight'
       };
     } else {
       // B2B exercise
@@ -116,7 +117,8 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
             targetWeight: re.target_weight || 0,
             warmupWeight: re.warmup_weight || 0,
             videoUrl: re.video_url || '',
-            tips: re.tips || ''
+            tips: re.tips || '',
+            isBodyweight: (re.exercise_equipment || '').toLowerCase() === 'bodyweight'
           },
           {
             name: re.b2b_partner_name,
@@ -125,7 +127,8 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
             targetWeight: re.b2b_target_weight || 0,
             warmupWeight: re.b2b_warmup_weight || 0,
             videoUrl: re.b2b_video_url || '',
-            tips: re.b2b_tips || ''
+            tips: re.b2b_tips || '',
+            isBodyweight: (re.b2b_partner_equipment || '').toLowerCase() === 'bodyweight'
           }
         ] as [{
           name: string;
@@ -135,6 +138,7 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
           warmupWeight: number;
           videoUrl: string;
           tips: string;
+          isBodyweight?: boolean;
         }, {
           name: string;
           sets: number;
@@ -143,6 +147,7 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
           warmupWeight: number;
           videoUrl: string;
           tips: string;
+          isBodyweight?: boolean;
         }]
       };
     }

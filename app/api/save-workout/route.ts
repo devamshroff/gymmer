@@ -1,7 +1,7 @@
 // app/api/save-workout/route.ts
 import { NextResponse } from 'next/server';
 import { createWorkoutSession, logExercise, logCardio } from '@/lib/database';
-import { WorkoutSessionData } from '@/lib/workout-session';
+import { WorkoutSessionData, resolveSessionMode } from '@/lib/workout-session';
 import { requireAuth } from '@/lib/auth-utils';
 
 export async function POST(request: Request) {
@@ -43,6 +43,7 @@ export async function POST(request: Request) {
       date_completed: endTime.toISOString(),
       total_duration_minutes: totalDurationMinutes,
       total_strain: Math.round(totalStrain),
+      session_mode: resolveSessionMode(sessionData.sessionMode, 'incremental'),
     });
 
     // Log all exercises

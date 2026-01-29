@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { WorkoutPlan, Stretch } from '@/lib/types';
-import { initWorkoutSession } from '@/lib/workout-session';
+import { initWorkoutSession, resolveSessionMode } from '@/lib/workout-session';
 import Header from '@/app/components/Header';
 import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 import StretchCard from '@/app/components/StretchCard';
@@ -27,6 +27,8 @@ function StretchesContent() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const sessionModeParam = searchParams.get('mode');
+  const sessionMode = resolveSessionMode(sessionModeParam, 'incremental');
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -55,7 +57,7 @@ function StretchesContent() {
         const resolvedWorkout = sessionWorkout || baseWorkout;
         setWorkout(resolvedWorkout);
         // Initialize workout session when workout is loaded
-        initWorkoutSession(resolvedWorkout.name);
+        initWorkoutSession(resolvedWorkout.name, sessionMode);
 
         // Check for index in URL (for navigation from other sections)
         const indexParam = searchParams.get('index');
@@ -88,7 +90,14 @@ function StretchesContent() {
   const workoutName = encodeURIComponent(workout.name);
 
   // Build query string for passing routineId
-  const routineQuery = routineIdParam ? `?routineId=${routineIdParam}` : '';
+  const routineQueryParams = new URLSearchParams();
+  if (routineIdParam) routineQueryParams.set('routineId', routineIdParam);
+  if (sessionModeParam) {
+    routineQueryParams.set('mode', sessionModeParam);
+  } else {
+    routineQueryParams.set('mode', sessionMode);
+  }
+  const routineQuery = routineQueryParams.toString() ? `?${routineQueryParams.toString()}` : '';
 
   const runWithChangeWarning = (action: () => void) => {
     if (hasChangeWarningAck(workout.name, routineIdParam)) {
@@ -153,13 +162,13 @@ function StretchesContent() {
         <div className="w-full max-w-xs space-y-3">
           <button
             onClick={() => openStretchSelector('add')}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-lg text-base font-semibold transition-colors"
+            className="w-full bg-blue-800 hover:bg-blue-700 text-white px-6 py-3 rounded-lg text-base font-semibold transition-colors"
           >
             + Add Stretch
           </button>
           <button
             onClick={() => router.push(`/workout/${workoutName}/active${routineQuery}`)}
-            className="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg text-base font-semibold transition-colors"
+            className="w-full bg-blue-800 hover:bg-blue-700 text-white px-6 py-3 rounded-lg text-base font-semibold transition-colors"
           >
             Start Exercises →
           </button>
@@ -181,7 +190,7 @@ function StretchesContent() {
                 </button>
                 <button
                   onClick={handleWarningContinue}
-                  className="rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+                className="rounded-lg bg-blue-800 py-2 text-sm font-semibold text-white hover:bg-blue-700"
                 >
                   Continue
                 </button>
@@ -262,7 +271,7 @@ function StretchesContent() {
         <div className="mb-8">
           <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
             <div
-              className="h-full bg-green-500 transition-all duration-300"
+                className="h-full bg-blue-700 transition-all duration-300"
               style={{ width: `${progressPercentage}%` }}
             />
           </div>
@@ -274,13 +283,13 @@ function StretchesContent() {
         <div className="grid grid-cols-2 gap-3 mb-6">
           <button
             onClick={() => openStretchSelector('add')}
-            className="bg-emerald-600/80 hover:bg-emerald-500 text-white py-2 rounded-lg text-sm font-semibold transition-colors"
+            className="bg-blue-900/80 hover:bg-blue-800 text-white py-2 rounded-lg text-sm font-semibold transition-colors"
           >
             + Add Stretch
           </button>
           <button
             onClick={() => openStretchSelector('replace')}
-            className="bg-orange-600/80 hover:bg-orange-500 text-white py-2 rounded-lg text-sm font-semibold transition-colors"
+            className="bg-blue-900/80 hover:bg-blue-800 text-white py-2 rounded-lg text-sm font-semibold transition-colors"
           >
             ↺ Replace Stretch
           </button>
@@ -308,7 +317,7 @@ function StretchesContent() {
           </button>
           <button
             onClick={handleNext}
-            className="bg-green-600 hover:bg-green-700 text-white py-4 rounded-lg text-lg font-semibold transition-colors"
+            className="bg-blue-800 hover:bg-blue-700 text-white py-4 rounded-lg text-lg font-semibold transition-colors"
           >
             {currentIndex < stretches.length - 1 ? 'Next Stretch →' : 'Start Exercises →'}
           </button>
@@ -330,7 +339,7 @@ function StretchesContent() {
                 </button>
                 <button
                   onClick={handleWarningContinue}
-                  className="rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+                className="rounded-lg bg-blue-800 py-2 text-sm font-semibold text-white hover:bg-blue-700"
                 >
                   Continue
                 </button>

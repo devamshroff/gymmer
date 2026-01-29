@@ -12,6 +12,7 @@ interface PublicRoutine {
   creator_username: string | null;
   creator_name: string | null;
   created_at: string;
+  last_workout_date?: string | null;
 }
 
 function normalizeDateString(value: string): string {
@@ -41,7 +42,6 @@ export default function BrowseRoutinesPage() {
   const [loading, setLoading] = useState(true);
   const [actionInProgress, setActionInProgress] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [lastWorkoutDates, setLastWorkoutDates] = useState<Record<number, string | null>>({});
 
   // Auto-dismiss toast after 3 seconds
   useEffect(() => {
@@ -71,22 +71,6 @@ export default function BrowseRoutinesPage() {
           setFavoritedIds(favIds as Set<number>);
         }
 
-        const dates: Record<number, string | null> = {};
-        await Promise.all(
-          publicRoutines.map(async (routine: PublicRoutine) => {
-            try {
-              const historyResponse = await fetch(
-                `/api/workout-history?name=${encodeURIComponent(routine.name)}`
-              );
-              const historyData = await historyResponse.json();
-              dates[routine.id] = historyData.lastDate || null;
-            } catch (error) {
-              console.error(`Error fetching history for ${routine.name}:`, error);
-              dates[routine.id] = null;
-            }
-          })
-        );
-        setLastWorkoutDates(dates);
       }
     } catch (error) {
       console.error('Error fetching public routines:', error);
@@ -202,7 +186,7 @@ export default function BrowseRoutinesPage() {
             {routines.map((routine) => {
               const isFavorited = favoritedIds.has(routine.id);
               const isProcessing = actionInProgress === routine.id;
-              const lastDate = lastWorkoutDates[routine.id] || null;
+              const lastDate = routine.last_workout_date || null;
               const formattedDate = formatLocalDate(lastDate);
 
               return (

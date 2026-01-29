@@ -14,6 +14,7 @@ interface Routine {
   creator_username?: string;
   creator_name?: string;
   is_favorited?: number;
+  last_workout_date?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -50,7 +51,6 @@ export default function Home() {
   const [myRoutines, setMyRoutines] = useState<Routine[]>([]);
   const [favoritedRoutines, setFavoritedRoutines] = useState<Routine[]>([]);
   const [publicRoutinesPreview, setPublicRoutinesPreview] = useState<Routine[]>([]);
-  const [lastWorkoutDates, setLastWorkoutDates] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [showUsernameSetup, setShowUsernameSetup] = useState(false);
@@ -94,24 +94,6 @@ export default function Home() {
       const publicResponse = await fetch('/api/routines/public');
       const publicData = await publicResponse.json();
       setPublicRoutinesPreview((publicData.routines || []).slice(0, 3));
-
-      // Combine all routines to fetch last workout dates
-      const allRoutines = [...(routinesData.routines || []), ...(favoritesData.routines || [])];
-
-      // Fetch last workout date for each routine
-      const dates: Record<string, string | null> = {};
-      for (const routine of allRoutines) {
-        try {
-          const historyResponse = await fetch(`/api/workout-history?name=${encodeURIComponent(routine.name)}`);
-          const historyData = await historyResponse.json();
-          dates[routine.name] = historyData.lastDate;
-        } catch (error) {
-          console.error(`Error fetching history for ${routine.name}:`, error);
-          dates[routine.name] = null;
-        }
-      }
-
-      setLastWorkoutDates(dates);
     } catch (error) {
       console.error('Error fetching routines:', error);
     } finally {
@@ -152,7 +134,7 @@ export default function Home() {
   }
 
   const renderRoutineCard = (routine: Routine, isOwned: boolean) => {
-    const lastDate = lastWorkoutDates[routine.name];
+    const lastDate = routine.last_workout_date || null;
     const formattedDate = formatLocalDate(lastDate);
     const encodedName = encodeURIComponent(routine.name);
     const previewHref = `/workout/${encodedName}?routineId=${routine.id}&preview=1`;
@@ -200,21 +182,48 @@ export default function Home() {
         <div className="flex flex-wrap gap-2">
           <Link
             href={previewHref}
-            className="px-4 py-2 rounded-lg font-medium bg-amber-700 hover:bg-amber-600 text-white transition-colors"
+            className="px-4 py-2 rounded-lg font-medium bg-amber-700 hover:bg-amber-600 text-white transition-colors inline-flex items-center gap-2"
           >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M12 5c5.5 0 9.5 4.2 11 6.6a1.2 1.2 0 0 1 0 1C21.5 15.8 17.5 20 12 20S2.5 15.8 1 12.6a1.2 1.2 0 0 1 0-1C2.5 9.2 6.5 5 12 5zm0 3.5A3.5 3.5 0 1 0 12 15a3.5 3.5 0 0 0 0-7z" />
+            </svg>
             Preview
           </Link>
           <Link
             href={startHref}
-            className="px-4 py-2 rounded-lg font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors"
+            className="px-4 py-2 rounded-lg font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors inline-flex items-center gap-2"
           >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M6.5 4.8a1 1 0 0 1 1 0l10 6a1 1 0 0 1 0 1.8l-10 6A1 1 0 0 1 6 17.8V6.2a1 1 0 0 1 .5-1.4z" />
+            </svg>
             Start
           </Link>
           {isOwned && (
             <Link
               href={`/routines/${routine.id}/edit`}
-              className="px-4 py-2 rounded-lg font-medium bg-blue-900 hover:bg-blue-800 text-white transition-colors"
+              className="px-4 py-2 rounded-lg font-medium bg-blue-900 hover:bg-blue-800 text-white transition-colors inline-flex items-center gap-2"
             >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M4 17.3V20h2.7l8-8-2.7-2.7-8 8zm15.7-9.6a1 1 0 0 0 0-1.4l-2-2a1 1 0 0 0-1.4 0l-1.6 1.6L18.1 9l1.6-1.3z" />
+              </svg>
               Edit
             </Link>
           )}
@@ -230,6 +239,7 @@ export default function Home() {
           <span className="block text-gray-200">welcome to</span>
           <span className="text-emerald-600 font-bold">GYMMER</span>
         </h1>
+        <p className="text-center text-zinc-400 mb-4">AI Powered Workouts</p>
 
         {userInfo?.username && (
           <p className="text-center text-zinc-400 mb-6">
@@ -240,17 +250,23 @@ export default function Home() {
         {/* Create New Routine Button */}
         <button
           onClick={() => setShowCreateModal(true)}
-          className="mb-3 block w-full bg-purple-950 hover:bg-purple-900 text-white text-center py-4 rounded-lg text-lg font-bold transition-colors"
+          className="mb-3 block w-full bg-purple-900 hover:bg-purple-800 text-white text-center py-4 rounded-lg text-lg font-bold transition-colors"
         >
           + Create New Routine
         </button>
 
-        <div className="mb-8 flex justify-end">
+        <div className="mb-8">
           <Link
             href="/routines/import"
-            className="inline-flex items-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 text-sm font-semibold transition-colors"
+            className="block w-full rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-3 text-center text-sm font-semibold transition-colors"
           >
             Import Routine from JSON
+          </Link>
+          <Link
+            href="/goals"
+            className="mt-3 block w-full rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-4 py-3 text-center text-sm font-semibold transition-colors"
+          >
+            Workout Goals
           </Link>
         </div>
 
@@ -289,7 +305,7 @@ export default function Home() {
             <h2 className="text-xl font-semibold text-zinc-300 mb-4">Discover Public Routines</h2>
             <Link
               href="/routines/browse"
-              className="mb-4 block w-full bg-purple-800 hover:bg-purple-700 text-white text-center py-3 rounded-lg font-semibold transition-colors"
+              className="mb-4 block w-full bg-purple-900 hover:bg-purple-800 text-white text-center py-3 rounded-lg font-semibold transition-colors"
             >
               Browse All Public Routines
             </Link>

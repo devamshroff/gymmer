@@ -1,6 +1,6 @@
 // app/api/routines/import/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getDatabase } from '@/lib/database';
+import { getDatabase, getUserGoals } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
 export async function POST(request: NextRequest) {
@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getDatabase();
+    const goalsText = await getUserGoals(user.id);
 
     // Check if routine already exists for this user
     const existing = await db.execute({
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
       const exercise = workoutPlan.exercises[i];
 
       if (exercise.type === 'single' && exercise.name) {
-        const exerciseId = await getOrCreateExercise(db, exerciseIndex, exercise.name);
+        const exerciseId = await getOrCreateExercise(db, exerciseIndex, exercise.name, goalsText);
 
         await db.execute({
           sql: `INSERT INTO routine_exercises (
@@ -72,8 +73,8 @@ export async function POST(request: NextRequest) {
         const ex1 = exercise.exercises[0];
         const ex2 = exercise.exercises[1];
 
-        const exerciseId1 = await getOrCreateExercise(db, exerciseIndex, ex1.name);
-        const exerciseId2 = await getOrCreateExercise(db, exerciseIndex, ex2.name);
+        const exerciseId1 = await getOrCreateExercise(db, exerciseIndex, ex1.name, goalsText);
+        const exerciseId2 = await getOrCreateExercise(db, exerciseIndex, ex2.name, goalsText);
 
         await db.execute({
           sql: `INSERT INTO routine_exercises (
@@ -103,7 +104,7 @@ export async function POST(request: NextRequest) {
     if (workoutPlan.preWorkoutStretches) {
       for (let i = 0; i < workoutPlan.preWorkoutStretches.length; i++) {
         const stretch = workoutPlan.preWorkoutStretches[i];
-        const stretchId = await getOrCreateStretch(db, stretchIndex, stretch, 'pre_workout');
+        const stretchId = await getOrCreateStretch(db, stretchIndex, stretch, 'pre_workout', goalsText);
         await db.execute({
           sql: 'INSERT INTO routine_pre_stretches (routine_id, stretch_id, order_index) VALUES (?, ?, ?)',
           args: [routineId, stretchId, i]
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
     if (workoutPlan.postWorkoutStretches) {
       for (let i = 0; i < workoutPlan.postWorkoutStretches.length; i++) {
         const stretch = workoutPlan.postWorkoutStretches[i];
-        const stretchId = await getOrCreateStretch(db, stretchIndex, stretch, 'post_workout');
+        const stretchId = await getOrCreateStretch(db, stretchIndex, stretch, 'post_workout', goalsText);
         await db.execute({
           sql: 'INSERT INTO routine_post_stretches (routine_id, stretch_id, order_index) VALUES (?, ?, ?)',
           args: [routineId, stretchId, i]
@@ -187,7 +188,12 @@ function normalizeName(value: string): string {
     .trim();
 }
 
-async function getOrCreateExercise(db: any, index: NameIndex, name: string): Promise<number> {
+async function getOrCreateExercise(
+  db: any,
+  index: NameIndex,
+  name: string,
+  goalsText?: string | null
+): Promise<number> {
   const lowerName = name.toLowerCase();
   const normalizedName = normalizeName(name);
   const exactMatch = index.exactLower.get(lowerName);
@@ -196,7 +202,7 @@ async function getOrCreateExercise(db: any, index: NameIndex, name: string): Pro
   const normalizedMatch = index.normalized.get(normalizedName);
   if (normalizedMatch) return normalizedMatch;
 
-  const fuzzyMatch = await resolveFuzzyMatch(name, index);
+  const fuzzyMatch = await resolveFuzzyMatch(name, index, goalsText);
   if (fuzzyMatch) return fuzzyMatch;
 
   const result = await db.execute({
@@ -211,7 +217,13 @@ async function getOrCreateExercise(db: any, index: NameIndex, name: string): Pro
   return newId;
 }
 
-async function getOrCreateStretch(db: any, index: NameIndex, stretch: any, type: string): Promise<number> {
+async function getOrCreateStretch(
+  db: any,
+  index: NameIndex,
+  stretch: any,
+  type: string,
+  goalsText?: string | null
+): Promise<number> {
   const lowerName = String(stretch.name || '').toLowerCase();
   const normalizedName = normalizeName(String(stretch.name || ''));
   const exactMatch = index.exactLower.get(lowerName);
@@ -220,7 +232,7 @@ async function getOrCreateStretch(db: any, index: NameIndex, stretch: any, type:
   const normalizedMatch = index.normalized.get(normalizedName);
   if (normalizedMatch) return normalizedMatch;
 
-  const fuzzyMatch = await resolveFuzzyMatch(String(stretch.name || ''), index);
+  const fuzzyMatch = await resolveFuzzyMatch(String(stretch.name || ''), index, goalsText);
   if (fuzzyMatch) return fuzzyMatch;
 
   const result = await db.execute({
@@ -242,7 +254,11 @@ async function getOrCreateStretch(db: any, index: NameIndex, stretch: any, type:
   return newId;
 }
 
-async function resolveFuzzyMatch(name: string, index: NameIndex): Promise<number | null> {
+async function resolveFuzzyMatch(
+  name: string,
+  index: NameIndex,
+  goalsText?: string | null
+): Promise<number | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
@@ -255,10 +271,12 @@ async function resolveFuzzyMatch(name: string, index: NameIndex): Promise<number
       {
         role: 'system',
         content: [
+          'You are a gym trainer helping users make consistent, incremental progress.',
           'You match exercise/stretch names to existing options.',
           'Return ONLY a JSON object: {"matchId": number|null}.',
           'Return null if there is no close match.',
           'Prefer exact or near-exact semantic matches; avoid loose matches.',
+          goalsText ? `User goals: ${goalsText}` : 'User goals: (not provided)',
         ].join(' ')
       },
       {

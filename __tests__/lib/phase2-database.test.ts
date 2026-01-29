@@ -130,7 +130,7 @@ describe('Phase 2: Public Routines Functions', () => {
       expect(result).toEqual(routines);
       expect(mockExecute).toHaveBeenCalledWith({
         sql: expect.stringContaining('r.user_id != ?'),
-        args: ['user1-id'],
+        args: ['user1-id', 'user1-id'],
       });
     });
   });
@@ -228,7 +228,7 @@ describe('Phase 2: Favorites Functions', () => {
       expect(result).toEqual(favorites);
       expect(mockExecute).toHaveBeenCalledWith({
         sql: expect.stringContaining('routine_favorites rf'),
-        args: ['user-123'],
+        args: ['user-123', 'user-123'],
       });
     });
 

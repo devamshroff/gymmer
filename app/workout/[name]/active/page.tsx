@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, Suspense } from 'react';
+import { useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Exercise, SingleExercise, B2BExercise } from '@/lib/types';
@@ -11,6 +11,7 @@ import { getFormTips, getVideoUrl } from '@/lib/workout-media';
 import { acknowledgeChangeWarning, hasChangeWarningAck, loadSessionWorkout, saveSessionWorkout } from '@/lib/session-workout';
 import Header from '@/app/components/Header';
 import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
+import ExerciseHistoryModal from '@/app/components/ExerciseHistoryModal';
 
 interface SetData {
   weight: number;
@@ -79,6 +80,32 @@ function ActiveWorkoutContent() {
   const [showChangeWarning, setShowChangeWarning] = useState(false);
   const pendingChangeRef = useRef<(() => void) | null>(null);
 
+  const historyTargets = useMemo(() => {
+    if (!workout) return {};
+    const next: Record<string, { weight?: number | null; reps?: number | null }> = {};
+    for (const exercise of workout.exercises) {
+      if (exercise.type === 'single') {
+        next[exercise.name] = {
+          weight: exercise.targetWeight,
+          reps: exercise.targetReps,
+        };
+      } else {
+        const [ex1, ex2] = exercise.exercises;
+        next[ex1.name] = {
+          weight: ex1.targetWeight,
+          reps: ex1.targetReps,
+        };
+        next[ex2.name] = {
+          weight: ex2.targetWeight,
+          reps: ex2.targetReps,
+        };
+      }
+    }
+    return next;
+  }, [workout]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyExerciseNames, setHistoryExerciseNames] = useState<string[]>([]);
+
   // Last exercise log from database
   const [lastExerciseLog, setLastExerciseLog] = useState<any>(null);
   const [lastPartnerExerciseLog, setLastPartnerExerciseLog] = useState<any>(null);
@@ -96,7 +123,11 @@ function ActiveWorkoutContent() {
 
   // Get routineId from URL params (for public/favorited routines)
   const routineIdParam = searchParams.get('routineId');
-  const routineQuery = routineIdParam ? `?routineId=${routineIdParam}` : '';
+  const sessionModeParam = searchParams.get('mode');
+  const routineQueryParams = new URLSearchParams();
+  if (routineIdParam) routineQueryParams.set('routineId', routineIdParam);
+  if (sessionModeParam) routineQueryParams.set('mode', sessionModeParam);
+  const routineQuery = routineQueryParams.toString() ? `?${routineQueryParams.toString()}` : '';
 
   useEffect(() => {
     async function fetchWorkout() {
@@ -437,6 +468,16 @@ function ActiveWorkoutContent() {
     setTransitionTimeRemaining(0);
   };
 
+  const openHistory = (names: string[]) => {
+    setHistoryExerciseNames(names);
+    setShowHistory(true);
+  };
+
+  const closeHistory = () => {
+    setShowHistory(false);
+    setHistoryExerciseNames([]);
+  };
+
   const handleEndExercise = () => {
     console.log('handleEndExercise called', {
       exerciseType: currentExercise.type,
@@ -519,7 +560,9 @@ function ActiveWorkoutContent() {
       // At the first exercise, go back to pre-stretches (if any) or exit
       const preStretchCount = workout.preWorkoutStretches?.length || 0;
       if (preStretchCount > 0) {
-        router.push(`/stretches/${encodeURIComponent(workout.name)}?index=${preStretchCount - 1}${routineIdParam ? `&routineId=${routineIdParam}` : ''}`);
+        const stretchParams = new URLSearchParams(routineQueryParams.toString());
+        stretchParams.set('index', String(preStretchCount - 1));
+        router.push(`/stretches/${encodeURIComponent(workout.name)}?${stretchParams.toString()}`);
       } else {
         setShowExitConfirm(true);
       }
@@ -536,7 +579,9 @@ function ActiveWorkoutContent() {
       // Go to last pre-stretch
       const preStretchCount = workout.preWorkoutStretches?.length || 0;
       if (preStretchCount > 0) {
-        router.push(`/stretches/${encodeURIComponent(workout.name)}?index=${preStretchCount - 1}${routineIdParam ? `&routineId=${routineIdParam}` : ''}`);
+        const stretchParams = new URLSearchParams(routineQueryParams.toString());
+        stretchParams.set('index', String(preStretchCount - 1));
+        router.push(`/stretches/${encodeURIComponent(workout.name)}?${stretchParams.toString()}`);
       }
     }
   };
@@ -557,7 +602,8 @@ function ActiveWorkoutContent() {
     warmupWeight: 0,
     restTime: 60,
     videoUrl: exercise.video_url || '',
-    tips: exercise.tips || ''
+    tips: exercise.tips || '',
+    isBodyweight: (exercise.equipment || '').toLowerCase() === 'bodyweight'
   });
 
   const buildSupersetExercise = (exercise1: ExerciseOption, exercise2: ExerciseOption): B2BExercise => ({
@@ -571,7 +617,8 @@ function ActiveWorkoutContent() {
         targetWeight: 0,
         warmupWeight: 0,
         videoUrl: exercise1.video_url || '',
-        tips: exercise1.tips || ''
+        tips: exercise1.tips || '',
+        isBodyweight: (exercise1.equipment || '').toLowerCase() === 'bodyweight'
       },
       {
         name: exercise2.name,
@@ -580,7 +627,8 @@ function ActiveWorkoutContent() {
         targetWeight: 0,
         warmupWeight: 0,
         videoUrl: exercise2.video_url || '',
-        tips: exercise2.tips || ''
+        tips: exercise2.tips || '',
+        isBodyweight: (exercise2.equipment || '').toLowerCase() === 'bodyweight'
       }
     ]
   });
@@ -701,19 +749,22 @@ function ActiveWorkoutContent() {
 
   // Determine which exercise to display (for review mode vs active mode)
   const exerciseToDisplay = isReviewMode ? viewingExercise : currentExercise;
+  const modifyAccentClasses = exerciseToDisplay.type === 'b2b'
+    ? 'bg-purple-600 hover:bg-purple-500'
+    : 'bg-rose-800 hover:bg-rose-700';
   const exerciseModifyControls = !isReviewMode ? (
-    <div className="grid grid-cols-2 gap-3 mb-6">
+    <div className="flex items-center gap-2">
       <button
         onClick={() => openExerciseTypePicker('add')}
-        className="bg-emerald-600/80 hover:bg-emerald-500 text-white py-2 rounded-lg text-sm font-semibold transition-colors"
+        className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors ${modifyAccentClasses}`}
       >
         + Add Exercise
       </button>
       <button
         onClick={() => openExerciseTypePicker('replace')}
-        className="bg-orange-600/80 hover:bg-orange-500 text-white py-2 rounded-lg text-sm font-semibold transition-colors"
+        className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors ${modifyAccentClasses}`}
       >
-        ↺ Replace Exercise
+        ↺ Replace
       </button>
     </div>
   ) : null;
@@ -754,7 +805,7 @@ function ActiveWorkoutContent() {
                   setShowExerciseTypePicker(false);
                   setShowExerciseSelector(true);
                 }}
-                className="w-full rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+                className="w-full rounded-lg bg-rose-800 py-2 text-sm font-semibold text-white hover:bg-rose-700"
               >
                 Single exercise
               </button>
@@ -798,6 +849,14 @@ function ActiveWorkoutContent() {
           onSelect={handleSelectSuperset}
         />
       )}
+
+      <ExerciseHistoryModal
+        open={showHistory}
+        onClose={closeHistory}
+        exerciseNames={historyExerciseNames}
+        title="Exercise History"
+        targets={historyTargets}
+      />
     </>
   );
 
@@ -806,6 +865,8 @@ function ActiveWorkoutContent() {
     const b2bExercise = exerciseToDisplay as B2BExercise;
     const ex1 = b2bExercise.exercises[0];
     const ex2 = b2bExercise.exercises[1];
+    const ex1RepsOnly = !!ex1.isBodyweight;
+    const ex2RepsOnly = !!ex2.isBodyweight;
 
     // In review mode, show cached completed pairs
     const displayCompletedPairs = isReviewMode && viewingCachedData
@@ -967,7 +1028,15 @@ function ActiveWorkoutContent() {
             </div>
           </div>
 
-          {exerciseModifyControls}
+          <div className="flex items-center gap-3 mb-4">
+            {exerciseModifyControls}
+            <button
+              onClick={() => openHistory([ex1.name, ex2.name])}
+              className="ml-auto bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            >
+              📈 History
+            </button>
+          </div>
 
           {/* Superset Title */}
           <div className="text-center mb-6">
@@ -997,7 +1066,9 @@ function ActiveWorkoutContent() {
                           if (weight !== null && reps !== null) {
                             return (
                               <div key={setNum} className="text-zinc-300 text-xs">
-                                Set {setNum}: {weight} × {reps}
+                                {ex1RepsOnly
+                                  ? `Set ${setNum}: ${reps} reps`
+                                  : `Set ${setNum}: ${weight} × ${reps}`}
                               </div>
                             );
                           }
@@ -1024,7 +1095,9 @@ function ActiveWorkoutContent() {
                           if (weight !== null && reps !== null) {
                             return (
                               <div key={setNum} className="text-zinc-300 text-xs">
-                                Set {setNum}: {weight} × {reps}
+                                {ex2RepsOnly
+                                  ? `Set ${setNum}: ${reps} reps`
+                                  : `Set ${setNum}: ${weight} × ${reps}`}
                               </div>
                             );
                           }
@@ -1299,6 +1372,7 @@ function ActiveWorkoutContent() {
 
   const exercise = exerciseToDisplay as SingleExercise;
   const isWarmupSet = currentSetIndex === 0;
+  const isRepsOnly = !!exercise.isBodyweight;
 
   // In review mode, show cached completed sets
   const displayCompletedSets = isReviewMode && viewingCachedData
@@ -1319,7 +1393,7 @@ function ActiveWorkoutContent() {
           <div className="w-full mb-12">
             <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
               <div
-                className="h-full bg-orange-500 transition-all duration-300"
+                className="h-full bg-rose-600 transition-all duration-300"
                 style={{ width: `${progressPercentage}%` }}
               />
             </div>
@@ -1334,9 +1408,9 @@ function ActiveWorkoutContent() {
           </h1>
 
           {/* Countdown Timer */}
-          <div className={`bg-zinc-800 rounded-lg p-16 mb-12 text-center border-4 ${transitionTimeRemaining === 0 ? 'border-zinc-700' : 'border-blue-600'}`}>
-            <div className={`text-xl mb-4 ${transitionTimeRemaining === 0 ? 'text-zinc-400' : 'text-blue-400'}`}>Chilll Outtt</div>
-            <div className={`text-9xl font-bold mb-2 ${transitionTimeRemaining === 0 ? 'text-blue-400' : 'text-white'}`}>
+          <div className={`bg-zinc-800 rounded-lg p-16 mb-12 text-center border-4 ${transitionTimeRemaining === 0 ? 'border-zinc-700' : 'border-rose-700'}`}>
+            <div className={`text-xl mb-4 ${transitionTimeRemaining === 0 ? 'text-zinc-400' : 'text-rose-300'}`}>Chilll Outtt</div>
+            <div className={`text-9xl font-bold mb-2 ${transitionTimeRemaining === 0 ? 'text-rose-300' : 'text-white'}`}>
               {transitionTimeRemaining}
             </div>
             <div className="text-zinc-400 text-lg">seconds</div>
@@ -1345,7 +1419,7 @@ function ActiveWorkoutContent() {
           {/* Skip Button */}
           <button
             onClick={handleSkipTransition}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-12 py-5 rounded-lg text-2xl font-bold transition-colors"
+            className="bg-rose-700 hover:bg-rose-600 text-white px-12 py-5 rounded-lg text-2xl font-bold transition-colors"
           >
             I'm Ready →
           </button>
@@ -1369,7 +1443,7 @@ function ActiveWorkoutContent() {
 
           {/* Set Complete */}
           <div className="text-center mb-8">
-            <div className="text-green-500 text-6xl mb-2">✓</div>
+            <div className="text-rose-400 text-6xl mb-2">✓</div>
             <div className="text-white text-2xl font-semibold">
               {exercise.warmupWeight !== exercise.targetWeight && completedSets.length === 1
                 ? 'WARMUP SET'
@@ -1378,9 +1452,9 @@ function ActiveWorkoutContent() {
           </div>
 
           {/* Rest Timer */}
-          <div className={`bg-zinc-800 rounded-lg p-12 mb-8 text-center border-4 ${restTimeRemaining === 0 ? 'border-zinc-700' : 'border-orange-600'}`}>
-            <div className={`text-xl mb-4 ${restTimeRemaining === 0 ? 'text-zinc-400' : 'text-orange-400'}`}>REST TIME</div>
-            <div className={`text-8xl font-bold mb-2 ${restTimeRemaining === 0 ? 'text-orange-400' : 'text-white'}`}>
+          <div className={`bg-zinc-800 rounded-lg p-12 mb-8 text-center border-4 ${restTimeRemaining === 0 ? 'border-zinc-700' : 'border-rose-700'}`}>
+            <div className={`text-xl mb-4 ${restTimeRemaining === 0 ? 'text-zinc-400' : 'text-rose-300'}`}>REST TIME</div>
+            <div className={`text-8xl font-bold mb-2 ${restTimeRemaining === 0 ? 'text-rose-300' : 'text-white'}`}>
               {restTimeRemaining}
             </div>
             <div className="text-zinc-400 text-lg">seconds</div>
@@ -1396,7 +1470,7 @@ function ActiveWorkoutContent() {
             </button>
             <button
               onClick={handleSkipRest}
-              className="bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-lg text-lg font-semibold transition-colors"
+              className="bg-rose-700 hover:bg-rose-600 text-white py-4 rounded-lg text-lg font-semibold transition-colors"
             >
               {restTimeRemaining === 0 ? 'Continue Workout' : 'Skip Rest'}
             </button>
@@ -1471,19 +1545,25 @@ function ActiveWorkoutContent() {
         {/* Progress Bar */}
         <div className="mb-6">
           <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-orange-500 transition-all duration-300"
-              style={{ width: `${progressPercentage}%` }}
-            />
+              <div
+                className="h-full bg-rose-600 transition-all duration-300"
+                style={{ width: `${progressPercentage}%` }}
+              />
           </div>
           <div className="text-zinc-500 text-sm text-center mt-2">
             Overall Progress: {currentProgress} / {totalItems}
           </div>
         </div>
 
-        {exerciseModifyControls}
-
-        {/* Exercise Name */}
+        <div className="flex items-center gap-3 mb-3">
+          {exerciseModifyControls}
+          <button
+            onClick={() => openHistory([exercise.name])}
+            className="ml-auto bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+          >
+            📈 History
+          </button>
+        </div>
         <h1 className="text-3xl font-bold text-white mb-6">{exercise.name}</h1>
 
         {/* Last Time Section */}
@@ -1495,7 +1575,9 @@ function ActiveWorkoutContent() {
             <div className="space-y-1">
               {lastExerciseLog.warmup_weight !== null && lastExerciseLog.warmup_reps !== null && (
                 <div className="text-zinc-300 text-sm">
-                  Warmup: {lastExerciseLog.warmup_weight} lbs × {lastExerciseLog.warmup_reps} reps
+                  {isRepsOnly
+                    ? `Warmup: ${lastExerciseLog.warmup_reps} reps`
+                    : `Warmup: ${lastExerciseLog.warmup_weight} lbs × ${lastExerciseLog.warmup_reps} reps`}
                 </div>
               )}
               {[1, 2, 3, 4].map((setNum) => {
@@ -1504,7 +1586,9 @@ function ActiveWorkoutContent() {
                 if (weight !== null && reps !== null) {
                   return (
                     <div key={setNum} className="text-zinc-300 text-sm">
-                      Set {setNum}: {weight} lbs × {reps} reps
+                      {isRepsOnly
+                        ? `Set ${setNum}: ${reps} reps`
+                        : `Set ${setNum}: ${weight} lbs × ${reps} reps`}
                     </div>
                   );
                 }
@@ -1516,9 +1600,9 @@ function ActiveWorkoutContent() {
 
         {/* Current Set - Only show if not in review mode */}
         {!isReviewMode && (
-        <div className="bg-zinc-800 rounded-lg p-6 mb-6 border-2 border-orange-600">
+        <div className="bg-zinc-800 rounded-lg p-6 mb-6 border-2 border-rose-700">
           <div className="text-center mb-4">
-            <div className="text-orange-400 text-lg font-semibold mb-2">
+            <div className="text-rose-300 text-lg font-semibold mb-2">
               {isWarmupSet ? 'WARMUP SET' : `SET ${currentSetIndex} (WORKING)`}
             </div>
           </div>
@@ -1542,7 +1626,7 @@ function ActiveWorkoutContent() {
                     }
                   }
                 }}
-                className="w-full bg-zinc-800 text-white text-3xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full bg-zinc-800 text-white text-3xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-rose-600"
               />
             </div>
             <div className="bg-zinc-900 rounded-lg p-4">
@@ -1552,7 +1636,7 @@ function ActiveWorkoutContent() {
                 inputMode="numeric"
                 value={setData.reps ?? ''}
                 onChange={(e) => setSetData({ ...setData, reps: parseInt(e.target.value) || 0 })}
-                className="w-full bg-zinc-800 text-white text-3xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full bg-zinc-800 text-white text-3xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-rose-600"
               />
             </div>
           </div>
@@ -1568,7 +1652,7 @@ function ActiveWorkoutContent() {
               </button>
               <button
                 onClick={handleCompleteSet}
-                className="bg-green-600 hover:bg-green-700 text-white py-4 rounded-lg text-lg font-bold transition-colors"
+                className="bg-rose-700 hover:bg-rose-600 text-white py-4 rounded-lg text-lg font-bold transition-colors"
               >
                 ✓ Complete Warmup
               </button>
@@ -1577,14 +1661,14 @@ function ActiveWorkoutContent() {
             <div className="space-y-3">
               <button
                 onClick={handleCompleteSet}
-                className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-lg text-xl font-bold transition-colors"
+                className="w-full bg-rose-700 hover:bg-rose-600 text-white py-4 rounded-lg text-xl font-bold transition-colors"
               >
                 ✓ Complete Set {currentSetIndex}
               </button>
               {completedSets.length > 0 && (
                 <button
                   onClick={handleEndExercise}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg text-lg font-semibold transition-colors"
+                  className="w-full bg-rose-700 hover:bg-rose-600 text-white py-3 rounded-lg text-lg font-semibold transition-colors"
                 >
                   End Exercise & Continue
                 </button>
@@ -1599,7 +1683,7 @@ function ActiveWorkoutContent() {
           <div className="bg-zinc-800 rounded-lg p-4 mb-6">
             <div className="text-zinc-400 text-sm mb-2">COMPLETED SETS</div>
             {displayCompletedSets.map((set, index) => (
-              <div key={index} className="text-green-400 text-sm mb-1">
+              <div key={index} className="text-rose-300 text-sm mb-1">
                 ✓ {index === 0 ? 'Warmup' : `Set ${index}`}: {set.weight} lbs × {set.reps} reps
               </div>
             ))}

@@ -13,9 +13,12 @@ export interface SessionExerciseData {
   };
 }
 
+export type SessionMode = 'incremental' | 'maintenance' | 'light';
+
 export interface WorkoutSessionData {
   workoutName: string;
   startTime: string;
+  sessionMode: SessionMode;
   exercises: SessionExerciseData[];
   cardio?: {
     type: string;
@@ -27,10 +30,19 @@ export interface WorkoutSessionData {
 
 const STORAGE_KEY = 'current_workout_session';
 
-export function initWorkoutSession(workoutName: string): void {
+export function isSessionMode(value: string | null | undefined): value is SessionMode {
+  return value === 'incremental' || value === 'maintenance' || value === 'light';
+}
+
+export function resolveSessionMode(value: string | null | undefined, fallback: SessionMode = 'incremental'): SessionMode {
+  return isSessionMode(value) ? value : fallback;
+}
+
+export function initWorkoutSession(workoutName: string, sessionMode: SessionMode = 'incremental'): void {
   const session: WorkoutSessionData = {
     workoutName,
     startTime: new Date().toISOString(),
+    sessionMode,
     exercises: [],
   };
   if (typeof window !== 'undefined') {
@@ -41,7 +53,10 @@ export function initWorkoutSession(workoutName: string): void {
 export function getWorkoutSession(): WorkoutSessionData | null {
   if (typeof window === 'undefined') return null;
   const data = localStorage.getItem(STORAGE_KEY);
-  return data ? JSON.parse(data) : null;
+  if (!data) return null;
+  const parsed = JSON.parse(data) as WorkoutSessionData;
+  parsed.sessionMode = resolveSessionMode(parsed.sessionMode, 'incremental');
+  return parsed;
 }
 
 export function addExerciseToSession(exercise: SessionExerciseData): void {
@@ -59,6 +74,15 @@ export function addCardioToSession(cardio: { type: string; time: string; speed?:
   if (!session) return;
 
   session.cardio = cardio;
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  }
+}
+
+export function setWorkoutSessionMode(mode: SessionMode): void {
+  const session = getWorkoutSession();
+  if (!session) return;
+  session.sessionMode = mode;
   if (typeof window !== 'undefined') {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   }

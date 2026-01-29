@@ -1,24 +1,80 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Exercise, Stretch, Cardio } from '@/lib/types';
 import { getFormTips, getVideoUrl } from '@/lib/workout-media';
+import { isSessionMode, resolveSessionMode } from '@/lib/workout-session';
+import type { SessionMode } from '@/lib/workout-session';
 import Header from '@/app/components/Header';
 import { BottomActionBar, Card, SectionHeader } from '@/app/components/SharedUi';
+import ExerciseHistoryModal from '@/app/components/ExerciseHistoryModal';
+
+type ExerciseTarget = {
+  suggestedWeight?: number | null;
+  suggestedReps?: number | null;
+  rationale?: string | null;
+};
 
 export default function WorkoutDetailPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const isPreview = searchParams.get('preview') === '1';
+  const sessionModeParam = searchParams.get('mode');
+  const sessionMode = isSessionMode(sessionModeParam) ? sessionModeParam : null;
+  const startMode = resolveSessionMode(sessionModeParam, 'incremental');
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [routineId, setRoutineId] = useState<number | null>(null);
   const [isPublicRoutine, setIsPublicRoutine] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyExerciseNames, setHistoryExerciseNames] = useState<string[]>([]);
+  const [goalsText, setGoalsText] = useState<string | null>(null);
+  const [targets, setTargets] = useState<Record<string, ExerciseTarget>>({});
+  const [targetsLoading, setTargetsLoading] = useState(false);
+  const [targetsError, setTargetsError] = useState<string | null>(null);
+
+  const baseHistoryTargets = useMemo(() => {
+    if (!workout) return {};
+    const next: Record<string, { weight?: number | null; reps?: number | null }> = {};
+    for (const exercise of workout.exercises) {
+      if (exercise.type === 'single') {
+        next[exercise.name] = {
+          weight: exercise.targetWeight,
+          reps: exercise.targetReps,
+        };
+      } else {
+        const [ex1, ex2] = exercise.exercises;
+        next[ex1.name] = {
+          weight: ex1.targetWeight,
+          reps: ex1.targetReps,
+        };
+        next[ex2.name] = {
+          weight: ex2.targetWeight,
+          reps: ex2.targetReps,
+        };
+      }
+    }
+    return next;
+  }, [workout]);
+
+  const historyTargets = useMemo(() => {
+    const next: Record<string, { weight?: number | null; reps?: number | null }> = { ...baseHistoryTargets };
+    if (isPreview) {
+      for (const [name, suggestion] of Object.entries(targets)) {
+        const current = next[name] || {};
+        next[name] = {
+          weight: suggestion.suggestedWeight ?? current.weight ?? null,
+          reps: suggestion.suggestedReps ?? current.reps ?? null,
+        };
+      }
+    }
+    return next;
+  }, [baseHistoryTargets, isPreview, targets]);
 
   useEffect(() => {
     async function fetchWorkout() {
@@ -61,6 +117,118 @@ export default function WorkoutDetailPage() {
     fetchWorkout();
   }, [params.name, searchParams]);
 
+  useEffect(() => {
+    if (!workout || !isPreview || !sessionMode) return;
+
+    let isActive = true;
+    const controller = new AbortController();
+
+    const fetchTargets = async () => {
+      setTargetsLoading(true);
+      setTargetsError(null);
+      setTargets({});
+
+      const exercisePayload: Array<{
+        name: string;
+        type: 'single' | 'b2b';
+        sets: number;
+        targetWeight: number;
+        targetReps: number;
+        warmupWeight?: number;
+        isBodyweight?: boolean;
+      }> = [];
+
+      for (const exercise of workout.exercises) {
+        if (exercise.type === 'single') {
+          exercisePayload.push({
+            name: exercise.name,
+            type: 'single',
+            sets: exercise.sets,
+            targetWeight: exercise.targetWeight,
+            targetReps: exercise.targetReps,
+            warmupWeight: exercise.warmupWeight,
+            isBodyweight: exercise.isBodyweight,
+          });
+        } else {
+          const [ex1, ex2] = exercise.exercises;
+          exercisePayload.push({
+            name: ex1.name,
+            type: 'b2b',
+            sets: ex1.sets,
+            targetWeight: ex1.targetWeight,
+            targetReps: ex1.targetReps,
+            warmupWeight: ex1.warmupWeight,
+            isBodyweight: ex1.isBodyweight,
+          });
+          exercisePayload.push({
+            name: ex2.name,
+            type: 'b2b',
+            sets: ex2.sets,
+            targetWeight: ex2.targetWeight,
+            targetReps: ex2.targetReps,
+            warmupWeight: ex2.warmupWeight,
+            isBodyweight: ex2.isBodyweight,
+          });
+        }
+      }
+
+      try {
+        const [goalsResponse, targetsResponse] = await Promise.all([
+          fetch('/api/goals', { signal: controller.signal }),
+          fetch('/api/workout-targets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              workoutName: workout.name,
+              sessionMode,
+              exercises: exercisePayload,
+            }),
+            signal: controller.signal,
+          }),
+        ]);
+
+        let nextGoalsText: string | null = null;
+        if (goalsResponse.ok) {
+          const goalsData = await goalsResponse.json();
+          nextGoalsText = (goalsData?.goals || '').trim() || null;
+        }
+
+        if (!isActive) return;
+
+        setGoalsText(nextGoalsText);
+
+        if (!targetsResponse.ok) {
+          throw new Error('Failed to load targets');
+        }
+
+        const targetsData = await targetsResponse.json();
+        const nextTargets: Record<string, ExerciseTarget> = {};
+        for (const target of targetsData?.targets || []) {
+          if (target?.name) {
+            nextTargets[target.name] = {
+              suggestedWeight: target.suggestedWeight ?? null,
+              suggestedReps: target.suggestedReps ?? null,
+              rationale: target.rationale ?? null,
+            };
+          }
+        }
+        setTargets(nextTargets);
+        setTargetsLoading(false);
+      } catch (error: any) {
+        if (!isActive) return;
+        setTargetsError(error.message || 'Failed to load targets');
+        setTargetsLoading(false);
+      }
+    };
+
+    fetchTargets();
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [workout, isPreview, sessionMode]);
+
   const handleDeleteClick = () => {
     setShowDeleteModal(true);
   };
@@ -91,6 +259,30 @@ export default function WorkoutDetailPage() {
     setShowDeleteModal(false);
   };
 
+  const openHistory = (names: string[]) => {
+    setHistoryExerciseNames(names);
+    setShowHistory(true);
+  };
+
+  const closeHistory = () => {
+    setShowHistory(false);
+    setHistoryExerciseNames([]);
+  };
+
+  const handleModeSelect = (mode: SessionMode) => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.set('preview', '1');
+    nextParams.set('mode', mode);
+    router.replace(`/workout/${encodeURIComponent(params.name as string)}?${nextParams.toString()}`);
+  };
+
+  const handleModeReset = () => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete('mode');
+    nextParams.set('preview', '1');
+    router.replace(`/workout/${encodeURIComponent(params.name as string)}?${nextParams.toString()}`);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
@@ -107,6 +299,46 @@ export default function WorkoutDetailPage() {
           <Link href="/" className="text-blue-400 hover:text-blue-300">
             Back to home
           </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (isPreview && !sessionMode) {
+    return (
+      <div className="min-h-screen bg-zinc-900 p-4">
+        <div className="max-w-xl mx-auto">
+          <Header />
+          <div className="mt-8 bg-zinc-800 border border-zinc-700 rounded-lg p-6">
+            <div className="text-zinc-400 text-sm mb-2">Before you preview</div>
+            <h1 className="text-3xl font-bold text-white mb-3">How are you feeling today?</h1>
+            <p className="text-zinc-400 mb-6">
+              Pick the vibe for this session. Light workouts will not show up in your history graphs.
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() => handleModeSelect('incremental')}
+                className="w-full text-left bg-emerald-700/80 hover:bg-emerald-600 text-white px-4 py-4 rounded-lg font-semibold transition-colors"
+              >
+                Incremental progress
+                <div className="text-emerald-200 text-sm font-normal">Push for small wins today.</div>
+              </button>
+              <button
+                onClick={() => handleModeSelect('maintenance')}
+                className="w-full text-left bg-blue-700/70 hover:bg-blue-600 text-white px-4 py-4 rounded-lg font-semibold transition-colors"
+              >
+                Maintenance
+                <div className="text-blue-200 text-sm font-normal">Hold steady and keep the groove.</div>
+              </button>
+              <button
+                onClick={() => handleModeSelect('light')}
+                className="w-full text-left bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-4 rounded-lg font-semibold transition-colors"
+              >
+                Light session
+                <div className="text-zinc-300 text-sm font-normal">Deload or just move a bit.</div>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -142,6 +374,67 @@ export default function WorkoutDetailPage() {
           <h1 className="text-4xl font-bold text-white">{workout.name}</h1>
         </div>
 
+        {isPreview && (
+          <section className="mb-8">
+            <Card paddingClassName="p-5" borderClassName="border-emerald-600">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-emerald-400 text-xs mb-1">Session Mode</div>
+                  <div className="text-white text-lg font-semibold">
+                    {startMode === 'incremental' && 'Incremental progress'}
+                    {startMode === 'maintenance' && 'Maintenance'}
+                    {startMode === 'light' && 'Light session'}
+                  </div>
+                  <div className="text-zinc-400 text-sm mt-1">
+                    {startMode === 'incremental' && 'Push for small, steady improvements.'}
+                    {startMode === 'maintenance' && 'Hold steady and focus on form.'}
+                    {startMode === 'light' &&
+                      'Easy effort today. This session will not appear in history graphs.'}
+                  </div>
+                </div>
+                <button
+                  onClick={handleModeReset}
+                  className="text-xs text-emerald-300 hover:text-emerald-200 bg-zinc-900 px-3 py-2 rounded"
+                >
+                  Change
+                </button>
+              </div>
+            </Card>
+          </section>
+        )}
+
+        {isPreview && (
+          <section className="mb-8">
+            <SectionHeader
+              icon="🎯"
+              iconClassName="text-amber-400"
+              label="Workout Goals"
+              className="text-2xl"
+            />
+            <Card paddingClassName="p-5" borderClassName="border-amber-600">
+              {goalsText ? (
+                <p className="text-zinc-200 leading-relaxed">{goalsText}</p>
+              ) : (
+                <div className="flex items-center justify-between gap-4">
+                  <p className="text-zinc-400">Set your goals to personalize targets and reports.</p>
+                  <Link
+                    href="/goals"
+                    className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold"
+                  >
+                    Add Goals
+                  </Link>
+                </div>
+              )}
+            </Card>
+            {targetsLoading && (
+              <div className="text-zinc-500 text-sm mt-3">Loading trainer targets...</div>
+            )}
+            {targetsError && (
+              <div className="text-red-400 text-sm mt-3">Targets unavailable right now.</div>
+            )}
+          </section>
+        )}
+
         {/* Pre-Workout Stretches */}
         <section className="mb-8">
           <SectionHeader
@@ -169,7 +462,14 @@ export default function WorkoutDetailPage() {
           <div className="text-zinc-400 text-sm mb-4">{workout.exercises.length} exercises</div>
           <div className="space-y-4">
             {workout.exercises.map((exercise, index) => (
-              <ExerciseCard key={index} exercise={exercise} index={index} />
+              <ExerciseCard
+                key={index}
+                exercise={exercise}
+                index={index}
+                onShowHistory={openHistory}
+                targets={targets}
+                showTargets={isPreview}
+              />
             ))}
           </div>
         </section>
@@ -219,7 +519,11 @@ export default function WorkoutDetailPage() {
         <BottomActionBar maxWidthClassName="max-w-2xl">
           <button
             onClick={() => {
-              const url = `/stretches/${encodeURIComponent(workout.name)}${routineId ? `?routineId=${routineId}` : ''}`;
+              const query = new URLSearchParams();
+              if (routineId) query.set('routineId', String(routineId));
+              if (startMode) query.set('mode', startMode);
+              const queryString = query.toString();
+              const url = `/stretches/${encodeURIComponent(workout.name)}${queryString ? `?${queryString}` : ''}`;
               router.push(url);
             }}
             className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-lg text-xl font-bold transition-colors"
@@ -257,6 +561,14 @@ export default function WorkoutDetailPage() {
           </div>
         </div>
       )}
+
+      <ExerciseHistoryModal
+        open={showHistory}
+        onClose={closeHistory}
+        exerciseNames={historyExerciseNames}
+        title="Exercise History"
+        targets={historyTargets}
+      />
     </div>
   );
 }
@@ -283,7 +595,71 @@ function StretchCard({ stretch, index }: { stretch: Stretch; index: number }) {
   );
 }
 
-function ExerciseCard({ exercise, index }: { exercise: Exercise; index: number }) {
+function TargetCard({
+  baseWeight,
+  baseReps,
+  suggestion,
+  isBodyweight,
+}: {
+  baseWeight: number;
+  baseReps: number;
+  suggestion?: ExerciseTarget;
+  isBodyweight?: boolean;
+}) {
+  const targetWeight = suggestion?.suggestedWeight ?? baseWeight;
+  const targetReps = suggestion?.suggestedReps ?? baseReps;
+  const weightDelta = suggestion?.suggestedWeight != null ? suggestion.suggestedWeight - baseWeight : null;
+  const repsDelta = suggestion?.suggestedReps != null ? suggestion.suggestedReps - baseReps : null;
+  const showWeight = !isBodyweight;
+
+  const formatDelta = (delta: number) => `${delta > 0 ? '+' : ''}${delta}`;
+  const deltaClass = (delta: number) => (delta > 0 ? 'text-emerald-300' : 'text-amber-300');
+
+  return (
+    <div className="bg-zinc-900 rounded p-3 border border-emerald-800">
+      <div className="text-emerald-400 text-xs mb-2">Today&apos;s target</div>
+      <div className={`grid ${showWeight ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
+        {showWeight && (
+          <div>
+            <div className="text-zinc-500 text-xs mb-1">Weight</div>
+            <div className="text-white font-semibold text-lg">
+              {targetWeight} lbs
+              {weightDelta !== null && weightDelta !== 0 && (
+                <span className={`ml-2 text-sm ${deltaClass(weightDelta)}`}>({formatDelta(weightDelta)})</span>
+              )}
+            </div>
+          </div>
+        )}
+        <div>
+          <div className="text-zinc-500 text-xs mb-1">Reps</div>
+          <div className="text-white font-semibold text-lg">
+            {targetReps}
+            {repsDelta !== null && repsDelta !== 0 && (
+              <span className={`ml-2 text-sm ${deltaClass(repsDelta)}`}>({formatDelta(repsDelta)})</span>
+            )}
+          </div>
+        </div>
+      </div>
+      {suggestion?.rationale && (
+        <div className="text-zinc-400 text-xs mt-2">{suggestion.rationale}</div>
+      )}
+    </div>
+  );
+}
+
+function ExerciseCard({
+  exercise,
+  index,
+  onShowHistory,
+  targets,
+  showTargets,
+}: {
+  exercise: Exercise;
+  index: number;
+  onShowHistory: (names: string[]) => void;
+  targets: Record<string, ExerciseTarget>;
+  showTargets: boolean;
+}) {
   if (exercise.type === 'single') {
     const tips = getFormTips(exercise.tips);
     const videoHref = getVideoUrl(exercise.name, exercise.videoUrl);
@@ -295,14 +671,22 @@ function ExerciseCard({ exercise, index }: { exercise: Exercise; index: number }
             <div className="text-zinc-500 text-sm mb-1">Exercise #{index + 1}</div>
             <h3 className="text-xl font-bold text-white mb-2">{exercise.name}</h3>
           </div>
-          <a
-            href={videoHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-red-500 hover:text-red-400 text-sm font-medium px-3 py-2 bg-zinc-900 rounded"
-          >
-            📺 Video
-          </a>
+          <div className="flex flex-col gap-2">
+            <a
+              href={videoHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-red-500 hover:text-red-400 text-sm font-medium px-3 py-2 bg-zinc-900 rounded text-center"
+            >
+              📺 Video
+            </a>
+            <button
+              onClick={() => onShowHistory([exercise.name])}
+              className="text-blue-300 hover:text-blue-200 text-sm font-medium px-3 py-2 bg-zinc-900 rounded"
+            >
+              📈 History
+            </button>
+          </div>
         </div>
 
         <div className="space-y-2 mb-3">
@@ -333,6 +717,15 @@ function ExerciseCard({ exercise, index }: { exercise: Exercise; index: number }
           </div>
         </div>
 
+        {showTargets && (
+          <TargetCard
+            baseWeight={exercise.targetWeight}
+            baseReps={exercise.targetReps}
+            suggestion={targets[exercise.name]}
+            isBodyweight={exercise.isBodyweight}
+          />
+        )}
+
         <div className="bg-zinc-900 rounded p-3">
           <div className="text-zinc-500 text-xs mb-1">Form Tips</div>
           <p className="text-zinc-300 text-sm">{tips}</p>
@@ -350,8 +743,16 @@ function ExerciseCard({ exercise, index }: { exercise: Exercise; index: number }
 
   return (
     <div className="bg-zinc-800 rounded-lg p-5 border-2 border-purple-700">
-      <div className="text-purple-400 text-sm font-bold mb-3">
-        🔄 B2B SUPERSET · Exercise #{index + 1}
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-purple-400 text-sm font-bold">
+          🔄 B2B SUPERSET · Exercise #{index + 1}
+        </div>
+        <button
+          onClick={() => onShowHistory([ex1.name, ex2.name])}
+          className="text-blue-300 hover:text-blue-200 text-xs font-semibold px-3 py-2 bg-zinc-900 rounded"
+        >
+          📈 History
+        </button>
       </div>
 
       {/* Exercise 1 */}
@@ -398,6 +799,17 @@ function ExerciseCard({ exercise, index }: { exercise: Exercise; index: number }
             </div>
           </div>
         </div>
+
+        {showTargets && (
+          <div className="mt-2">
+            <TargetCard
+              baseWeight={ex1.targetWeight}
+              baseReps={ex1.targetReps}
+              suggestion={targets[ex1.name]}
+              isBodyweight={ex1.isBodyweight}
+            />
+          </div>
+        )}
       </div>
 
       {/* Rest Time Card */}
@@ -454,6 +866,17 @@ function ExerciseCard({ exercise, index }: { exercise: Exercise; index: number }
             </div>
           </div>
         </div>
+
+        {showTargets && (
+          <div className="mt-2">
+            <TargetCard
+              baseWeight={ex2.targetWeight}
+              baseReps={ex2.targetReps}
+              suggestion={targets[ex2.name]}
+              isBodyweight={ex2.isBodyweight}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

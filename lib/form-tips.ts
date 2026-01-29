@@ -8,6 +8,7 @@ type TipRequest = {
   difficulty?: string;
   duration?: string;
   stretchType?: string;
+  goalsText?: string | null;
 };
 
 function formatList(items?: string[]): string {
@@ -16,12 +17,14 @@ function formatList(items?: string[]): string {
 }
 
 function buildUserPrompt(data: TipRequest): string {
+  const goalsLine = data.goalsText ? `User goals: ${data.goalsText}` : 'User goals: (not provided)';
   if (data.kind === 'stretch') {
     return [
       `Stretch: ${data.name}`,
       `Type: ${data.stretchType || 'Unknown'}`,
       `Duration: ${data.duration || 'Unknown'}`,
       `Muscle groups: ${formatList(data.muscleGroups)}`,
+      goalsLine,
       'Provide 1-2 concise form tips with posture and breathing cues.'
     ].join('\n');
   }
@@ -31,6 +34,7 @@ function buildUserPrompt(data: TipRequest): string {
     `Muscle groups: ${formatList(data.muscleGroups)}`,
     `Equipment: ${data.equipment || 'Unknown'}`,
     `Difficulty: ${data.difficulty || 'Unknown'}`,
+    goalsLine,
     'Provide 1-2 concise form tips with safe technique cues.'
   ].join('\n');
 }
@@ -60,7 +64,7 @@ export async function generateFormTips(data: TipRequest): Promise<string | null>
         messages: [
           {
             role: 'system',
-            content: 'You are a fitness coach. Return 1-2 short sentences. No markdown or bullet points.'
+            content: 'You are a gym trainer helping users make consistent, incremental progress. Return 1-2 short sentences. No markdown or bullet points.'
           },
           { role: 'user', content: buildUserPrompt(data) }
         ],

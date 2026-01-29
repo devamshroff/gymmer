@@ -19,9 +19,12 @@ export default function SummaryPage() {
   const [saved, setSaved] = useState(false);
   const [totalVolume, setTotalVolume] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
+  const [report, setReport] = useState<string | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
 
   // Prevent double-save in React Strict Mode / re-renders
   const hasSavedRef = useRef(false);
+  const hasReportedRef = useRef(false);
 
   // Get routineId from URL params (for public/favorited routines)
   const routineIdParam = searchParams.get('routineId');
@@ -139,6 +142,46 @@ export default function SummaryPage() {
   }, [sessionData]);
 
   // ---------------------------
+  // Generate workout report
+  // ---------------------------
+  useEffect(() => {
+    if (!sessionData) return;
+    if (hasReportedRef.current) return;
+
+    const routineId = routineIdParam ? Number(routineIdParam) : null;
+    if (routineIdParam && Number.isNaN(routineId)) {
+      return;
+    }
+
+    const generateReport = async () => {
+      setReportLoading(true);
+      hasReportedRef.current = true;
+      try {
+        const response = await fetch('/api/workout-report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionData,
+            routineId: routineId || null
+          }),
+        });
+        if (!response.ok) {
+          throw new Error('Failed to generate report');
+        }
+        const data = await response.json();
+        setReport(data.report || null);
+      } catch (error) {
+        console.error('Error generating report:', error);
+        hasReportedRef.current = false;
+      } finally {
+        setReportLoading(false);
+      }
+    };
+
+    generateReport();
+  }, [sessionData, routineIdParam]);
+
+  // ---------------------------
   // Complete workout = just go home
   // ---------------------------
   const handleCompleteWorkout = () => {
@@ -211,6 +254,18 @@ export default function SummaryPage() {
             <div className="text-center text-zinc-400">Loading session data...</div>
           )}
         </div>
+
+        {(reportLoading || report) && (
+          <div className="bg-zinc-800 rounded-lg p-6 mb-8 border border-zinc-700">
+            <div className="text-zinc-300 text-sm font-semibold mb-3">Workout Report</div>
+            {reportLoading && (
+              <div className="text-zinc-400 text-sm">Generating your report...</div>
+            )}
+            {report && (
+              <div className="text-zinc-200 text-sm whitespace-pre-line">{report}</div>
+            )}
+          </div>
+        )}
 
         {/* Exercises Summary */}
         {sessionData && (

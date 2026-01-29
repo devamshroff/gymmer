@@ -4,6 +4,7 @@ import type { WorkoutSession, WorkoutExerciseLog, WorkoutCardioLog } from './typ
 
 // Initialize database connection
 let db: Client | null = null;
+let workoutSessionModeColumnReady: boolean | null = null;
 
 export function getDatabase(): Client {
   if (!db) {
@@ -67,23 +68,43 @@ export async function getUserByEmail(email: string): Promise<any | null> {
   return result.rows[0] as any || null;
 }
 
+
+async function hasWorkoutSessionModeColumn(): Promise<boolean> {
+  if (workoutSessionModeColumnReady !== null) return workoutSessionModeColumnReady;
+  const db = getDatabase();
+  try {
+    const result = await db.execute({
+      sql: 'PRAGMA table_info(workout_sessions)'
+    });
+    workoutSessionModeColumnReady = result.rows.some((row: any) => row.name === 'session_mode');
+  } catch (error) {
+    console.warn('Failed to inspect workout_sessions schema:', error);
+    workoutSessionModeColumnReady = false;
+  }
+  return workoutSessionModeColumnReady;
+}
+
+export async function getUserGoals(userId: string): Promise<string | null> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT goals_text FROM users WHERE id = ?',
+    args: [userId]
+  });
+  const row = result.rows[0] as any;
+  return row?.goals_text ?? null;
+}
+
+export async function upsertUserGoals(userId: string, goalsText: string | null): Promise<void> {
+  const db = getDatabase();
+  await db.execute({
+    sql: `UPDATE users SET goals_text = ?, updated_at = datetime('now') WHERE id = ?`,
+    args: [goalsText, userId]
+  });
+}
+
 // ============================================================================
 // Workout History Functions
 // ============================================================================
-
-export async function getLastWorkoutDate(workoutPlanName: string, userId?: string): Promise<string | null> {
-  const db = getDatabase();
-
-  // If userId provided, filter by user; otherwise get any (for backwards compatibility)
-  const sql = userId
-    ? `SELECT date_completed FROM workout_sessions WHERE workout_plan_name = ? AND user_id = ? ORDER BY date_completed DESC LIMIT 1`
-    : `SELECT date_completed FROM workout_sessions WHERE workout_plan_name = ? ORDER BY date_completed DESC LIMIT 1`;
-
-  const args = userId ? [workoutPlanName, userId] : [workoutPlanName];
-
-  const result = await db.execute({ sql, args });
-  return result.rows[0]?.date_completed as string || null;
-}
 
 export async function createWorkoutSession(data: {
   user_id: string;
@@ -91,19 +112,21 @@ export async function createWorkoutSession(data: {
   date_completed: string;
   total_duration_minutes?: number;
   total_strain?: number;
+  session_mode?: string | null;
 }): Promise<number> {
   const db = getDatabase();
   const result = await db.execute({
     sql: `
-      INSERT INTO workout_sessions (user_id, workout_plan_name, date_completed, total_duration_minutes, total_strain)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO workout_sessions (user_id, workout_plan_name, date_completed, total_duration_minutes, total_strain, session_mode)
+      VALUES (?, ?, ?, ?, ?, ?)
     `,
     args: [
       data.user_id,
       data.workout_plan_name,
       data.date_completed,
       data.total_duration_minutes || null,
-      data.total_strain || null
+      data.total_strain || null,
+      data.session_mode || null
     ]
   });
 
@@ -287,6 +310,212 @@ export async function getLastExerciseLog(
   return row as WorkoutExerciseLog;
 }
 
+export async function getRecentExerciseLogs(
+  exerciseName: string,
+  userId: string,
+  limit: number = 5,
+  options?: { excludeSessionMode?: 'light' }
+): Promise<Array<WorkoutExerciseLog & { completed_at?: string; matched_role?: string }>> {
+  const db = getDatabase();
+  const excludeMode = options?.excludeSessionMode;
+  const hasSessionMode = excludeMode ? await hasWorkoutSessionModeColumn() : false;
+  const modeClause = excludeMode && hasSessionMode
+    ? 'AND (ws.session_mode IS NULL OR ws.session_mode != ?)'
+    : '';
+
+  const result = await db.execute({
+    sql: `
+      SELECT el.*,
+        ws.date_completed as completed_at,
+        CASE
+          WHEN el.exercise_name = ? THEN 'primary'
+          WHEN el.b2b_partner_name = ? THEN 'partner'
+        END AS matched_role
+      FROM workout_exercise_logs el
+      JOIN workout_sessions ws ON el.session_id = ws.id
+      WHERE ws.user_id = ? AND (el.exercise_name = ? OR el.b2b_partner_name = ?)
+      ${modeClause}
+      ORDER BY ws.date_completed DESC
+      LIMIT ?
+    `,
+    args: excludeMode && hasSessionMode
+      ? [exerciseName, exerciseName, userId, exerciseName, exerciseName, excludeMode, limit]
+      : [exerciseName, exerciseName, userId, exerciseName, exerciseName, limit]
+  });
+
+  return result.rows as unknown as Array<WorkoutExerciseLog & { completed_at?: string; matched_role?: string }>;
+}
+
+export type ExerciseHistoryPoint = {
+  day: string;
+  weight_max: number | null;
+  weight_avg: number | null;
+  volume: number | null;
+  reps_max: number | null;
+  reps_avg: number | null;
+  reps_total: number | null;
+};
+
+export type ExerciseHistorySeries = {
+  display_mode?: 'weight' | 'reps';
+  points: ExerciseHistoryPoint[];
+};
+
+export async function getExerciseHistory(
+  userId: string,
+  exerciseName: string,
+  range: 'week' | 'month' | 'all'
+): Promise<ExerciseHistorySeries> {
+  const db = getDatabase();
+  const daysBack = range === 'week' ? 7 : range === 'month' ? 30 : null;
+  const cutoff = daysBack ? new Date(Date.now() - (daysBack - 1) * 86400000).toISOString() : null;
+  const rangeClause = cutoff ? 'AND ws.date_completed >= ?' : '';
+  const hasSessionMode = await hasWorkoutSessionModeColumn();
+  const modeClause = hasSessionMode ? 'AND (ws.session_mode IS NULL OR ws.session_mode != ?)' : '';
+
+  const sql = `
+    WITH matched AS (
+      SELECT
+        ws.date_completed as date_completed,
+        date(ws.date_completed) as day,
+        CASE
+          WHEN el.exercise_name = ? THEN el.set1_weight
+          WHEN el.b2b_partner_name = ? THEN el.b2b_set1_weight
+        END as set1_weight,
+        CASE
+          WHEN el.exercise_name = ? THEN el.set1_reps
+          WHEN el.b2b_partner_name = ? THEN el.b2b_set1_reps
+        END as set1_reps,
+        CASE
+          WHEN el.exercise_name = ? THEN el.set2_weight
+          WHEN el.b2b_partner_name = ? THEN el.b2b_set2_weight
+        END as set2_weight,
+        CASE
+          WHEN el.exercise_name = ? THEN el.set2_reps
+          WHEN el.b2b_partner_name = ? THEN el.b2b_set2_reps
+        END as set2_reps,
+        CASE
+          WHEN el.exercise_name = ? THEN el.set3_weight
+          WHEN el.b2b_partner_name = ? THEN el.b2b_set3_weight
+        END as set3_weight,
+        CASE
+          WHEN el.exercise_name = ? THEN el.set3_reps
+          WHEN el.b2b_partner_name = ? THEN el.b2b_set3_reps
+        END as set3_reps,
+        CASE
+          WHEN el.exercise_name = ? THEN el.set4_weight
+          WHEN el.b2b_partner_name = ? THEN el.b2b_set4_weight
+        END as set4_weight,
+        CASE
+          WHEN el.exercise_name = ? THEN el.set4_reps
+          WHEN el.b2b_partner_name = ? THEN el.b2b_set4_reps
+        END as set4_reps
+      FROM workout_exercise_logs el
+      JOIN workout_sessions ws ON el.session_id = ws.id
+      WHERE ws.user_id = ? AND (el.exercise_name = ? OR el.b2b_partner_name = ?)
+      ${modeClause}
+      ${rangeClause}
+    ),
+    scored AS (
+      SELECT
+        *,
+        CASE WHEN set1_weight IS NOT NULL AND set1_reps IS NOT NULL THEN 1 ELSE 0 END as s1,
+        CASE WHEN set2_weight IS NOT NULL AND set2_reps IS NOT NULL THEN 1 ELSE 0 END as s2,
+        CASE WHEN set3_weight IS NOT NULL AND set3_reps IS NOT NULL THEN 1 ELSE 0 END as s3,
+        CASE WHEN set4_weight IS NOT NULL AND set4_reps IS NOT NULL THEN 1 ELSE 0 END as s4
+      FROM matched
+    ),
+    metrics AS (
+      SELECT
+        day,
+        date_completed,
+        (s1 + s2 + s3 + s4) as set_count,
+        max(
+          CASE WHEN s1 = 1 THEN set1_weight ELSE -1 END,
+          CASE WHEN s2 = 1 THEN set2_weight ELSE -1 END,
+          CASE WHEN s3 = 1 THEN set3_weight ELSE -1 END,
+          CASE WHEN s4 = 1 THEN set4_weight ELSE -1 END
+        ) as raw_max,
+        (CASE WHEN s1 = 1 THEN set1_weight ELSE 0 END
+          + CASE WHEN s2 = 1 THEN set2_weight ELSE 0 END
+          + CASE WHEN s3 = 1 THEN set3_weight ELSE 0 END
+          + CASE WHEN s4 = 1 THEN set4_weight ELSE 0 END) as weight_sum,
+        max(
+          CASE WHEN s1 = 1 THEN set1_reps ELSE -1 END,
+          CASE WHEN s2 = 1 THEN set2_reps ELSE -1 END,
+          CASE WHEN s3 = 1 THEN set3_reps ELSE -1 END,
+          CASE WHEN s4 = 1 THEN set4_reps ELSE -1 END
+        ) as reps_max_raw,
+        (CASE WHEN s1 = 1 THEN set1_reps ELSE 0 END
+          + CASE WHEN s2 = 1 THEN set2_reps ELSE 0 END
+          + CASE WHEN s3 = 1 THEN set3_reps ELSE 0 END
+          + CASE WHEN s4 = 1 THEN set4_reps ELSE 0 END) as reps_sum,
+        (CASE WHEN s1 = 1 THEN set1_weight * set1_reps ELSE 0 END
+          + CASE WHEN s2 = 1 THEN set2_weight * set2_reps ELSE 0 END
+          + CASE WHEN s3 = 1 THEN set3_weight * set3_reps ELSE 0 END
+          + CASE WHEN s4 = 1 THEN set4_weight * set4_reps ELSE 0 END) as volume
+      FROM scored
+    ),
+    ranked AS (
+      SELECT
+        day,
+        date_completed,
+        CASE WHEN set_count > 0 THEN NULLIF(raw_max, -1) ELSE NULL END as weight_max,
+        CASE WHEN set_count > 0 THEN weight_sum / set_count ELSE NULL END as weight_avg,
+        CASE WHEN set_count > 0 THEN NULLIF(reps_max_raw, -1) ELSE NULL END as reps_max,
+        CASE WHEN set_count > 0 THEN reps_sum / set_count ELSE NULL END as reps_avg,
+        CASE WHEN set_count > 0 THEN reps_sum ELSE NULL END as reps_total,
+        CASE WHEN set_count > 0 THEN volume ELSE NULL END as volume,
+        ROW_NUMBER() OVER (PARTITION BY day ORDER BY date_completed DESC) as rn
+      FROM metrics
+    )
+    SELECT day, weight_max, weight_avg, volume, reps_max, reps_avg, reps_total
+    FROM ranked
+    WHERE rn = 1
+    ORDER BY day ASC
+  `;
+
+  const args = [
+    exerciseName, exerciseName,
+    exerciseName, exerciseName,
+    exerciseName, exerciseName,
+    exerciseName, exerciseName,
+    exerciseName, exerciseName,
+    exerciseName, exerciseName,
+    exerciseName, exerciseName,
+    exerciseName, exerciseName,
+    userId,
+    exerciseName,
+    exerciseName,
+  ];
+  if (hasSessionMode) {
+    args.push('light');
+  }
+  if (cutoff) {
+    args.push(cutoff);
+  }
+
+  const result = await db.execute({ sql, args });
+  const points = result.rows.map((row: any) => ({
+    day: String(row.day),
+    weight_max: row.weight_max ?? null,
+    weight_avg: row.weight_avg ?? null,
+    volume: row.volume ?? null,
+    reps_max: row.reps_max ?? null,
+    reps_avg: row.reps_avg ?? null,
+    reps_total: row.reps_total ?? null
+  })) as ExerciseHistoryPoint[];
+
+  const equipmentResult = await db.execute({
+    sql: 'SELECT equipment FROM exercises WHERE name = ? LIMIT 1',
+    args: [exerciseName]
+  });
+  const equipment = (equipmentResult.rows[0] as any)?.equipment || '';
+  const displayMode = equipment.toLowerCase() === 'bodyweight' ? 'reps' : undefined;
+
+  return { display_mode: displayMode, points };
+}
+
 // ============================================================================
 // Routine Builder Database Functions (v2.0)
 // ============================================================================
@@ -355,8 +584,16 @@ export async function createRoutine(name: string, userId: string, isPublic: bool
 export async function getAllRoutines(userId: string): Promise<any[]> {
   const db = getDatabase();
   const result = await db.execute({
-    sql: 'SELECT * FROM routines WHERE user_id = ? ORDER BY created_at DESC',
-    args: [userId]
+    sql: `
+      SELECT r.*, MAX(ws.date_completed) as last_workout_date
+      FROM routines r
+      LEFT JOIN workout_sessions ws
+        ON ws.workout_plan_name = r.name AND ws.user_id = ?
+      WHERE r.user_id = ?
+      GROUP BY r.id
+      ORDER BY r.created_at DESC
+    `,
+    args: [userId, userId]
   });
   return result.rows as any[];
 }
@@ -420,6 +657,14 @@ export async function updateRoutineName(id: number, newName: string, userId: str
   });
 }
 
+export async function updateRoutineNotes(id: number, notes: string | null, userId: string): Promise<void> {
+  const db = getDatabase();
+  await db.execute({
+    sql: 'UPDATE routines SET notes = ?, updated_at = datetime(\'now\') WHERE id = ? AND user_id = ?',
+    args: [notes, id, userId]
+  });
+}
+
 // Routine exercise management
 export async function addExerciseToRoutine(data: {
   routineId: number;
@@ -471,7 +716,9 @@ export async function getRoutineExercises(routineId: number): Promise<any[]> {
   const result = await db.execute({
     sql: `
       SELECT re.*, e.name as exercise_name, e.video_url, e.tips,
-             e2.name as b2b_partner_name, e2.video_url as b2b_video_url, e2.tips as b2b_tips
+             e.equipment as exercise_equipment,
+             e2.name as b2b_partner_name, e2.video_url as b2b_video_url, e2.tips as b2b_tips,
+             e2.equipment as b2b_partner_equipment
       FROM routine_exercises re
       JOIN exercises e ON re.exercise_id = e.id
       LEFT JOIN exercises e2 ON re.b2b_partner_id = e2.id
@@ -667,18 +914,23 @@ export async function getPublicRoutines(excludeUserId?: string): Promise<any[]> 
   const db = getDatabase();
 
   const sql = excludeUserId
-    ? `SELECT r.*, u.username as creator_username, u.name as creator_name
+    ? `SELECT r.*, u.username as creator_username, u.name as creator_name,
+         MAX(ws.date_completed) as last_workout_date
        FROM routines r
        JOIN users u ON r.user_id = u.id
+       LEFT JOIN workout_sessions ws
+         ON ws.workout_plan_name = r.name AND ws.user_id = ?
        WHERE r.is_public = 1 AND r.user_id != ?
+       GROUP BY r.id
        ORDER BY r.created_at DESC`
-    : `SELECT r.*, u.username as creator_username, u.name as creator_name
+    : `SELECT r.*, u.username as creator_username, u.name as creator_name,
+         NULL as last_workout_date
        FROM routines r
        JOIN users u ON r.user_id = u.id
        WHERE r.is_public = 1
        ORDER BY r.created_at DESC`;
 
-  const args = excludeUserId ? [excludeUserId] : [];
+  const args = excludeUserId ? [excludeUserId, excludeUserId] : [];
   const result = await db.execute({ sql, args });
   return result.rows as any[];
 }
@@ -712,13 +964,17 @@ export async function isFavorited(userId: string, routineId: number): Promise<bo
 export async function getFavoritedRoutines(userId: string): Promise<any[]> {
   const db = getDatabase();
   const result = await db.execute({
-    sql: `SELECT r.*, u.username as creator_username, u.name as creator_name, 1 as is_favorited
+    sql: `SELECT r.*, u.username as creator_username, u.name as creator_name, 1 as is_favorited,
+            MAX(ws.date_completed) as last_workout_date
           FROM routine_favorites rf
           JOIN routines r ON rf.routine_id = r.id
           JOIN users u ON r.user_id = u.id
+          LEFT JOIN workout_sessions ws
+            ON ws.workout_plan_name = r.name AND ws.user_id = ?
           WHERE rf.user_id = ?
+          GROUP BY r.id
           ORDER BY rf.created_at DESC`,
-    args: [userId]
+    args: [userId, userId]
   });
   return result.rows as any[];
 }

@@ -1,6 +1,6 @@
 // app/api/exercises/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllExercises, searchExercises, createExercise } from '@/lib/database';
+import { getAllExercises, searchExercises, createExercise, getUserGoals } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 import { generateFormTips } from '@/lib/form-tips';
 
@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth();
   if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
 
   try {
     const body = await request.json();
@@ -42,6 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     const normalizedTips = typeof tips === 'string' ? tips.trim() : '';
+    const goalsText = await getUserGoals(user.id);
     const fallbackTips = normalizedTips
       ? normalizedTips
       : await generateFormTips({
@@ -50,6 +52,7 @@ export async function POST(request: NextRequest) {
           muscleGroups: Array.isArray(muscleGroups) ? muscleGroups : undefined,
           equipment: typeof equipment === 'string' ? equipment : undefined,
           difficulty: typeof difficulty === 'string' ? difficulty : undefined,
+          goalsText,
         });
 
     const exerciseId = await createExercise({

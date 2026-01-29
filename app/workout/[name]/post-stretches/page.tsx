@@ -36,7 +36,11 @@ function PostStretchesContent() {
 
   // Get routineId from URL params (for public/favorited routines)
   const routineIdParam = searchParams.get('routineId');
-  const routineQuery = routineIdParam ? `?routineId=${routineIdParam}` : '';
+  const sessionModeParam = searchParams.get('mode');
+  const routineQueryParams = new URLSearchParams();
+  if (routineIdParam) routineQueryParams.set('routineId', routineIdParam);
+  if (sessionModeParam) routineQueryParams.set('mode', sessionModeParam);
+  const routineQuery = routineQueryParams.toString() ? `?${routineQueryParams.toString()}` : '';
 
   useEffect(() => {
     async function fetchWorkout() {
@@ -148,13 +152,13 @@ function PostStretchesContent() {
         <div className="w-full max-w-xs space-y-3">
           <button
             onClick={() => openStretchSelector('add')}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-lg text-base font-semibold transition-colors"
+            className="w-full bg-blue-800 hover:bg-blue-700 text-white px-6 py-3 rounded-lg text-base font-semibold transition-colors"
           >
             + Add Stretch
           </button>
           <button
             onClick={() => router.push(`/workout/${workoutName}/summary${routineQuery}`)}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg text-base font-semibold transition-colors"
+            className="w-full bg-blue-800 hover:bg-blue-700 text-white px-6 py-3 rounded-lg text-base font-semibold transition-colors"
           >
             View Summary →
           </button>
@@ -176,7 +180,7 @@ function PostStretchesContent() {
                 </button>
                 <button
                   onClick={handleWarningContinue}
-                  className="rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+                className="rounded-lg bg-blue-800 py-2 text-sm font-semibold text-white hover:bg-blue-700"
                 >
                   Continue
                 </button>
@@ -265,7 +269,7 @@ function PostStretchesContent() {
         <div className="mb-8">
           <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
             <div
-              className="h-full bg-blue-500 transition-all duration-300"
+                className="h-full bg-blue-700 transition-all duration-300"
               style={{ width: `${progressPercentage}%` }}
             />
           </div>
@@ -277,13 +281,13 @@ function PostStretchesContent() {
         <div className="grid grid-cols-2 gap-3 mb-6">
           <button
             onClick={() => openStretchSelector('add')}
-            className="bg-emerald-600/80 hover:bg-emerald-500 text-white py-2 rounded-lg text-sm font-semibold transition-colors"
+            className="bg-blue-900/80 hover:bg-blue-800 text-white py-2 rounded-lg text-sm font-semibold transition-colors"
           >
             + Add Stretch
           </button>
           <button
             onClick={() => openStretchSelector('replace')}
-            className="bg-orange-600/80 hover:bg-orange-500 text-white py-2 rounded-lg text-sm font-semibold transition-colors"
+            className="bg-blue-900/80 hover:bg-blue-800 text-white py-2 rounded-lg text-sm font-semibold transition-colors"
           >
             ↺ Replace Stretch
           </button>
@@ -306,7 +310,7 @@ function PostStretchesContent() {
           </button>
           <button
             onClick={handleNext}
-            className="bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-lg text-lg font-semibold transition-colors"
+            className="bg-blue-800 hover:bg-blue-700 text-white py-4 rounded-lg text-lg font-semibold transition-colors"
           >
             {currentIndex < stretches.length - 1 ? 'Next Stretch →' : 'View Summary →'}
           </button>
@@ -328,7 +332,7 @@ function PostStretchesContent() {
                 </button>
                 <button
                   onClick={handleWarningContinue}
-                  className="rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+                className="rounded-lg bg-blue-800 py-2 text-sm font-semibold text-white hover:bg-blue-700"
                 >
                   Continue
                 </button>

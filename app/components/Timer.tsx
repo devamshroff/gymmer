@@ -89,7 +89,7 @@ function TimerContent({ timerSeconds, onComplete }: { timerSeconds: number; onCo
           {formatTime(secondsLeft)}
         </div>
         {secondsLeft === 0 && hasStarted && (
-          <div className="text-green-400 text-lg font-semibold mt-2">
+          <div className="text-blue-300 text-lg font-semibold mt-2">
             Complete!
           </div>
         )}
@@ -100,7 +100,7 @@ function TimerContent({ timerSeconds, onComplete }: { timerSeconds: number; onCo
         <div className="h-2 bg-zinc-700 rounded-full overflow-hidden mb-4">
           <div
             className={`h-full transition-all duration-1000 ${
-              secondsLeft === 0 ? 'bg-green-500' : 'bg-blue-500'
+              secondsLeft === 0 ? 'bg-blue-700' : 'bg-blue-500'
             }`}
             style={{ width: `${progressPercentage}%` }}
           />
@@ -112,7 +112,7 @@ function TimerContent({ timerSeconds, onComplete }: { timerSeconds: number; onCo
         {!isRunning ? (
           <button
             onClick={handleStart}
-            className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center gap-2"
+            className="bg-blue-800 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center gap-2"
           >
             <span className="text-xl">▶</span>
             {hasStarted && secondsLeft > 0 ? 'Resume' : secondsLeft === 0 ? 'Restart' : 'Start Timer'}

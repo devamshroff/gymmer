@@ -62,7 +62,7 @@ export default function StretchSelector({ onSelect, onCancel, filterType, title 
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
-      <div className="bg-zinc-800 rounded-lg p-6 max-w-3xl w-full max-h-[90vh] flex flex-col border-2 border-green-600">
+      <div className="bg-zinc-800 rounded-lg p-6 max-w-3xl w-full max-h-[90vh] flex flex-col border-2 border-blue-800">
         <h2 className="text-2xl font-bold text-white mb-4">
           {title || (filterType === 'pre_workout' ? 'Select Pre-Workout Stretch' : filterType === 'post_workout' ? 'Select Post-Workout Stretch' : 'Select Stretch')}
         </h2>
@@ -74,7 +74,7 @@ export default function StretchSelector({ onSelect, onCancel, filterType, title 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by name or muscle group..."
-            className="w-full bg-zinc-900 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+            className="w-full bg-zinc-900 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700"
             autoFocus
           />
         </div>
@@ -94,7 +94,7 @@ export default function StretchSelector({ onSelect, onCancel, filterType, title 
                 <button
                   key={stretch.id}
                   onClick={() => onSelect(stretch)}
-                  className="w-full bg-zinc-900 hover:bg-zinc-700 text-left p-4 rounded-lg transition-colors border-2 border-zinc-700 hover:border-green-500"
+                  className="w-full bg-zinc-900 hover:bg-zinc-700 text-left p-4 rounded-lg transition-colors border-2 border-zinc-700 hover:border-blue-600"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
