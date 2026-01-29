@@ -1,13 +1,14 @@
 'use client';
 
 import Timer from './Timer';
+import { getFormTips, getVideoUrl } from '@/lib/workout-media';
 
 export interface StretchData {
   name: string;
   duration: string;
   timerSeconds?: number;
-  tips: string;
-  videoUrl: string;
+  tips?: string | null;
+  videoUrl?: string | null;
 }
 
 interface StretchCardProps {
@@ -29,6 +30,8 @@ export default function StretchCard({
 }: StretchCardProps) {
   const borderColor = variant === 'pre' ? 'border-green-600' : 'border-blue-600';
   const emoji = variant === 'pre' ? '🏃' : '🧘';
+  const tips = getFormTips(stretch.tips);
+  const videoHref = getVideoUrl(stretch.name, stretch.videoUrl);
 
   return (
     <div className={`bg-zinc-800 rounded-lg p-8 border-2 ${borderColor} mb-8`}>
@@ -43,11 +46,11 @@ export default function StretchCard({
 
       <div className="bg-zinc-900 rounded-lg p-4 mb-6">
         <div className="text-zinc-400 text-sm mb-2">Tips:</div>
-        <p className="text-zinc-200 text-lg leading-relaxed">{stretch.tips}</p>
+        <p className="text-zinc-200 text-lg leading-relaxed">{tips}</p>
       </div>
 
       <a
-        href={stretch.videoUrl}
+        href={videoHref}
         target="_blank"
         rel="noopener noreferrer"
         className="block w-full bg-red-600 hover:bg-red-700 text-white text-center py-3 rounded-lg text-lg font-semibold transition-colors"

@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllExercises, searchExercises, createExercise } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
+import { generateFormTips } from '@/lib/form-tips';
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth();
@@ -40,10 +41,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const normalizedTips = typeof tips === 'string' ? tips.trim() : '';
+    const fallbackTips = normalizedTips
+      ? normalizedTips
+      : await generateFormTips({
+          kind: 'exercise',
+          name,
+          muscleGroups: Array.isArray(muscleGroups) ? muscleGroups : undefined,
+          equipment: typeof equipment === 'string' ? equipment : undefined,
+          difficulty: typeof difficulty === 'string' ? difficulty : undefined,
+        });
+
     const exerciseId = await createExercise({
       name,
       videoUrl,
-      tips,
+      tips: fallbackTips || undefined,
       muscleGroups,
       equipment,
       difficulty

@@ -7,17 +7,19 @@ type CardProps = {
   className?: string;
   paddingClassName?: string;
   borderClassName?: string;
+  borderWidthClassName?: string;
 };
 
 export function Card({
   children,
   className = '',
   paddingClassName,
-  borderClassName = 'border-zinc-700'
+  borderClassName = 'border-zinc-700',
+  borderWidthClassName = 'border-2'
 }: CardProps) {
   const padding = paddingClassName || 'p-4';
   return (
-    <div className={`bg-zinc-800 rounded-lg border-2 ${borderClassName} ${padding} ${className}`.trim()}>
+    <div className={`bg-zinc-800 rounded-lg ${borderWidthClassName} ${borderClassName} ${padding} ${className}`.trim()}>
       {children}
     </div>
   );

@@ -2,6 +2,11 @@ import { auth } from "@/auth"
 import { NextResponse } from "next/server"
 
 export default auth((req) => {
+  const isE2ETest = process.env.E2E_TEST === "1" && req.headers.get("x-e2e-bypass") === "1"
+  if (isE2ETest) {
+    return NextResponse.next()
+  }
+
   const isLoggedIn = !!req.auth
   const isLoginPage = req.nextUrl.pathname === "/login"
   const isAuthRoute = req.nextUrl.pathname.startsWith("/api/auth")

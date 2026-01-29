@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Exercise, Stretch, Cardio } from '@/lib/types';
+import { getFormTips, getVideoUrl } from '@/lib/workout-media';
 import Header from '@/app/components/Header';
 import { BottomActionBar, Card, SectionHeader } from '@/app/components/SharedUi';
 
@@ -260,14 +261,17 @@ export default function WorkoutDetailPage() {
 }
 
 function StretchCard({ stretch, index }: { stretch: Stretch; index: number }) {
+  const tips = getFormTips(stretch.tips);
+  const videoHref = getVideoUrl(stretch.name, stretch.videoUrl);
+
   return (
     <div className="bg-zinc-800 rounded-lg p-3 border border-zinc-700">
       <div className="text-zinc-500 text-xs mb-1">#{index + 1}</div>
       <h3 className="text-sm font-semibold text-white mb-1">{stretch.name}</h3>
       <div className="text-blue-400 text-xs mb-2">{stretch.duration}</div>
-      <p className="text-zinc-400 text-xs mb-2 leading-relaxed">{stretch.tips}</p>
+      <p className="text-zinc-400 text-xs mb-2 leading-relaxed">{tips}</p>
       <a
-        href={stretch.videoUrl}
+        href={videoHref}
         target="_blank"
         rel="noopener noreferrer"
         className="text-red-500 hover:text-red-400 text-xs font-medium px-2 py-1 bg-zinc-900 rounded inline-block"
@@ -280,6 +284,9 @@ function StretchCard({ stretch, index }: { stretch: Stretch; index: number }) {
 
 function ExerciseCard({ exercise, index }: { exercise: Exercise; index: number }) {
   if (exercise.type === 'single') {
+    const tips = getFormTips(exercise.tips);
+    const videoHref = getVideoUrl(exercise.name, exercise.videoUrl);
+
     return (
       <div className="bg-zinc-800 rounded-lg p-5 border-2 border-zinc-700">
         <div className="flex items-start justify-between mb-3">
@@ -288,7 +295,7 @@ function ExerciseCard({ exercise, index }: { exercise: Exercise; index: number }
             <h3 className="text-xl font-bold text-white mb-2">{exercise.name}</h3>
           </div>
           <a
-            href={exercise.videoUrl}
+            href={videoHref}
             target="_blank"
             rel="noopener noreferrer"
             className="text-red-500 hover:text-red-400 text-sm font-medium px-3 py-2 bg-zinc-900 rounded"
@@ -327,7 +334,7 @@ function ExerciseCard({ exercise, index }: { exercise: Exercise; index: number }
 
         <div className="bg-zinc-900 rounded p-3">
           <div className="text-zinc-500 text-xs mb-1">Form Tips</div>
-          <p className="text-zinc-300 text-sm">{exercise.tips}</p>
+          <p className="text-zinc-300 text-sm">{tips}</p>
         </div>
       </div>
     );
@@ -335,6 +342,10 @@ function ExerciseCard({ exercise, index }: { exercise: Exercise; index: number }
 
   // B2B Exercise
   const [ex1, ex2] = exercise.exercises;
+  const ex1Tips = getFormTips(ex1.tips);
+  const ex2Tips = getFormTips(ex2.tips);
+  const ex1VideoHref = getVideoUrl(ex1.name, ex1.videoUrl);
+  const ex2VideoHref = getVideoUrl(ex2.name, ex2.videoUrl);
 
   return (
     <div className="bg-zinc-800 rounded-lg p-5 border-2 border-purple-700">
@@ -350,7 +361,7 @@ function ExerciseCard({ exercise, index }: { exercise: Exercise; index: number }
             <h3 className="text-lg font-bold text-white mb-2">{ex1.name}</h3>
           </div>
           <a
-            href={ex1.videoUrl}
+            href={ex1VideoHref}
             target="_blank"
             rel="noopener noreferrer"
             className="text-red-500 hover:text-red-400 text-sm font-medium px-3 py-2 bg-zinc-900 rounded"
@@ -382,7 +393,7 @@ function ExerciseCard({ exercise, index }: { exercise: Exercise; index: number }
             </div>
             <div className="bg-zinc-900 rounded p-2">
               <div className="text-zinc-500 text-xs mb-1">Form Tips</div>
-              <p className="text-zinc-400 text-xs">{ex1.tips}</p>
+              <p className="text-zinc-400 text-xs">{ex1Tips}</p>
             </div>
           </div>
         </div>
@@ -406,7 +417,7 @@ function ExerciseCard({ exercise, index }: { exercise: Exercise; index: number }
             <h3 className="text-lg font-bold text-white mb-2">{ex2.name}</h3>
           </div>
           <a
-            href={ex2.videoUrl}
+            href={ex2VideoHref}
             target="_blank"
             rel="noopener noreferrer"
             className="text-red-500 hover:text-red-400 text-sm font-medium px-3 py-2 bg-zinc-900 rounded"
@@ -438,7 +449,7 @@ function ExerciseCard({ exercise, index }: { exercise: Exercise; index: number }
             </div>
             <div className="bg-zinc-900 rounded p-2">
               <div className="text-zinc-500 text-xs mb-1">Form Tips</div>
-              <p className="text-zinc-400 text-xs">{ex2.tips}</p>
+              <p className="text-zinc-400 text-xs">{ex2Tips}</p>
             </div>
           </div>
         </div>

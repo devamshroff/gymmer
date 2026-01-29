@@ -7,9 +7,18 @@ let db: Client | null = null;
 
 export function getDatabase(): Client {
   if (!db) {
+    const url = process.env.TURSO_DATABASE_URL;
+    const authToken = process.env.TURSO_AUTH_TOKEN;
+    if (!url) {
+      throw new Error('Missing TURSO_DATABASE_URL');
+    }
+    const isFile = url.startsWith('file:');
+    if (!isFile && !authToken) {
+      throw new Error('Missing TURSO_AUTH_TOKEN');
+    }
     db = createClient({
-      url: process.env.TURSO_DATABASE_URL!,
-      authToken: process.env.TURSO_AUTH_TOKEN!,
+      url,
+      ...(isFile ? {} : { authToken })
     });
   }
   return db;

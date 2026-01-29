@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Exercise, SingleExercise, B2BExercise } from '@/lib/types';
 import { addExerciseToSession } from '@/lib/workout-session';
+import { getFormTips, getVideoUrl } from '@/lib/workout-media';
 import Header from '@/app/components/Header';
 import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 
@@ -778,7 +779,7 @@ function ActiveWorkoutContent() {
                 <h2 className="text-xl font-bold text-white mb-2">{ex1.name}</h2>
               </div>
               <a
-                href={ex1.videoUrl}
+                href={getVideoUrl(ex1.name, ex1.videoUrl)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-red-500 hover:text-red-400 text-sm font-medium px-3 py-2 bg-zinc-900 rounded"
@@ -825,7 +826,7 @@ function ActiveWorkoutContent() {
 
                 <div className="bg-zinc-900 rounded p-3 mb-3">
                   <div className="text-zinc-500 text-xs mb-1">Form Tips</div>
-                  <p className="text-zinc-300 text-sm">{ex1.tips}</p>
+                  <p className="text-zinc-300 text-sm">{getFormTips(ex1.tips)}</p>
                 </div>
 
                 <button
@@ -868,7 +869,7 @@ function ActiveWorkoutContent() {
                 <h2 className="text-xl font-bold text-white mb-2">{ex2.name}</h2>
               </div>
               <a
-                href={ex2.videoUrl}
+                href={getVideoUrl(ex2.name, ex2.videoUrl)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-red-500 hover:text-red-400 text-sm font-medium px-3 py-2 bg-zinc-900 rounded"
@@ -915,7 +916,7 @@ function ActiveWorkoutContent() {
 
                 <div className="bg-zinc-900 rounded p-3 mb-3">
                   <div className="text-zinc-500 text-xs mb-1">Form Tips</div>
-                  <p className="text-zinc-300 text-sm">{ex2.tips}</p>
+                  <p className="text-zinc-300 text-sm">{getFormTips(ex2.tips)}</p>
                 </div>
 
                 <div className="space-y-3">
@@ -1331,13 +1332,13 @@ function ActiveWorkoutContent() {
         {/* Form Tips */}
         <div className="bg-zinc-800 rounded-lg p-4 mb-4">
           <div className="text-zinc-400 text-sm mb-2">FORM TIPS</div>
-          <p className="text-zinc-200 text-base leading-relaxed">{exercise.tips}</p>
+          <p className="text-zinc-200 text-base leading-relaxed">{getFormTips(exercise.tips)}</p>
         </div>
 
         {/* Video and Skip */}
         <div className={isReviewMode ? '' : 'grid grid-cols-2 gap-4'}>
           <a
-            href={exercise.videoUrl}
+            href={getVideoUrl(exercise.name, exercise.videoUrl)}
             target="_blank"
             rel="noopener noreferrer"
             className="block bg-red-600 hover:bg-red-700 text-white text-center py-3 rounded-lg font-semibold transition-colors"

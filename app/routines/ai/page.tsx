@@ -171,7 +171,7 @@ export default function AiRoutinePage() {
         </Card>
 
         {messages.length > 0 && (
-          <div className="bg-zinc-800 rounded-lg p-6 border border-zinc-700 mb-6">
+          <Card paddingClassName="p-6" borderWidthClassName="border" className="mb-6">
             <h2 className="text-lg font-semibold text-white mb-4">Conversation</h2>
             <div className="space-y-3">
               {messages.map((message, index) => (
@@ -188,10 +188,10 @@ export default function AiRoutinePage() {
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
         )}
 
-        <div className="bg-zinc-800 rounded-lg p-6 border border-zinc-700">
+        <Card paddingClassName="p-6" borderWidthClassName="border">
           <h2 className="text-lg font-semibold text-white mb-3">Routine Preview</h2>
           {parsedPlan ? (
             <div className="space-y-4">
@@ -214,7 +214,7 @@ export default function AiRoutinePage() {
               Generate a routine to preview it here.
             </div>
           )}
-        </div>
+        </Card>
 
         {error && (
           <div className="mt-6 bg-red-900/50 border border-red-600 text-red-200 px-4 py-3 rounded-lg">

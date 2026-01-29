@@ -150,7 +150,7 @@ export default function StatsPage() {
 
         {/* Exercises Summary */}
         {sessionData && (
-          <div className="bg-zinc-800 rounded-lg p-6 mb-8">
+          <Card paddingClassName="p-6" borderWidthClassName="border-0" className="mb-8">
             <h2 className="text-xl font-bold text-white mb-4">EXERCISE BREAKDOWN</h2>
             <div className="space-y-6">
               {sessionData.exercises.map((exercise, index) => {
@@ -207,7 +207,7 @@ export default function StatsPage() {
                 </div>
               </div>
             )}
-          </div>
+          </Card>
         )}
 
         {/* Export JSON Button */}
