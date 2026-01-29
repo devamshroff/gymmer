@@ -27,6 +27,10 @@ export default function RoutineStretchesPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
+  const [recommendedPreIds, setRecommendedPreIds] = useState<number[]>([]);
+  const [recommendedPostIds, setRecommendedPostIds] = useState<number[]>([]);
+  const [recommending, setRecommending] = useState(false);
+  const [recommendError, setRecommendError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchStretches();
@@ -37,10 +41,44 @@ export default function RoutineStretchesPage() {
       const response = await fetch('/api/stretches');
       const data = await response.json();
       setAllStretches(data.stretches);
+      fetchRecommendations(data.stretches);
     } catch (error) {
       console.error('Error fetching stretches:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchRecommendations = async (currentStretches: Stretch[]) => {
+    setRecommending(true);
+    setRecommendError(null);
+    try {
+      const response = await fetch(`/api/routines/${routineId}/stretch-recommendations`, {
+        method: 'POST'
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to generate recommendations');
+      }
+
+      const data = await response.json();
+      const createdStretches = data.createdStretches || [];
+
+      if (createdStretches.length > 0) {
+        const existingIds = new Set(currentStretches.map((stretch) => stretch.id));
+        const newOnes = createdStretches.filter((stretch: Stretch) => !existingIds.has(stretch.id));
+        if (newOnes.length > 0) {
+          setAllStretches([...currentStretches, ...newOnes]);
+        }
+      }
+
+      setRecommendedPreIds(data.recommendedPreIds || []);
+      setRecommendedPostIds(data.recommendedPostIds || []);
+    } catch (error: any) {
+      console.error('Error fetching recommendations:', error);
+      setRecommendError(error.message || 'Failed to load recommendations');
+    } finally {
+      setRecommending(false);
     }
   };
 
@@ -56,6 +94,12 @@ export default function RoutineStretchesPage() {
         JSON.parse(stretch.muscle_groups).join(' ').toLowerCase() : '';
       return name.includes(query) || muscleGroups.includes(query);
     });
+  const recommendedIds = activeTab === 'pre' ? recommendedPreIds : recommendedPostIds;
+  const recommendedSet = new Set(recommendedIds);
+  const orderedStretches = [
+    ...filteredStretches.filter(stretch => recommendedSet.has(stretch.id)),
+    ...filteredStretches.filter(stretch => !recommendedSet.has(stretch.id)),
+  ];
 
   const toggleStretch = (stretchId: number) => {
     if (activeTab === 'pre') {
@@ -222,16 +266,32 @@ export default function RoutineStretchesPage() {
           className="w-full bg-zinc-800 text-white px-4 py-3 rounded-lg mb-6 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
 
+        {(recommending || recommendError) && (
+          <div className="mb-6">
+            {recommending && (
+              <div className="text-sm text-zinc-400">
+                Finding recommended stretches for this workout...
+              </div>
+            )}
+            {recommendError && (
+              <div className="text-sm text-red-300">
+                {recommendError}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Stretches List */}
         <div className="space-y-3 mb-6">
-          {filteredStretches.length === 0 ? (
+          {orderedStretches.length === 0 ? (
             <div className="text-center text-zinc-400 py-8">
               No stretches found
             </div>
           ) : (
-            filteredStretches.map((stretch) => {
+            orderedStretches.map((stretch) => {
               const muscleGroups = getMuscleGroupTags(stretch.muscle_groups);
               const selected = isSelected(stretch.id);
+              const isRecommended = recommendedSet.has(stretch.id);
 
               return (
                 <button
@@ -249,6 +309,11 @@ export default function RoutineStretchesPage() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="text-white font-semibold">{stretch.name}</h3>
+                        {isRecommended && (
+                          <span className="text-xs text-emerald-200 bg-emerald-900/60 px-2 py-1 rounded">
+                            * recommended for this workout
+                          </span>
+                        )}
                         {selected && (
                           <span className={`text-xs px-2 py-1 rounded ${
                             activeTab === 'pre' ? 'bg-blue-600' : 'bg-purple-600'

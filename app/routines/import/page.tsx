@@ -65,6 +65,7 @@ export default function ImportRoutinePage() {
         <h1 className="text-3xl font-bold text-white mb-2">Import Routine from JSON</h1>
         <p className="text-zinc-400 mb-6">
           Upload a workout plan JSON file to import it into your routines.
+          Tell your LLM! This is the JSON format the importer expects.
         </p>
 
         <div className="bg-zinc-800 rounded-lg p-6 border-2 border-blue-600 mb-6">
@@ -113,7 +114,7 @@ export default function ImportRoutinePage() {
         <div className="bg-zinc-800 rounded-lg p-6 border-2 border-zinc-700 mb-6">
           <h2 className="text-xl font-bold text-white mb-3">Expected JSON Format</h2>
           <div className="text-zinc-400 text-sm mb-3">
-            Your JSON file should follow this structure:
+            This format is current for the database-backed importer. Your JSON file should follow this structure (optional fields are supported):
           </div>
           <pre className="bg-zinc-900 p-4 rounded-lg text-xs text-zinc-300 overflow-x-auto">
 {`{
@@ -127,7 +128,9 @@ export default function ImportRoutinePage() {
       "targetReps": 10,
       "targetWeight": 135,
       "warmupWeight": 95,
-      "restTime": 120
+      "restTime": 120,
+      "videoUrl": "https://example.com/video",
+      "tips": "Optional form cue"
     },
     {
       "type": "b2b",
@@ -135,12 +138,20 @@ export default function ImportRoutinePage() {
         {
           "name": "Pull-ups",
           "sets": 3,
-          "targetReps": 12
+          "targetReps": 12,
+          "targetWeight": 0,
+          "warmupWeight": 0,
+          "videoUrl": "https://example.com/video",
+          "tips": "Optional form cue"
         },
         {
           "name": "Push-ups",
           "sets": 3,
-          "targetReps": 15
+          "targetReps": 15,
+          "targetWeight": 0,
+          "warmupWeight": 0,
+          "videoUrl": "https://example.com/video",
+          "tips": "Optional form cue"
         }
       ]
     }
@@ -148,22 +159,30 @@ export default function ImportRoutinePage() {
   "preWorkoutStretches": [
     {
       "name": "Arm Circles",
-      "duration": "30 seconds"
+      "duration": "30 seconds",
+      "videoUrl": "https://example.com/video",
+      "tips": "Optional cue"
     }
   ],
   "postWorkoutStretches": [
     {
       "name": "Standing Quad Stretch",
-      "duration": "45 seconds each leg"
+      "duration": "45 seconds each leg",
+      "videoUrl": "https://example.com/video",
+      "tips": "Optional cue"
     }
   ],
   "cardio": {
     "type": "Treadmill",
     "duration": "10 minutes",
-    "intensity": "Light"
+    "intensity": "Light",
+    "tips": "Optional cue"
   }
 }`}
           </pre>
+          <div className="text-zinc-500 text-xs mt-3">
+            Exercise and stretch names are matched case-insensitively and ignore punctuation (e.g. "Pull-Ups" and "pull ups" map to the same exercise).
+          </div>
         </div>
 
         <button

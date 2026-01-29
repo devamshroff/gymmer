@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import UsernameSetup from './components/UsernameSetup';
 
@@ -45,6 +46,7 @@ function formatLocalDate(value?: string | null): string {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [myRoutines, setMyRoutines] = useState<Routine[]>([]);
   const [favoritedRoutines, setFavoritedRoutines] = useState<Routine[]>([]);
   const [publicRoutinesPreview, setPublicRoutinesPreview] = useState<Routine[]>([]);
@@ -54,6 +56,7 @@ export default function Home() {
   const [editingName, setEditingName] = useState('');
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [showUsernameSetup, setShowUsernameSetup] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     fetchUserInfo();
@@ -306,12 +309,12 @@ export default function Home() {
         )}
 
         {/* Create New Routine Button */}
-        <Link
-          href="/routines/builder"
+        <button
+          onClick={() => setShowCreateModal(true)}
           className="mb-6 block w-full bg-green-600 hover:bg-green-700 text-white text-center py-4 rounded-lg text-lg font-bold transition-colors"
         >
           + Create New Routine
-        </Link>
+        </button>
 
         {/* My Routines Section */}
         <div className="mb-8">
@@ -376,6 +379,37 @@ export default function Home() {
             >
               Browse All Public Routines
             </Link>
+          </div>
+        )}
+
+        {showCreateModal && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-zinc-900 border border-zinc-700 rounded-xl p-6">
+              <h2 className="text-2xl font-bold text-white mb-2">Create a new routine</h2>
+              <p className="text-zinc-400 text-sm mb-6">
+                Choose how you want to build your next workout.
+              </p>
+              <div className="space-y-3">
+                <button
+                  onClick={() => router.push('/routines/builder')}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg text-lg font-semibold"
+                >
+                  Manual Builder
+                </button>
+                <button
+                  onClick={() => router.push('/routines/ai')}
+                  className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-lg text-lg font-semibold"
+                >
+                  AI-Assisted
+                </button>
+                <button
+                  onClick={() => setShowCreateModal(false)}
+                  className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-3 rounded-lg text-sm font-semibold"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </main>

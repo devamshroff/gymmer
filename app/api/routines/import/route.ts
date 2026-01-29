@@ -42,12 +42,15 @@ export async function POST(request: NextRequest) {
     });
     const routineId = Number(routineResult.lastInsertRowid);
 
+    const exerciseIndex = await buildNameIndex(db, 'exercises');
+    const stretchIndex = await buildNameIndex(db, 'stretches');
+
     // Import exercises
     for (let i = 0; i < workoutPlan.exercises.length; i++) {
       const exercise = workoutPlan.exercises[i];
 
       if (exercise.type === 'single' && exercise.name) {
-        const exerciseId = await getOrCreateExercise(db, exercise.name);
+        const exerciseId = await getOrCreateExercise(db, exerciseIndex, exercise.name);
 
         await db.execute({
           sql: `INSERT INTO routine_exercises (
@@ -69,8 +72,8 @@ export async function POST(request: NextRequest) {
         const ex1 = exercise.exercises[0];
         const ex2 = exercise.exercises[1];
 
-        const exerciseId1 = await getOrCreateExercise(db, ex1.name);
-        const exerciseId2 = await getOrCreateExercise(db, ex2.name);
+        const exerciseId1 = await getOrCreateExercise(db, exerciseIndex, ex1.name);
+        const exerciseId2 = await getOrCreateExercise(db, exerciseIndex, ex2.name);
 
         await db.execute({
           sql: `INSERT INTO routine_exercises (
@@ -100,7 +103,7 @@ export async function POST(request: NextRequest) {
     if (workoutPlan.preWorkoutStretches) {
       for (let i = 0; i < workoutPlan.preWorkoutStretches.length; i++) {
         const stretch = workoutPlan.preWorkoutStretches[i];
-        const stretchId = await getOrCreateStretch(db, stretch, 'pre_workout');
+        const stretchId = await getOrCreateStretch(db, stretchIndex, stretch, 'pre_workout');
         await db.execute({
           sql: 'INSERT INTO routine_pre_stretches (routine_id, stretch_id, order_index) VALUES (?, ?, ?)',
           args: [routineId, stretchId, i]
@@ -111,7 +114,7 @@ export async function POST(request: NextRequest) {
     if (workoutPlan.postWorkoutStretches) {
       for (let i = 0; i < workoutPlan.postWorkoutStretches.length; i++) {
         const stretch = workoutPlan.postWorkoutStretches[i];
-        const stretchId = await getOrCreateStretch(db, stretch, 'post_workout');
+        const stretchId = await getOrCreateStretch(db, stretchIndex, stretch, 'post_workout');
         await db.execute({
           sql: 'INSERT INTO routine_post_stretches (routine_id, stretch_id, order_index) VALUES (?, ?, ?)',
           args: [routineId, stretchId, i]
@@ -148,33 +151,77 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function getOrCreateExercise(db: any, name: string): Promise<number> {
-  const existing = await db.execute({
-    sql: 'SELECT id FROM exercises WHERE name = ?',
-    args: [name]
-  });
+type NameIndex = {
+  exactLower: Map<string, number>;
+  normalized: Map<string, number>;
+  idToName: Map<number, string>;
+};
 
-  if (existing.rows.length > 0) {
-    return existing.rows[0].id;
+async function buildNameIndex(db: any, table: 'exercises' | 'stretches'): Promise<NameIndex> {
+  const rows = await db.execute({
+    sql: `SELECT id, name FROM ${table}`,
+  });
+  const exactLower = new Map<string, number>();
+  const normalized = new Map<string, number>();
+  const idToName = new Map<number, string>();
+
+  for (const row of rows.rows as Array<{ id: number; name: string }>) {
+    const lower = row.name.toLowerCase();
+    exactLower.set(lower, row.id);
+    const normalizedName = normalizeName(row.name);
+    if (!normalized.has(normalizedName)) {
+      normalized.set(normalizedName, row.id);
+    }
+    idToName.set(row.id, row.name);
   }
+
+  return { exactLower, normalized, idToName };
+}
+
+function normalizeName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/[^a-z0-9 ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function getOrCreateExercise(db: any, index: NameIndex, name: string): Promise<number> {
+  const lowerName = name.toLowerCase();
+  const normalizedName = normalizeName(name);
+  const exactMatch = index.exactLower.get(lowerName);
+  if (exactMatch) return exactMatch;
+
+  const normalizedMatch = index.normalized.get(normalizedName);
+  if (normalizedMatch) return normalizedMatch;
+
+  const fuzzyMatch = await resolveFuzzyMatch(name, index);
+  if (fuzzyMatch) return fuzzyMatch;
 
   const result = await db.execute({
     sql: 'INSERT INTO exercises (name) VALUES (?)',
     args: [name]
   });
 
-  return Number(result.lastInsertRowid);
+  const newId = Number(result.lastInsertRowid);
+  index.exactLower.set(lowerName, newId);
+  index.normalized.set(normalizedName, newId);
+  index.idToName.set(newId, name);
+  return newId;
 }
 
-async function getOrCreateStretch(db: any, stretch: any, type: string): Promise<number> {
-  const existing = await db.execute({
-    sql: 'SELECT id FROM stretches WHERE name = ?',
-    args: [stretch.name]
-  });
+async function getOrCreateStretch(db: any, index: NameIndex, stretch: any, type: string): Promise<number> {
+  const lowerName = String(stretch.name || '').toLowerCase();
+  const normalizedName = normalizeName(String(stretch.name || ''));
+  const exactMatch = index.exactLower.get(lowerName);
+  if (exactMatch) return exactMatch;
 
-  if (existing.rows.length > 0) {
-    return existing.rows[0].id;
-  }
+  const normalizedMatch = index.normalized.get(normalizedName);
+  if (normalizedMatch) return normalizedMatch;
+
+  const fuzzyMatch = await resolveFuzzyMatch(String(stretch.name || ''), index);
+  if (fuzzyMatch) return fuzzyMatch;
 
   const result = await db.execute({
     sql: `INSERT INTO stretches (name, duration, type, video_url, tips)
@@ -188,5 +235,67 @@ async function getOrCreateStretch(db: any, stretch: any, type: string): Promise<
     ]
   });
 
-  return Number(result.lastInsertRowid);
+  const newId = Number(result.lastInsertRowid);
+  index.exactLower.set(lowerName, newId);
+  index.normalized.set(normalizedName, newId);
+  index.idToName.set(newId, stretch.name);
+  return newId;
+}
+
+async function resolveFuzzyMatch(name: string, index: NameIndex): Promise<number | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+
+  const options = Array.from(index.idToName.entries()).map(([id, label]) => ({ id, label }));
+  if (options.length === 0) return null;
+
+  const payload = {
+    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: [
+          'You match exercise/stretch names to existing options.',
+          'Return ONLY a JSON object: {"matchId": number|null}.',
+          'Return null if there is no close match.',
+          'Prefer exact or near-exact semantic matches; avoid loose matches.',
+        ].join(' ')
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          query: name,
+          options: options.map((opt) => ({ id: opt.id, label: opt.label }))
+        })
+      }
+    ],
+    temperature: 0.2,
+  };
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content?.trim();
+    if (!content) return null;
+
+    const jsonText = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1] ?? content;
+    const parsed = JSON.parse(jsonText);
+    const matchId = parsed?.matchId;
+    if (typeof matchId === 'number' && index.idToName.has(matchId)) {
+      return matchId;
+    }
+  } catch (error) {
+    console.error('Fuzzy match error:', error);
+  }
+
+  return null;
 }
