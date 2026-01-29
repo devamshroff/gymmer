@@ -1,11 +1,14 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Exercise, SingleExercise, B2BExercise } from '@/lib/types';
 import { addExerciseToSession } from '@/lib/workout-session';
+import ExerciseSelector from '@/app/components/ExerciseSelector';
+import SupersetSelector from '@/app/components/SupersetSelector';
 import { getFormTips, getVideoUrl } from '@/lib/workout-media';
+import { acknowledgeChangeWarning, hasChangeWarningAck, loadSessionWorkout, saveSessionWorkout } from '@/lib/session-workout';
 import Header from '@/app/components/Header';
 import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 
@@ -13,6 +16,15 @@ interface SetData {
   weight: number;
   reps: number;
 }
+
+type ExerciseOption = {
+  id: number;
+  name: string;
+  video_url: string | null;
+  tips: string | null;
+  equipment?: string | null;
+  is_custom?: number;
+};
 
 function normalizeDateString(value: string): string {
   if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(value)) {
@@ -60,6 +72,12 @@ function ActiveWorkoutContent() {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [transitionTimeRemaining, setTransitionTimeRemaining] = useState(60);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [showExerciseTypePicker, setShowExerciseTypePicker] = useState(false);
+  const [showExerciseSelector, setShowExerciseSelector] = useState(false);
+  const [showSupersetSelector, setShowSupersetSelector] = useState(false);
+  const [exerciseActionMode, setExerciseActionMode] = useState<'add' | 'replace' | null>(null);
+  const [showChangeWarning, setShowChangeWarning] = useState(false);
+  const pendingChangeRef = useRef<(() => void) | null>(null);
 
   // Last exercise log from database
   const [lastExerciseLog, setLastExerciseLog] = useState<any>(null);
@@ -92,14 +110,17 @@ function ActiveWorkoutContent() {
           throw new Error('Workout not found');
         }
         const data = await response.json();
-        setWorkout(data.workout);
+        const baseWorkout = data.workout as WorkoutPlan;
+        const sessionWorkout = loadSessionWorkout(baseWorkout.name, routineIdParam);
+        const resolvedWorkout = sessionWorkout || baseWorkout;
+        setWorkout(resolvedWorkout);
 
         // Check for index in URL (for navigation from other sections)
         const indexParam = searchParams.get('index');
         let startIndex = 0;
         if (indexParam && !initialIndexSet) {
           const idx = parseInt(indexParam, 10);
-          if (!isNaN(idx) && idx >= 0 && idx < data.workout.exercises.length) {
+          if (!isNaN(idx) && idx >= 0 && idx < resolvedWorkout.exercises.length) {
             startIndex = idx;
             setCurrentExerciseIndex(idx);
             setViewingExerciseIndex(idx);
@@ -108,7 +129,7 @@ function ActiveWorkoutContent() {
         }
 
         // Initialize exercise at startIndex
-        const exercise = data.workout.exercises[startIndex];
+        const exercise = resolvedWorkout.exercises[startIndex];
         if (exercise.type === 'single') {
           // Check if warmup is needed
           const needsWarmup = exercise.warmupWeight !== exercise.targetWeight;
@@ -142,7 +163,7 @@ function ActiveWorkoutContent() {
     }
 
     fetchWorkout();
-  }, [params.name, searchParams, initialIndexSet]);
+  }, [params.name, searchParams, routineIdParam, initialIndexSet]);
 
   // Rest timer countdown
   useEffect(() => {
@@ -527,8 +548,258 @@ function ActiveWorkoutContent() {
     }
   };
 
+  const buildSingleExercise = (exercise: ExerciseOption): SingleExercise => ({
+    type: 'single',
+    name: exercise.name,
+    sets: 3,
+    targetReps: 10,
+    targetWeight: 0,
+    warmupWeight: 0,
+    restTime: 60,
+    videoUrl: exercise.video_url || '',
+    tips: exercise.tips || ''
+  });
+
+  const buildSupersetExercise = (exercise1: ExerciseOption, exercise2: ExerciseOption): B2BExercise => ({
+    type: 'b2b',
+    restTime: 30,
+    exercises: [
+      {
+        name: exercise1.name,
+        sets: 3,
+        targetReps: 10,
+        targetWeight: 0,
+        warmupWeight: 0,
+        videoUrl: exercise1.video_url || '',
+        tips: exercise1.tips || ''
+      },
+      {
+        name: exercise2.name,
+        sets: 3,
+        targetReps: 10,
+        targetWeight: 0,
+        warmupWeight: 0,
+        videoUrl: exercise2.video_url || '',
+        tips: exercise2.tips || ''
+      }
+    ]
+  });
+
+  const applyWorkoutUpdate = (updatedWorkout: WorkoutPlan) => {
+    setWorkout(updatedWorkout);
+    saveSessionWorkout(updatedWorkout, routineIdParam);
+  };
+
+  const resetExerciseStateFor = (exercise: Exercise) => {
+    setIsResting(false);
+    setRestTimeRemaining(0);
+    setIsTransitioning(false);
+    setTransitionTimeRemaining(60);
+    setCompletedSets([]);
+    setCompletedPairs([]);
+    setCurrentExerciseInPair(0);
+    setLastExerciseLog(null);
+    setLastPartnerExerciseLog(null);
+
+    if (exercise.type === 'single') {
+      const needsWarmup = exercise.warmupWeight !== exercise.targetWeight;
+      setSetData({
+        weight: needsWarmup ? exercise.warmupWeight : exercise.targetWeight,
+        reps: exercise.targetReps,
+      });
+      setCurrentSetIndex(needsWarmup ? 0 : 1);
+    } else {
+      const b2bExercise = exercise as B2BExercise;
+      setSetData1({
+        weight: b2bExercise.exercises[0].targetWeight,
+        reps: b2bExercise.exercises[0].targetReps,
+      });
+      setSetData2({
+        weight: b2bExercise.exercises[1].targetWeight,
+        reps: b2bExercise.exercises[1].targetReps,
+      });
+      setCurrentSetIndex(1);
+    }
+
+    setViewingExerciseIndex(currentExerciseIndex);
+  };
+
+  const runWithChangeWarning = (action: () => void) => {
+    if (!workout) return;
+    if (hasChangeWarningAck(workout.name, routineIdParam)) {
+      action();
+      return;
+    }
+    pendingChangeRef.current = action;
+    setShowChangeWarning(true);
+  };
+
+  const handleWarningContinue = () => {
+    if (!workout) {
+      setShowChangeWarning(false);
+      return;
+    }
+    acknowledgeChangeWarning(workout.name, routineIdParam);
+    setShowChangeWarning(false);
+    const action = pendingChangeRef.current;
+    pendingChangeRef.current = null;
+    action?.();
+  };
+
+  const handleWarningCancel = () => {
+    pendingChangeRef.current = null;
+    setShowChangeWarning(false);
+  };
+
+  const openExerciseTypePicker = (mode: 'add' | 'replace') => {
+    runWithChangeWarning(() => {
+      setExerciseActionMode(mode);
+      setShowExerciseTypePicker(true);
+    });
+  };
+
+  const handleSelectSingleExercise = (exercise: ExerciseOption) => {
+    if (!workout || !exerciseActionMode) return;
+    const nextExercise = buildSingleExercise(exercise);
+    const updatedExercises = [...workout.exercises];
+    const insertIndex = currentExerciseIndex + 1;
+
+    if (exerciseActionMode === 'add') {
+      updatedExercises.splice(insertIndex, 0, nextExercise);
+    } else {
+      updatedExercises[currentExerciseIndex] = nextExercise;
+      resetExerciseStateFor(nextExercise);
+    }
+
+    applyWorkoutUpdate({ ...workout, exercises: updatedExercises });
+    setExerciseActionMode(null);
+    setShowExerciseSelector(false);
+  };
+
+  const handleSelectSuperset = (exercise1: ExerciseOption, exercise2: ExerciseOption) => {
+    if (!workout || !exerciseActionMode) return;
+    const nextExercise = buildSupersetExercise(exercise1, exercise2);
+    const updatedExercises = [...workout.exercises];
+    const insertIndex = currentExerciseIndex + 1;
+
+    if (exerciseActionMode === 'add') {
+      updatedExercises.splice(insertIndex, 0, nextExercise);
+    } else {
+      updatedExercises[currentExerciseIndex] = nextExercise;
+      resetExerciseStateFor(nextExercise);
+    }
+
+    applyWorkoutUpdate({ ...workout, exercises: updatedExercises });
+    setExerciseActionMode(null);
+    setShowSupersetSelector(false);
+  };
+
+  const handleExerciseTypeCancel = () => {
+    setShowExerciseTypePicker(false);
+    setExerciseActionMode(null);
+  };
+
   // Determine which exercise to display (for review mode vs active mode)
   const exerciseToDisplay = isReviewMode ? viewingExercise : currentExercise;
+  const exerciseModifyControls = !isReviewMode ? (
+    <div className="grid grid-cols-2 gap-3 mb-6">
+      <button
+        onClick={() => openExerciseTypePicker('add')}
+        className="bg-emerald-600/80 hover:bg-emerald-500 text-white py-2 rounded-lg text-sm font-semibold transition-colors"
+      >
+        + Add Exercise
+      </button>
+      <button
+        onClick={() => openExerciseTypePicker('replace')}
+        className="bg-orange-600/80 hover:bg-orange-500 text-white py-2 rounded-lg text-sm font-semibold transition-colors"
+      >
+        ↺ Replace Exercise
+      </button>
+    </div>
+  ) : null;
+  const exerciseModals = (
+    <>
+      {showChangeWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-lg border border-zinc-700 bg-zinc-900 p-6 text-white">
+            <h3 className="text-lg font-semibold mb-2">Session-only change</h3>
+            <p className="text-sm text-zinc-300 mb-6">
+              This edit only applies to today&apos;s workout. Edit the routine to make a permanent change.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={handleWarningCancel}
+                className="rounded-lg bg-zinc-700 py-2 text-sm font-semibold text-white hover:bg-zinc-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleWarningContinue}
+                className="rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showExerciseTypePicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-lg border border-zinc-700 bg-zinc-900 p-5 text-white">
+            <h3 className="text-lg font-semibold mb-4">Choose exercise type</h3>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  setShowExerciseTypePicker(false);
+                  setShowExerciseSelector(true);
+                }}
+                className="w-full rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+              >
+                Single exercise
+              </button>
+              <button
+                onClick={() => {
+                  setShowExerciseTypePicker(false);
+                  setShowSupersetSelector(true);
+                }}
+                className="w-full rounded-lg bg-purple-600 py-2 text-sm font-semibold text-white hover:bg-purple-500"
+              >
+                Superset
+              </button>
+              <button
+                onClick={handleExerciseTypeCancel}
+                className="w-full rounded-lg bg-zinc-700 py-2 text-sm font-semibold text-white hover:bg-zinc-600"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showExerciseSelector && (
+        <ExerciseSelector
+          title={exerciseActionMode === 'replace' ? 'Replace Exercise' : 'Add Exercise'}
+          onCancel={() => {
+            setShowExerciseSelector(false);
+            setExerciseActionMode(null);
+          }}
+          onSelect={handleSelectSingleExercise}
+        />
+      )}
+
+      {showSupersetSelector && (
+        <SupersetSelector
+          onCancel={() => {
+            setShowSupersetSelector(false);
+            setExerciseActionMode(null);
+          }}
+          onSelect={handleSelectSuperset}
+        />
+      )}
+    </>
+  );
 
   // Handle B2B/Superset exercises
   if (exerciseToDisplay.type === 'b2b') {
@@ -695,6 +966,8 @@ function ActiveWorkoutContent() {
               Overall Progress: {currentProgress} / {totalItems}
             </div>
           </div>
+
+          {exerciseModifyControls}
 
           {/* Superset Title */}
           <div className="text-center mb-6">
@@ -1017,6 +1290,8 @@ function ActiveWorkoutContent() {
               Skip Exercise
             </button>
           )}
+
+          {exerciseModals}
         </div>
       </div>
     );
@@ -1206,6 +1481,8 @@ function ActiveWorkoutContent() {
           </div>
         </div>
 
+        {exerciseModifyControls}
+
         {/* Exercise Name */}
         <h1 className="text-3xl font-bold text-white mb-6">{exercise.name}</h1>
 
@@ -1387,6 +1664,8 @@ function ActiveWorkoutContent() {
               Skip Exercise
             </button>
           )}
+
+          {exerciseModals}
         </div>
       </div>
     </div>

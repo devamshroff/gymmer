@@ -46,6 +46,9 @@ export default function EditRoutinePage() {
   const routineId = params.id as string;
 
   const [routineName, setRoutineName] = useState('');
+  const [routineNameDraft, setRoutineNameDraft] = useState('');
+  const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [preStretches, setPreStretches] = useState<RoutineStretch[]>([]);
   const [exercises, setExercises] = useState<RoutineExercise[]>([]);
   const [postStretches, setPostStretches] = useState<RoutineStretch[]>([]);
@@ -75,6 +78,7 @@ export default function EditRoutinePage() {
       const routineRes = await fetch(`/api/routines/${routineId}`);
       const routineData = await routineRes.json();
       setRoutineName(routineData.routine.name);
+      setRoutineNameDraft(routineData.routine.name);
       setExercises(routineData.exercises);
       setIsPublic(routineData.routine.is_public === 1);
 
@@ -397,6 +401,34 @@ export default function EditRoutinePage() {
     }
   };
 
+  const handleSaveName = async () => {
+    const nextName = routineNameDraft.trim();
+    if (!nextName || nextName === routineName) return;
+
+    setSavingName(true);
+    setNameError(null);
+    try {
+      const response = await fetch(`/api/routines/${routineId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nextName })
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to update routine name');
+      }
+
+      setRoutineName(nextName);
+      setRoutineNameDraft(nextName);
+    } catch (error) {
+      console.error('Error updating routine name:', error);
+      setNameError(error instanceof Error ? error.message : 'Failed to update routine name');
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
@@ -420,6 +452,32 @@ export default function EditRoutinePage() {
           </button>
           <h1 className="text-3xl font-bold text-white">Edit: {routineName}</h1>
         </div>
+
+        <Card paddingClassName="p-4 mb-6">
+          <label className="block text-zinc-400 text-sm mb-2">Routine name</label>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <input
+              type="text"
+              value={routineNameDraft}
+              onChange={(e) => setRoutineNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveName();
+              }}
+              className="flex-1 bg-zinc-800 text-white px-3 py-2 rounded border border-zinc-600 focus:outline-none focus:border-green-500"
+              placeholder="Routine name"
+            />
+            <button
+              onClick={handleSaveName}
+              disabled={savingName || routineNameDraft.trim() === routineName || !routineNameDraft.trim()}
+              className="px-4 py-2 rounded-lg font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {savingName ? 'Saving...' : 'Save Name'}
+            </button>
+          </div>
+          {nameError && (
+            <div className="text-red-400 text-sm mt-2">{nameError}</div>
+          )}
+        </Card>
 
         {/* Pre-Workout Stretches */}
         <section className="mb-8">

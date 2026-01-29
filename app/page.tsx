@@ -52,8 +52,6 @@ export default function Home() {
   const [publicRoutinesPreview, setPublicRoutinesPreview] = useState<Routine[]>([]);
   const [lastWorkoutDates, setLastWorkoutDates] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editingName, setEditingName] = useState('');
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [showUsernameSetup, setShowUsernameSetup] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -127,45 +125,6 @@ export default function Home() {
     fetchRoutines();
   }
 
-  function startEditing(routine: Routine, e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setEditingId(routine.id);
-    setEditingName(routine.name);
-  }
-
-  function cancelEditing(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setEditingId(null);
-    setEditingName('');
-  }
-
-  async function saveRoutineName(routineId: number, e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!editingName.trim()) return;
-
-    try {
-      const response = await fetch(`/api/routines/${routineId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editingName.trim() }),
-      });
-
-      if (response.ok) {
-        setMyRoutines(myRoutines.map(r =>
-          r.id === routineId ? { ...r, name: editingName.trim() } : r
-        ));
-        setEditingId(null);
-        setEditingName('');
-      }
-    } catch (error) {
-      console.error('Error updating routine name:', error);
-    }
-  }
-
   async function removeFavorite(routineId: number) {
     try {
       const response = await fetch(`/api/routines/${routineId}/favorite`, {
@@ -195,101 +154,71 @@ export default function Home() {
   const renderRoutineCard = (routine: Routine, isOwned: boolean) => {
     const lastDate = lastWorkoutDates[routine.name];
     const formattedDate = formatLocalDate(lastDate);
-    const isEditing = editingId === routine.id;
+    const encodedName = encodeURIComponent(routine.name);
+    const previewHref = `/workout/${encodedName}?routineId=${routine.id}&preview=1`;
+    const startHref = `/stretches/${encodedName}?routineId=${routine.id}`;
 
     return (
       <div
         key={`routine-${routine.id}`}
         className="bg-zinc-800 hover:bg-zinc-700 transition-colors rounded-lg p-6 border-2 border-zinc-700"
       >
-        <div className="flex items-center justify-between mb-2">
-          {isEditing && isOwned ? (
-            <div className="flex items-center gap-2 flex-1">
-              <input
-                type="text"
-                value={editingName}
-                onChange={(e) => setEditingName(e.target.value)}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') saveRoutineName(routine.id, e as any);
-                  if (e.key === 'Escape') { setEditingId(null); setEditingName(''); }
-                }}
-                className="flex-1 bg-zinc-700 text-white text-xl font-semibold px-3 py-1 rounded border border-zinc-500 focus:outline-none focus:border-green-500"
-                autoFocus
-              />
-              <button
-                onClick={(e) => saveRoutineName(routine.id, e)}
-                className="text-green-500 hover:text-green-400 p-1"
-                title="Save"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </button>
-              <button
-                onClick={cancelEditing}
-                className="text-zinc-400 hover:text-zinc-300 p-1"
-                title="Cancel"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          ) : (
-            <>
-              <Link
-                href={`/workout/${encodeURIComponent(routine.name)}`}
-                className="text-2xl font-semibold text-white hover:text-green-400 transition-colors"
-              >
-                {routine.name}
-              </Link>
-              <div className="flex items-center gap-2">
-                {isOwned ? (
-                  <button
-                    onClick={(e) => startEditing(routine, e)}
-                    className="text-zinc-500 hover:text-zinc-300 p-1"
-                    title="Edit name"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => removeFavorite(routine.id)}
-                    className="text-red-500 hover:text-red-400 p-1"
-                    title="Remove from favorites"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                    </svg>
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-        <Link
-          href={`/workout/${encodeURIComponent(routine.name)}`}
-          className="block"
-        >
-          <div className="flex justify-between items-center">
-            <div className="text-zinc-400">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <h3 className="text-2xl font-semibold text-white">{routine.name}</h3>
+            <div className="text-zinc-400 text-sm">
               {!isOwned && routine.creator_username && (
-                <span className="text-sm">by @{routine.creator_username}</span>
+                <span>by @{routine.creator_username}</span>
               )}
               {!isOwned && !routine.creator_username && routine.creator_name && (
-                <span className="text-sm">by {routine.creator_name}</span>
+                <span>by {routine.creator_name}</span>
               )}
               {isOwned && routine.description && routine.description}
               {isOwned && !routine.description && '\u00A0'}
             </div>
-            <div className="text-sm text-zinc-500">
-              Last: <span className={lastDate ? "text-blue-400" : "text-zinc-600"}>{formattedDate}</span>
-            </div>
           </div>
-        </Link>
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-zinc-500">
+              Last:{' '}
+              <span className={lastDate ? "text-blue-400" : "text-zinc-600"}>
+                {formattedDate}
+              </span>
+            </div>
+            {!isOwned && (
+              <button
+                onClick={() => removeFavorite(routine.id)}
+                className="text-red-500 hover:text-red-400 p-1"
+                title="Remove from favorites"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={previewHref}
+            className="px-4 py-2 rounded-lg font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+          >
+            Preview
+          </Link>
+          <Link
+            href={startHref}
+            className="px-4 py-2 rounded-lg font-medium bg-green-600 hover:bg-green-700 text-white transition-colors"
+          >
+            Start
+          </Link>
+          {isOwned && (
+            <Link
+              href={`/routines/${routine.id}/edit`}
+              className="px-4 py-2 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+            >
+              Edit
+            </Link>
+          )}
+        </div>
       </div>
     );
   };

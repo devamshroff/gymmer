@@ -8,6 +8,7 @@ import { addCardioToSession } from '@/lib/workout-session';
 import Header from '@/app/components/Header';
 import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 import { Card } from '@/app/components/SharedUi';
+import { loadSessionWorkout } from '@/lib/session-workout';
 
 const CARDIO_TYPES = [
   { value: 'Treadmill', label: 'Treadmill', icon: '🏃' },
@@ -48,11 +49,14 @@ export default function CardioPage() {
           throw new Error('Workout not found');
         }
         const data = await response.json();
-        setWorkout(data.workout);
+        const baseWorkout = data.workout as WorkoutPlan;
+        const sessionWorkout = loadSessionWorkout(baseWorkout.name, routineIdParam);
+        const resolvedWorkout = sessionWorkout || baseWorkout;
+        setWorkout(resolvedWorkout);
 
         // If workout has predefined cardio, use those values as defaults
-        if (data.workout.cardio) {
-          setCardioType(data.workout.cardio.type || 'Treadmill');
+        if (resolvedWorkout.cardio) {
+          setCardioType(resolvedWorkout.cardio.type || 'Treadmill');
         }
       } catch (error) {
         console.error('Error fetching workout:', error);
@@ -62,7 +66,7 @@ export default function CardioPage() {
     }
 
     fetchWorkout();
-  }, [params.name]);
+  }, [params.name, routineIdParam]);
 
   if (loading) {
     return (

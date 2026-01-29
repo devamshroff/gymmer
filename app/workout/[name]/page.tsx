@@ -12,6 +12,7 @@ export default function WorkoutDetailPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const isPreview = searchParams.get('preview') === '1';
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [routineId, setRoutineId] = useState<number | null>(null);
@@ -121,7 +122,7 @@ export default function WorkoutDetailPage() {
             <Link href="/" className="text-blue-400 hover:text-blue-300">
               ← Back to workouts
             </Link>
-            {routineId && !isPublicRoutine && (
+            {routineId && !isPublicRoutine && !isPreview && (
               <div className="flex gap-2">
                 <Link
                   href={`/routines/${routineId}/edit`}

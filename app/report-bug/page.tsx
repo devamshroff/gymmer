@@ -59,7 +59,7 @@ export default function ReportBugPage({ searchParams }: ReportBugPageProps) {
                 name="description"
                 required
                 rows={5}
-                placeholder="Describe the bug and what you expected to happen."
+                placeholder="Describe the bug."
                 className="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder:text-zinc-500"
               />
             </div>
@@ -79,7 +79,7 @@ export default function ReportBugPage({ searchParams }: ReportBugPageProps) {
 
             <div className="space-y-2">
               <label htmlFor="screenshot" className="text-sm font-semibold text-zinc-200">
-                Screenshot (strongly recommended)
+                Screenshot (very helpful!)
               </label>
               <input
                 id="screenshot"
