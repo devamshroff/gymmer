@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
 import SupersetSelector from '@/app/components/SupersetSelector';
 import Header from '@/app/components/Header';
+import { Card } from '@/app/components/SharedUi';
 
 function RoutineBuilderContent() {
   const router = useRouter();
@@ -180,7 +181,7 @@ function RoutineBuilderContent() {
 
         {!routineId ? (
           // Step 1: Create routine
-          <div className="bg-zinc-800 rounded-lg p-6 border-2 border-green-600">
+          <Card paddingClassName="p-6" borderClassName="border-green-600">
             <label className="text-zinc-300 text-sm font-semibold block mb-2">
               Routine Name
             </label>
@@ -224,13 +225,13 @@ function RoutineBuilderContent() {
             >
               {creating ? 'Creating...' : 'Create Routine'}
             </button>
-          </div>
+          </Card>
         ) : (
           // Step 2: Add exercises
           <div>
-            <div className="bg-zinc-800 rounded-lg p-6 border-2 border-zinc-700 mb-6">
+            <Card paddingClassName="p-6" className="mb-6">
               <h2 className="text-xl font-bold text-white">{routineName}</h2>
-            </div>
+            </Card>
 
             {/* Exercise list */}
             <div className="mb-6">

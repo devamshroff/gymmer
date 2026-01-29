@@ -50,13 +50,14 @@ function buildSystemPrompt(
   return [
     'You are a fitness coach recommending stretches for a workout.',
     'Given the exercise list, provide pre-workout and post-workout stretches.',
+    'Ensure every primary muscle used in the exercises has at least one stretch in pre-workout and one in post-workout.',
     'Return ONLY valid JSON with this exact shape:',
     '{',
     '  "preWorkoutStretches": [ { "name": string, "duration": string, "tips": string (optional), "muscleGroups": string[] (optional) } ],',
     '  "postWorkoutStretches": [ { "name": string, "duration": string, "tips": string (optional), "muscleGroups": string[] (optional) } ]',
     '}',
-    'Return at least 3 stretches per list.',
-    'Increase stretch count with more exercises: 3-4 for <=4 exercises, 4-6 for 5-8, 6-8 for 9+.',
+    'Return at least 4 stretches per list.',
+    'Increase stretch count with more exercises: 4-5 for <=4 exercises, 5-7 for 5-8, 7-9 for 9+.',
     'Use concise stretch names.',
     `Routine: ${routineName || 'Workout routine'}`,
     routineDescription ? `Description: ${routineDescription}` : 'Description: (none)',
@@ -237,7 +238,7 @@ export async function POST(
     const postList = Array.isArray(recommendations.postWorkoutStretches)
       ? recommendations.postWorkoutStretches
       : [];
-    const minCount = exercises.length >= 9 ? 6 : exercises.length >= 5 ? 4 : 3;
+    const minCount = exercises.length >= 9 ? 7 : exercises.length >= 5 ? 5 : 4;
 
     const index = await buildNameIndex(allStretches);
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/app/components/Header';
+import { Card } from '@/app/components/SharedUi';
 
 type Message = {
   role: 'user' | 'assistant';
@@ -10,6 +11,7 @@ type Message = {
 };
 
 const STORAGE_KEY = 'ai_routine_draft';
+const PROMPT_KEY = 'ai_routine_prompt';
 
 function buildPreview(plan: any) {
   return {
@@ -59,6 +61,13 @@ export default function AiRoutinePage() {
     return () => clearInterval(timer);
   }, [generating]);
 
+  useEffect(() => {
+    const storedPrompt = localStorage.getItem(PROMPT_KEY);
+    if (storedPrompt) {
+      setPrompt(storedPrompt);
+    }
+  }, []);
+
   const handleGenerate = async () => {
     const trimmedPrompt = prompt.trim();
     if (!trimmedPrompt) return;
@@ -67,6 +76,7 @@ export default function AiRoutinePage() {
     setError(null);
     setSuccess(null);
     setGenerated(false);
+    localStorage.setItem(PROMPT_KEY, trimmedPrompt);
     setMessages((prev) => [...prev, { role: 'user', content: trimmedPrompt }]);
 
     try {
@@ -123,7 +133,7 @@ export default function AiRoutinePage() {
           </button>
         </div>
 
-        <div className="bg-zinc-800 rounded-lg p-6 border-2 border-emerald-700 mb-6">
+        <Card paddingClassName="p-6" borderClassName="border-emerald-700" className="mb-6">
           <h2 className="text-lg font-semibold text-white mb-2">Describe your workout</h2>
           <p className="text-zinc-400 text-sm mb-4">
             Include your goals, target muscles, exercises you dislike, injuries or restrictions,
@@ -158,7 +168,7 @@ export default function AiRoutinePage() {
               Clear
             </button>
           </div>
-        </div>
+        </Card>
 
         {messages.length > 0 && (
           <div className="bg-zinc-800 rounded-lg p-6 border border-zinc-700 mb-6">

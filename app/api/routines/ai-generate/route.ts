@@ -28,6 +28,8 @@ function buildSystemPrompt(exerciseNames: string[]): string {
     '  "cardio": { "type": string, "duration": string, "intensity": string, "tips": string (optional) } (optional)',
     '}',
     'Use realistic weights/reps and keep names concise.',
+    'Include preWorkoutStretches and postWorkoutStretches with at least 4 items each; increase counts for larger routines.',
+    'Ensure every primary muscle used has at least one pre-workout and one post-workout stretch.',
     'Incorporate user goals, target muscles, disliked exercises, restrictions, available equipment, location, and time constraints when provided.',
     'Prefer existing exercises from the list below when possible.',
     'If a needed exercise is not in the list, you may invent a new one with a clear name.',

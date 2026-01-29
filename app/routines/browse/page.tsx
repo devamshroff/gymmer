@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Card } from '@/app/components/SharedUi';
 
 interface PublicRoutine {
   id: number;
@@ -205,10 +206,7 @@ export default function BrowseRoutinesPage() {
               const formattedDate = formatLocalDate(lastDate);
 
               return (
-                <div
-                  key={routine.id}
-                  className="bg-zinc-800 rounded-lg p-6 border-2 border-zinc-700"
-                >
+                <Card key={routine.id} paddingClassName="p-6">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <h3 className="text-xl font-semibold text-white mb-1">
@@ -281,7 +279,7 @@ export default function BrowseRoutinesPage() {
                       Clone
                     </button>
                   </div>
-                </div>
+                </Card>
               );
             })}
           </div>

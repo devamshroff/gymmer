@@ -7,6 +7,7 @@ import { WorkoutPlan } from '@/lib/types';
 import { addCardioToSession } from '@/lib/workout-session';
 import Header from '@/app/components/Header';
 import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
+import { Card } from '@/app/components/SharedUi';
 
 const CARDIO_TYPES = [
   { value: 'Treadmill', label: 'Treadmill', icon: '🏃' },
@@ -156,7 +157,7 @@ export default function CardioPage() {
         </div>
 
         {/* Cardio Card */}
-        <div className="bg-zinc-800 rounded-lg p-6 border-2 border-red-600 mb-8">
+        <Card paddingClassName="p-6" borderClassName="border-red-600" className="mb-8">
           {/* Cardio Type Selector */}
           <div className="mb-6">
             <label className="text-zinc-400 text-sm block mb-3">Type</label>
@@ -225,7 +226,7 @@ export default function CardioPage() {
               <p className="text-zinc-400 text-sm">{workout.cardio.tips}</p>
             </div>
           )}
-        </div>
+        </Card>
 
         {/* Action Buttons */}
         {!isDone ? (

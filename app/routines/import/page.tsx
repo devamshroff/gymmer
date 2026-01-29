@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/app/components/Header';
+import { Card } from '@/app/components/SharedUi';
 
 export default function ImportRoutinePage() {
   const router = useRouter();
@@ -68,7 +69,7 @@ export default function ImportRoutinePage() {
           Tell your LLM! This is the JSON format the importer expects.
         </p>
 
-        <div className="bg-zinc-800 rounded-lg p-6 border-2 border-blue-600 mb-6">
+        <Card paddingClassName="p-6" borderClassName="border-blue-600" className="mb-6">
           <label
             htmlFor="file-upload"
             className="block w-full cursor-pointer"
@@ -109,9 +110,9 @@ export default function ImportRoutinePage() {
               {success}
             </div>
           )}
-        </div>
+        </Card>
 
-        <div className="bg-zinc-800 rounded-lg p-6 border-2 border-zinc-700 mb-6">
+        <Card paddingClassName="p-6" className="mb-6">
           <h2 className="text-xl font-bold text-white mb-3">Expected JSON Format</h2>
           <div className="text-zinc-400 text-sm mb-3">
             This format is current for the database-backed importer. Your JSON file should follow this structure (optional fields are supported):
@@ -183,7 +184,7 @@ export default function ImportRoutinePage() {
           <div className="text-zinc-500 text-xs mt-3">
             Exercise and stretch names are matched case-insensitively and ignore punctuation (e.g. "Pull-Ups" and "pull ups" map to the same exercise).
           </div>
-        </div>
+        </Card>
 
         <button
           onClick={() => router.push('/')}

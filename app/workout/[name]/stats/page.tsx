@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
 import { getWorkoutSession, clearWorkoutSession, WorkoutSessionData } from '@/lib/workout-session';
 import Header from '@/app/components/Header';
+import { Card } from '@/app/components/SharedUi';
 
 export default function StatsPage() {
   const params = useParams();
@@ -131,20 +132,20 @@ export default function StatsPage() {
 
         {/* Summary Stats Cards */}
         <div className="grid grid-cols-2 gap-4 mb-8">
-          <div className="bg-zinc-800 rounded-lg p-6 border-2 border-blue-600">
+          <Card paddingClassName="p-6" borderClassName="border-blue-600">
             <div className="text-zinc-400 text-sm mb-2">Total Volume</div>
             <div className="text-white text-3xl font-bold">
               {totalVolume.toLocaleString()}
             </div>
             <div className="text-zinc-500 text-sm">lbs</div>
-          </div>
-          <div className="bg-zinc-800 rounded-lg p-6 border-2 border-green-600">
+          </Card>
+          <Card paddingClassName="p-6" borderClassName="border-green-600">
             <div className="text-zinc-400 text-sm mb-2">Duration</div>
             <div className="text-white text-3xl font-bold">
               {totalDuration}
             </div>
             <div className="text-zinc-500 text-sm">minutes</div>
-          </div>
+          </Card>
         </div>
 
         {/* Exercises Summary */}

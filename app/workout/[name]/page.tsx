@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Exercise, Stretch, Cardio } from '@/lib/types';
 import Header from '@/app/components/Header';
+import { BottomActionBar, Card, SectionHeader } from '@/app/components/SharedUi';
 
 export default function WorkoutDetailPage() {
   const params = useParams();
@@ -141,9 +142,12 @@ export default function WorkoutDetailPage() {
 
         {/* Pre-Workout Stretches */}
         <section className="mb-8">
-          <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-            <span className="text-green-500">🟢</span> Pre-Workout Stretches
-          </h2>
+          <SectionHeader
+            icon="🟢"
+            iconClassName="text-green-500"
+            label="Pre-Workout Stretches"
+            className="text-2xl"
+          />
           <div className="text-zinc-400 text-sm mb-4">Dynamic stretches · 5-8 minutes</div>
           <div className="grid grid-cols-2 gap-3">
             {workout.preWorkoutStretches.map((stretch, index) => (
@@ -154,9 +158,12 @@ export default function WorkoutDetailPage() {
 
         {/* Exercises */}
         <section className="mb-8">
-          <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-            <span className="text-orange-500">🔥</span> Exercises
-          </h2>
+          <SectionHeader
+            icon="🔥"
+            iconClassName="text-orange-500"
+            label="Exercises"
+            className="text-2xl"
+          />
           <div className="text-zinc-400 text-sm mb-4">{workout.exercises.length} exercises</div>
           <div className="space-y-4">
             {workout.exercises.map((exercise, index) => (
@@ -168,10 +175,13 @@ export default function WorkoutDetailPage() {
         {/* Cardio (Optional) */}
         {workout.cardio && (
           <section className="mb-8">
-            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-              <span className="text-red-500">❤️</span> Cardio (Optional)
-            </h2>
-            <div className="bg-zinc-800 rounded-lg p-5 border-2 border-red-600">
+            <SectionHeader
+              icon="❤️"
+              iconClassName="text-red-500"
+              label="Cardio (Optional)"
+              className="text-2xl"
+            />
+            <Card paddingClassName="p-5" borderClassName="border-red-600">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
                   <h3 className="text-xl font-bold text-white mb-2">{workout.cardio.type}</h3>
@@ -183,15 +193,18 @@ export default function WorkoutDetailPage() {
                 <div className="text-zinc-500 text-xs mb-1">Tips</div>
                 <p className="text-zinc-300 text-sm">{workout.cardio.tips}</p>
               </div>
-            </div>
+            </Card>
           </section>
         )}
 
         {/* Post-Workout Stretches */}
         <section className="mb-8">
-          <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-            <span className="text-blue-500">🔵</span> Post-Workout Stretches
-          </h2>
+          <SectionHeader
+            icon="🔵"
+            iconClassName="text-blue-500"
+            label="Post-Workout Stretches"
+            className="text-2xl"
+          />
           <div className="text-zinc-400 text-sm mb-4">Static stretches · 8-10 minutes</div>
           <div className="grid grid-cols-2 gap-3">
             {workout.postWorkoutStretches.map((stretch, index) => (
@@ -201,19 +214,17 @@ export default function WorkoutDetailPage() {
         </section>
 
         {/* Start Workout Button - Fixed at bottom */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-zinc-900 border-t border-zinc-800">
-          <div className="max-w-2xl mx-auto">
-            <button
-              onClick={() => {
-                const url = `/stretches/${encodeURIComponent(workout.name)}${routineId ? `?routineId=${routineId}` : ''}`;
-                router.push(url);
-              }}
-              className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-lg text-xl font-bold transition-colors"
-            >
-              Start Workout
-            </button>
-          </div>
-        </div>
+        <BottomActionBar maxWidthClassName="max-w-2xl">
+          <button
+            onClick={() => {
+              const url = `/stretches/${encodeURIComponent(workout.name)}${routineId ? `?routineId=${routineId}` : ''}`;
+              router.push(url);
+            }}
+            className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-lg text-xl font-bold transition-colors"
+          >
+            Start Workout
+          </button>
+        </BottomActionBar>
       </div>
 
       {/* Delete Confirmation Modal */}
