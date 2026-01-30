@@ -1,13 +1,12 @@
 'use client';
 
 import Timer from './Timer';
+import { formatStretchTimer } from '@/lib/stretch-utils';
 import { getFormTips, getVideoUrl } from '@/lib/workout-media';
 
 export interface StretchData {
   name: string;
-  duration: string;
   timerSeconds?: number;
-  sideCount?: number;
   tips?: string | null;
   videoUrl?: string | null;
 }
@@ -34,17 +33,14 @@ export default function StretchCard({
   const tips = getFormTips(stretch.tips);
   const videoHref = getVideoUrl(stretch.name, stretch.videoUrl);
   const timerSeconds = stretch.timerSeconds || 0;
-  const sideLabel = (stretch.sideCount || 1) > 1 ? 'Each side' : null;
+  const timerLabel = formatStretchTimer(timerSeconds);
 
   return (
     <div className={`bg-zinc-800 rounded-lg p-8 border-2 ${borderColor} mb-8`}>
       <div className="text-center mb-6">
         <div className="text-6xl mb-4">{emoji}</div>
         <h2 className="text-3xl font-bold text-white mb-4">{stretch.name}</h2>
-        <div className="text-xl text-blue-300 font-semibold mb-4">
-          {stretch.duration}
-          {sideLabel ? ` • ${sideLabel}` : ''}
-        </div>
+        <div className="text-xl text-blue-300 font-semibold mb-4">{timerLabel}</div>
       </div>
 
       {/* Timer - only shows if stretch has a timer value */}

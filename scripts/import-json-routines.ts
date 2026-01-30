@@ -1,6 +1,7 @@
 // scripts/import-json-routines.ts
 // Import workout plans from JSON files into the routines database
 import { getDatabase } from '../lib/database';
+import { parseTimerSecondsFromText } from '../lib/stretch-utils';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
@@ -75,8 +76,8 @@ async function main() {
 
       // Create routine
       const routineResult = await db.execute({
-        sql: `INSERT INTO routines (name, description, is_custom, source_file)
-              VALUES (?, ?, 0, ?)`,
+        sql: `INSERT INTO routines (name, description, source_file)
+              VALUES (?, ?, ?)`,
         args: [workout.name, workout.description || null, file]
       });
       routineId = Number(routineResult.lastInsertRowid);
@@ -212,7 +213,7 @@ async function getOrCreateExercise(db: any, name: string): Promise<number> {
 
   // Create new exercise
   const result = await db.execute({
-    sql: 'INSERT INTO exercises (name, is_custom) VALUES (?, 0)',
+    sql: 'INSERT INTO exercises (name) VALUES (?)',
     args: [name]
   });
 
@@ -232,12 +233,11 @@ async function getOrCreateStretch(db: any, stretch: JsonStretch, type: string): 
 
   // Create new stretch
   const result = await db.execute({
-    sql: `INSERT INTO stretches (name, duration, type, video_url, tips, is_custom)
-          VALUES (?, ?, ?, ?, ?, 0)`,
+    sql: `INSERT INTO stretches (name, timer_seconds, video_url, tips)
+          VALUES (?, ?, ?, ?)`,
     args: [
       stretch.name,
-      stretch.duration,
-      type,
+      parseTimerSecondsFromText(stretch.duration) ?? 0,
       stretch.videoUrl || null,
       stretch.tips || null
     ]

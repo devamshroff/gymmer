@@ -74,8 +74,7 @@ describe('generateFormTips', () => {
     const result = await generateFormTips({
       kind: 'stretch',
       name: 'Hamstring Stretch',
-      duration: '30 seconds',
-      stretchType: 'pre_workout',
+      timerSeconds: 30,
       muscleGroups: ['hamstrings']
     });
 

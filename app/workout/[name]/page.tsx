@@ -5,10 +5,12 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Exercise, Stretch, Cardio, SingleExercise } from '@/lib/types';
 import { getFormTips, getVideoUrl } from '@/lib/workout-media';
+import { formatStretchTimer } from '@/lib/stretch-utils';
 import { initWorkoutSession, isSessionMode, resolveSessionMode } from '@/lib/workout-session';
 import type { SessionMode } from '@/lib/workout-session';
 import { BottomActionBar, Card, SectionHeader } from '@/app/components/SharedUi';
 import ExerciseHistoryModal from '@/app/components/ExerciseHistoryModal';
+import { EXERCISE_TYPES, ExerciseHistoryDisplayMode } from '@/lib/constants';
 
 type ExerciseTarget = {
   suggestedWeight?: number | null;
@@ -22,7 +24,7 @@ type ExerciseHistoryPoint = {
 };
 
 type ExerciseHistorySeries = {
-  display_mode: 'weight' | 'reps';
+  display_mode: ExerciseHistoryDisplayMode;
   points: ExerciseHistoryPoint[];
 };
 
@@ -94,7 +96,7 @@ export default function WorkoutDetailPage() {
     if (!workout) return {};
     const next: Record<string, { weight?: number | null; reps?: number | null }> = {};
     for (const exercise of workout.exercises) {
-      if (exercise.type === 'single') {
+      if (exercise.type === EXERCISE_TYPES.single) {
         next[exercise.name] = {
           weight: exercise.targetWeight,
           reps: exercise.targetReps,
@@ -132,7 +134,7 @@ export default function WorkoutDetailPage() {
     if (!workout) return [];
     const names: string[] = [];
     for (const exercise of workout.exercises) {
-      if (exercise.type === 'single') {
+      if (exercise.type === EXERCISE_TYPES.single) {
         names.push(exercise.name);
       } else {
         const [ex1, ex2] = exercise.exercises;
@@ -243,7 +245,7 @@ export default function WorkoutDetailPage() {
     };
 
     for (const entry of workout.exercises) {
-      if (entry.type === 'single') {
+      if (entry.type === EXERCISE_TYPES.single) {
         buildTarget(entry);
       } else {
         const [ex1, ex2] = entry.exercises;
@@ -285,7 +287,7 @@ export default function WorkoutDetailPage() {
 
       const exercisePayload: Array<{
         name: string;
-        type: 'single' | 'b2b';
+        type: typeof EXERCISE_TYPES.single | typeof EXERCISE_TYPES.b2b;
         sets: number;
         targetWeight: number;
         targetReps: number;
@@ -294,10 +296,10 @@ export default function WorkoutDetailPage() {
       }> = [];
 
       for (const exercise of workout.exercises) {
-        if (exercise.type === 'single') {
+        if (exercise.type === EXERCISE_TYPES.single) {
           exercisePayload.push({
             name: exercise.name,
-            type: 'single',
+            type: EXERCISE_TYPES.single,
             sets: exercise.sets,
             targetWeight: exercise.targetWeight,
             targetReps: exercise.targetReps,
@@ -308,7 +310,7 @@ export default function WorkoutDetailPage() {
           const [ex1, ex2] = exercise.exercises;
           exercisePayload.push({
             name: ex1.name,
-            type: 'b2b',
+            type: EXERCISE_TYPES.b2b,
             sets: ex1.sets,
             targetWeight: ex1.targetWeight,
             targetReps: ex1.targetReps,
@@ -317,7 +319,7 @@ export default function WorkoutDetailPage() {
           });
           exercisePayload.push({
             name: ex2.name,
-            type: 'b2b',
+            type: EXERCISE_TYPES.b2b,
             sets: ex2.sets,
             targetWeight: ex2.targetWeight,
             targetReps: ex2.targetReps,
@@ -749,7 +751,9 @@ function StretchCard({ stretch, index }: { stretch: Stretch; index: number }) {
     <div className="bg-zinc-800 rounded-lg p-3 border border-zinc-700">
       <div className="text-zinc-500 text-xs mb-1">#{index + 1}</div>
       <h3 className="text-sm font-semibold text-white mb-1">{stretch.name}</h3>
-      <div className="text-blue-400 text-xs mb-2">{stretch.duration}</div>
+      <div className="text-blue-400 text-xs mb-2">
+        {formatStretchTimer(stretch.timerSeconds)}
+      </div>
       <p className="text-zinc-400 text-xs mb-2 leading-relaxed">{tips}</p>
       <a
         href={videoHref}
@@ -828,7 +832,7 @@ function ExerciseCard({
   targets: Record<string, ExerciseTarget>;
   showTargets: boolean;
 }) {
-  if (exercise.type === 'single') {
+  if (exercise.type === EXERCISE_TYPES.single) {
     const tips = getFormTips(exercise.tips);
     const videoHref = getVideoUrl(exercise.name, exercise.videoUrl);
 

@@ -1,9 +1,11 @@
 // lib/workout-session.ts
 // Client-side storage for current workout session
 
+import { EXERCISE_TYPES } from '@/lib/constants';
+
 export interface SessionExerciseData {
   name: string;
-  type: 'single' | 'b2b';
+  type: typeof EXERCISE_TYPES.single | typeof EXERCISE_TYPES.b2b;
   warmup?: { weight: number; reps: number };
   sets: Array<{ weight: number; reps: number }>;
   b2bPartner?: {

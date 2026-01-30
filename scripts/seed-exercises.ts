@@ -1,6 +1,7 @@
 // scripts/seed-exercises.ts
 // Seed exercises and stretches from existing JSON files
 import { getDatabase } from '../lib/database';
+import { parseTimerSecondsFromText } from '../lib/stretch-utils';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
@@ -14,7 +15,7 @@ async function main() {
     const files = readdirSync(workoutPlansDir).filter(f => f.endsWith('.json'));
 
     const allExercises = new Set<string>();
-    const allStretches = new Map<string, { duration: string; videoUrl: string; tips: string; type: string }>();
+    const allStretches = new Map<string, { timerSeconds: number; videoUrl: string; tips: string }>();
 
     // Extract exercises and stretches from all JSON files
     for (const file of files) {
@@ -41,10 +42,9 @@ async function main() {
         for (const stretch of workout.preWorkoutStretches) {
           if (!allStretches.has(stretch.name)) {
             allStretches.set(stretch.name, {
-              duration: stretch.duration,
+              timerSeconds: parseTimerSecondsFromText(stretch.duration) ?? 0,
               videoUrl: stretch.videoUrl,
-              tips: stretch.tips,
-              type: 'pre_workout'
+              tips: stretch.tips
             });
           }
         }
@@ -55,10 +55,9 @@ async function main() {
         for (const stretch of workout.postWorkoutStretches) {
           if (!allStretches.has(stretch.name)) {
             allStretches.set(stretch.name, {
-              duration: stretch.duration,
+              timerSeconds: parseTimerSecondsFromText(stretch.duration) ?? 0,
               videoUrl: stretch.videoUrl,
-              tips: stretch.tips,
-              type: 'post_workout'
+              tips: stretch.tips
             });
           }
         }
@@ -73,7 +72,7 @@ async function main() {
     for (const exerciseName of allExercises) {
       try {
         await db.execute({
-          sql: `INSERT OR IGNORE INTO exercises (name, is_custom) VALUES (?, 0)`,
+          sql: `INSERT OR IGNORE INTO exercises (name) VALUES (?)`,
           args: [exerciseName]
         });
         exerciseCount++;
@@ -90,8 +89,8 @@ async function main() {
     for (const [name, data] of allStretches) {
       try {
         await db.execute({
-          sql: `INSERT OR IGNORE INTO stretches (name, duration, video_url, tips, type, is_custom) VALUES (?, ?, ?, ?, ?, 0)`,
-          args: [name, data.duration, data.videoUrl, data.tips, data.type]
+          sql: `INSERT OR IGNORE INTO stretches (name, timer_seconds, video_url, tips) VALUES (?, ?, ?, ?)`,
+          args: [name, data.timerSeconds, data.videoUrl, data.tips]
         });
         stretchCount++;
         console.log(`  ✓ ${name}`);

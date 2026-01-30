@@ -14,17 +14,19 @@ import {
   StretchItem
 } from '@/app/components/RoutineEditParts';
 import { BottomActionBar, Card, EmptyState, SectionHeader } from '@/app/components/SharedUi';
+import { EXERCISE_TYPES } from '@/lib/constants';
+import { formatStretchTimer } from '@/lib/stretch-utils';
 
 const STORAGE_KEY = 'ai_routine_draft';
 
 type Stretch = {
   name: string;
-  duration?: string;
+  timerSeconds?: number;
   tips?: string;
 };
 
 type SingleExercise = {
-  type: 'single';
+  type: typeof EXERCISE_TYPES.single;
   name: string;
   sets?: number;
   targetReps?: number;
@@ -35,7 +37,7 @@ type SingleExercise = {
 };
 
 type B2BExercise = {
-  type: 'b2b';
+  type: typeof EXERCISE_TYPES.b2b;
   exercises: Array<{
     name: string;
     sets?: number;
@@ -75,9 +77,7 @@ function StretchPreviewItem({ stretch }: { stretch: Stretch }) {
   return (
     <div className="bg-zinc-800 rounded-lg p-4 border-2 border-zinc-700 mb-2">
       <div className="text-white font-semibold">{stretch.name}</div>
-      {stretch.duration && (
-        <div className="text-zinc-400 text-sm">{stretch.duration}</div>
-      )}
+      <div className="text-zinc-400 text-sm">{formatStretchTimer(stretch.timerSeconds)}</div>
       {stretch.tips && (
         <div className="text-zinc-500 text-xs mt-1">{stretch.tips}</div>
       )}
@@ -86,7 +86,7 @@ function StretchPreviewItem({ stretch }: { stretch: Stretch }) {
 }
 
 function ExercisePreviewItem({ exercise }: { exercise: SingleExercise | B2BExercise }) {
-  if (exercise.type === 'b2b') {
+  if (exercise.type === EXERCISE_TYPES.b2b) {
     const [ex1, ex2] = exercise.exercises || [];
     return (
       <div className="bg-zinc-800 rounded-lg p-4 border-2 border-purple-700 mb-2">
@@ -197,7 +197,7 @@ export default function AiRoutinePreviewPage() {
       const insertAt = insertPreStretchAt ?? pre.length;
       pre.splice(insertAt, 0, {
         name: stretch.name,
-        duration: stretch.duration,
+        timerSeconds: stretch.timer_seconds ?? 0,
         tips: stretch.tips || undefined
       });
       return { ...plan, preWorkoutStretches: pre };
@@ -212,7 +212,7 @@ export default function AiRoutinePreviewPage() {
       const insertAt = insertPostStretchAt ?? post.length;
       post.splice(insertAt, 0, {
         name: stretch.name,
-        duration: stretch.duration,
+        timerSeconds: stretch.timer_seconds ?? 0,
         tips: stretch.tips || undefined
       });
       return { ...plan, postWorkoutStretches: post };
@@ -226,7 +226,7 @@ export default function AiRoutinePreviewPage() {
       const exercises = Array.isArray(plan.exercises) ? [...plan.exercises] : [];
       const insertAt = insertExerciseAt ?? exercises.length;
       exercises.splice(insertAt, 0, {
-        type: 'single',
+        type: EXERCISE_TYPES.single,
         name: exercise.name,
         sets: 3,
         targetReps: 10,
@@ -246,7 +246,7 @@ export default function AiRoutinePreviewPage() {
       const exercises = Array.isArray(plan.exercises) ? [...plan.exercises] : [];
       const insertAt = insertExerciseAt ?? exercises.length;
       exercises.splice(insertAt, 0, {
-        type: 'b2b',
+        type: EXERCISE_TYPES.b2b,
         exercises: [
           {
             name: exercise1.name,
@@ -479,7 +479,7 @@ export default function AiRoutinePreviewPage() {
                 preStretches.map((stretch, index) => (
                   <div key={`pre-${index}`}>
                     <StretchItem
-                      stretch={{ name: stretch.name, duration: stretch.duration }}
+                      stretch={{ name: stretch.name, timerSeconds: stretch.timerSeconds }}
                       onDelete={() => handleDeleteStretch(index, 'pre')}
                     />
                     <AddButton
@@ -507,15 +507,15 @@ export default function AiRoutinePreviewPage() {
                   <div key={`ex-${index}`}>
                     <ExerciseItem
                       exercise={
-                        exercise.type === 'b2b'
+                        exercise.type === EXERCISE_TYPES.b2b
                           ? {
                               exercise_name: exercise.exercises?.[0]?.name || 'Exercise 1',
-                              exercise_type: 'b2b',
+                              exercise_type: EXERCISE_TYPES.b2b,
                               b2b_partner_name: exercise.exercises?.[1]?.name || 'Exercise 2'
                             }
                           : {
                               exercise_name: exercise.name,
-                              exercise_type: 'single',
+                              exercise_type: EXERCISE_TYPES.single,
                               b2b_partner_name: null
                             }
                       }
@@ -568,7 +568,7 @@ export default function AiRoutinePreviewPage() {
                 postStretches.map((stretch, index) => (
                   <div key={`post-${index}`}>
                     <StretchItem
-                      stretch={{ name: stretch.name, duration: stretch.duration }}
+                      stretch={{ name: stretch.name, timerSeconds: stretch.timerSeconds }}
                       onDelete={() => handleDeleteStretch(index, 'post')}
                     />
                     <AddButton

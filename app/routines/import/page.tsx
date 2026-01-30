@@ -158,7 +158,7 @@ export default function ImportRoutinePage() {
   "preWorkoutStretches": [
     {
       "name": "Arm Circles",
-      "duration": "30 seconds",
+      "timerSeconds": 30,
       "videoUrl": "https://example.com/video",
       "tips": "Optional cue"
     }
@@ -166,7 +166,7 @@ export default function ImportRoutinePage() {
   "postWorkoutStretches": [
     {
       "name": "Standing Quad Stretch",
-      "duration": "45 seconds each leg",
+      "timerSeconds": 45,
       "videoUrl": "https://example.com/video",
       "tips": "Optional cue"
     }

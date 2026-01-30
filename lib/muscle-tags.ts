@@ -1,10 +1,7 @@
-export const EXERCISE_COMPOUND_TAGS = [
+export const MUSCLE_GROUP_TAGS = [
   'lower body compound',
   'upper body compound',
   'full body compound',
-] as const;
-
-export const EXERCISE_MUSCLE_TAGS = [
   'chest',
   'back',
   'shoulders',
@@ -23,17 +20,9 @@ export const EXERCISE_MUSCLE_TAGS = [
   'unknown',
 ] as const;
 
-export const EXERCISE_TYPE_TAGS = [
-  ...EXERCISE_COMPOUND_TAGS,
-  ...EXERCISE_MUSCLE_TAGS,
-] as const;
+export const STRETCH_MUSCLE_TAGS = [...MUSCLE_GROUP_TAGS] as const;
 
-export const STRETCH_MUSCLE_TAGS = [
-  ...EXERCISE_COMPOUND_TAGS,
-  ...EXERCISE_MUSCLE_TAGS,
-] as const;
-
-export const EXERCISE_TYPE_ORDER = [...EXERCISE_COMPOUND_TAGS, ...EXERCISE_MUSCLE_TAGS];
+export const MUSCLE_GROUP_ORDER = [...MUSCLE_GROUP_TAGS];
 export const STRETCH_MUSCLE_ORDER = [...STRETCH_MUSCLE_TAGS];
 
 export function normalizeTypeList(
@@ -61,11 +50,15 @@ export function normalizeTypeList(
   return unique;
 }
 
-export function parseTagJson(value: string | null | undefined): string[] {
+export function parseTagJson(
+  value: string | null | undefined,
+  allowed?: readonly string[],
+  maxItems = 2
+): string[] {
   if (!value) return [];
   try {
     const parsed = JSON.parse(value);
-    return normalizeTypeList(parsed);
+    return normalizeTypeList(parsed, allowed, maxItems);
   } catch {
     return [];
   }

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { EXERCISE_TYPES } from '@/lib/constants';
+import { formatStretchTimer } from '@/lib/stretch-utils';
 
 export function AddButton({
   onClick,
@@ -56,16 +58,16 @@ export function StretchItem({
   stretch,
   onDelete
 }: {
-  stretch: { name: string; duration?: string };
+  stretch: { name: string; timerSeconds?: number | null };
   onDelete: () => void;
 }) {
   return (
     <div className="bg-zinc-800 rounded-lg p-4 border-2 border-zinc-700 mb-2 flex items-center justify-between">
       <div>
         <div className="text-white font-semibold">{stretch.name}</div>
-        {stretch.duration && (
-          <div className="text-zinc-400 text-sm">{stretch.duration}</div>
-        )}
+        <div className="text-zinc-400 text-sm">
+          {formatStretchTimer(stretch.timerSeconds)}
+        </div>
       </div>
       <button
         onClick={onDelete}
@@ -87,7 +89,7 @@ export function ExerciseItem({
   exercise: { exercise_name: string; exercise_type: string; b2b_partner_name: string | null };
   onDelete: () => void;
 }) {
-  const isSuperset = exercise.exercise_type === 'b2b';
+  const isSuperset = exercise.exercise_type === EXERCISE_TYPES.b2b;
 
   return (
     <div className={`bg-zinc-800 rounded-lg p-4 border-2 ${isSuperset ? 'border-purple-700' : 'border-zinc-700'} mb-2`}>

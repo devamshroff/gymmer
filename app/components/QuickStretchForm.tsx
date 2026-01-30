@@ -6,7 +6,6 @@ import { STRETCH_MUSCLE_TAGS, formatTypeLabel } from '@/lib/muscle-tags';
 interface QuickStretchFormProps {
   onSubmit: (stretch: {
     name: string;
-    duration?: string;
     timerSeconds?: number;
     videoUrl?: string;
     tips?: string;
@@ -17,7 +16,7 @@ interface QuickStretchFormProps {
 
 export default function QuickStretchForm({ onSubmit, onCancel }: QuickStretchFormProps) {
   const [name, setName] = useState('');
-  const [duration, setDuration] = useState('');
+  const [timerSeconds, setTimerSeconds] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
   const [tips, setTips] = useState('');
   const [muscleGroups, setMuscleGroups] = useState<string[]>([]);
@@ -27,20 +26,18 @@ export default function QuickStretchForm({ onSubmit, onCancel }: QuickStretchFor
     e.preventDefault();
     if (!name.trim()) return;
 
-    const durationValue = duration.trim();
-    const durationSecondsRaw = durationValue ? Number(durationValue) : NaN;
-    const durationSeconds = Number.isFinite(durationSecondsRaw) && durationSecondsRaw > 0
-      ? Math.round(durationSecondsRaw)
+    const secondsValue = timerSeconds.trim();
+    const secondsRaw = secondsValue ? Number(secondsValue) : NaN;
+    const resolvedTimerSeconds = Number.isFinite(secondsRaw) && secondsRaw > 0
+      ? Math.round(secondsRaw)
       : undefined;
-    const normalizedDuration = durationSeconds ? `${durationSeconds} seconds` : undefined;
     const parsedMuscleGroups = muscleGroups.map((entry) => entry.trim()).filter(Boolean);
 
     setSubmitting(true);
     try {
       await onSubmit({
         name: name.trim(),
-        duration: normalizedDuration,
-        timerSeconds: durationSeconds,
+        timerSeconds: resolvedTimerSeconds,
         videoUrl: videoUrl.trim() || undefined,
         tips: tips.trim() || undefined,
         muscleGroups: parsedMuscleGroups.length ? parsedMuscleGroups : undefined
@@ -73,14 +70,14 @@ export default function QuickStretchForm({ onSubmit, onCancel }: QuickStretchFor
 
           <div>
             <label className="text-zinc-300 text-sm font-semibold block mb-2">
-              Duration (seconds)
+              Timer (seconds)
             </label>
             <input
               type="number"
               min="1"
               step="1"
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
+              value={timerSeconds}
+              onChange={(e) => setTimerSeconds(e.target.value)}
               placeholder="e.g., 30"
               className="w-full bg-zinc-900 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
             />

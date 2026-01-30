@@ -5,15 +5,19 @@
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,  -- Use email as ID for simplicity
+  id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
-  username TEXT UNIQUE,  -- Public display name (required for sharing)
   name TEXT,
   image TEXT,
-  goals_text TEXT,
   created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
+  updated_at TEXT DEFAULT (datetime('now')),
+  username TEXT,  -- Public display name (required for sharing)
+  goals_text TEXT
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_unique
+  ON users(username)
+  WHERE username IS NOT NULL;
 
 -- User settings (per-user preferences)
 CREATE TABLE IF NOT EXISTS user_settings (
@@ -31,15 +35,14 @@ CREATE TABLE IF NOT EXISTS user_settings (
 
 CREATE TABLE IF NOT EXISTS workout_sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id TEXT NOT NULL,  -- Owner of this workout session
-  routine_id INTEGER, -- Optional routine reference
-  session_key TEXT, -- Stable client session key (e.g., startTime)
   workout_plan_name TEXT NOT NULL,
   date_completed TEXT NOT NULL, -- ISO 8601 format
   total_duration_minutes INTEGER,
   total_strain INTEGER,
-  session_mode TEXT, -- 'incremental', 'maintenance', 'light'
   created_at TEXT DEFAULT (datetime('now')),
+  user_id TEXT,  -- Owner of this workout session
+  routine_id INTEGER, -- Optional routine reference
+  session_key TEXT, -- Stable client session key (e.g., startTime)
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -94,7 +97,6 @@ CREATE TABLE IF NOT EXISTS workout_cardio_logs (
 -- Indexes for workout history
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON workout_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_workout_name ON workout_sessions(workout_plan_name);
-CREATE INDEX IF NOT EXISTS idx_sessions_routine ON workout_sessions(routine_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_user_key ON workout_sessions(user_id, session_key);
 CREATE INDEX IF NOT EXISTS idx_sessions_date ON workout_sessions(date_completed);
 CREATE INDEX IF NOT EXISTS idx_exercise_logs_session ON workout_exercise_logs(session_id);
@@ -112,23 +114,20 @@ CREATE TABLE IF NOT EXISTS exercises (
   video_url TEXT,
   tips TEXT,
   muscle_groups TEXT,  -- JSON array: ["chest", "triceps"]
-  exercise_type TEXT,  -- JSON array: ["chest", "upper body compound"]
   equipment TEXT,      -- e.g., "Dumbbells", "Barbell", "Bodyweight"
-  is_bodyweight INTEGER DEFAULT 0, -- 1 = bodyweight, 0 = not bodyweight
   difficulty TEXT,     -- "Beginner", "Intermediate", "Advanced"
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT (datetime('now')),
+  is_bodyweight INTEGER DEFAULT 0 -- 1 = bodyweight, 0 = not bodyweight
 );
 
 CREATE TABLE IF NOT EXISTS stretches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
-  duration TEXT NOT NULL,
-  timer_seconds INTEGER DEFAULT 0,  -- Hold time in seconds (per side if side_count = 2)
-  side_count INTEGER DEFAULT 1,     -- 1 = single stretch, 2 = each side
   video_url TEXT,
   tips TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
   muscle_groups TEXT,  -- JSON array: ["hamstrings", "glutes", "lower back"]
-  created_at TEXT DEFAULT (datetime('now'))
+  timer_seconds INTEGER DEFAULT 0  -- Hold time in seconds
 );
 
 -- Indexes for exercise/stretch libraries
@@ -141,15 +140,13 @@ CREATE INDEX IF NOT EXISTS idx_exercises_muscle ON exercises(muscle_groups);
 
 CREATE TABLE IF NOT EXISTS routines (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id TEXT NOT NULL,  -- Owner of this routine
-  name TEXT NOT NULL,
+  name TEXT NOT NULL UNIQUE,
   description TEXT,
-  notes TEXT,
-  is_public INTEGER DEFAULT 1,  -- 1 = public (default), 0 = private
+  source_file TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (user_id) REFERENCES users(id),
-  UNIQUE(user_id, name)  -- Each user can only have one routine with a given name
+  user_id TEXT REFERENCES users(id),
+  is_public INTEGER DEFAULT 1  -- 1 = public (default), 0 = private
 );
 
 -- Favorites: users can favorite public routines from other users
@@ -222,5 +219,4 @@ CREATE TABLE IF NOT EXISTS routine_cardio (
 
 -- Indexes for routines
 CREATE INDEX IF NOT EXISTS idx_routines_user ON routines(user_id);
-CREATE INDEX IF NOT EXISTS idx_routine_exercises_routine ON routine_exercises(routine_id);
-CREATE INDEX IF NOT EXISTS idx_routine_exercises_order ON routine_exercises(routine_id, order_index);
+CREATE INDEX IF NOT EXISTS idx_routines_public ON routines(is_public);

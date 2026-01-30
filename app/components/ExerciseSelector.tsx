@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import QuickExerciseForm from './QuickExerciseForm';
-import { EXERCISE_TYPE_ORDER, formatTypeLabel, parseTagJson } from '@/lib/muscle-tags';
+import { MUSCLE_GROUP_ORDER, formatTypeLabel, parseTagJson, MUSCLE_GROUP_TAGS } from '@/lib/muscle-tags';
 
 interface Exercise {
   id: number;
@@ -11,9 +11,7 @@ interface Exercise {
   tips: string | null;
   equipment: string | null;
   is_bodyweight?: number | null;
-  exercise_type?: string | null;
   muscle_groups?: string | null;
-  is_custom: number;
 }
 
 interface ExerciseSelectorProps {
@@ -24,8 +22,8 @@ interface ExerciseSelectorProps {
 
 const FALLBACK_GROUP = 'other';
 
-function getExerciseTypeTags(exercise: Exercise): string[] {
-  return parseTagJson(exercise.exercise_type);
+function getMuscleGroups(exercise: Exercise): string[] {
+  return parseTagJson(exercise.muscle_groups, MUSCLE_GROUP_TAGS);
 }
 
 function groupExercisesByType(items: Exercise[]): Array<{ type: string; exercises: Exercise[] }> {
@@ -33,7 +31,7 @@ function groupExercisesByType(items: Exercise[]): Array<{ type: string; exercise
   const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name));
 
   for (const exercise of sorted) {
-    const tags = getExerciseTypeTags(exercise);
+    const tags = getMuscleGroups(exercise);
     const keys = tags.length > 0 ? tags : [FALLBACK_GROUP];
     for (const key of keys) {
       const list = grouped.get(key);
@@ -45,7 +43,7 @@ function groupExercisesByType(items: Exercise[]): Array<{ type: string; exercise
     }
   }
 
-  const order = [...EXERCISE_TYPE_ORDER, FALLBACK_GROUP];
+  const order = [...MUSCLE_GROUP_ORDER, FALLBACK_GROUP];
   const keys = Array.from(grouped.keys()).sort((a, b) => {
     const aIndex = order.indexOf(a);
     const bIndex = order.indexOf(b);
@@ -104,8 +102,7 @@ export default function ExerciseSelector({ onSelect, onCancel, title }: Exercise
         video_url: exerciseData.videoUrl || null,
         tips: exerciseData.tips || null,
         equipment: exerciseData.equipment || null,
-        is_bodyweight: typeof data.is_bodyweight === 'number' ? data.is_bodyweight : null,
-        is_custom: 1
+        is_bodyweight: typeof data.is_bodyweight === 'number' ? data.is_bodyweight : null
       };
 
       onSelect(newExercise);
@@ -118,7 +115,7 @@ export default function ExerciseSelector({ onSelect, onCancel, title }: Exercise
   const filteredExercises = exercises.filter((exercise) => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
-    const tagText = getExerciseTypeTags(exercise).join(' ').toLowerCase();
+    const tagText = getMuscleGroups(exercise).join(' ').toLowerCase();
     return exercise.name.toLowerCase().includes(query) || tagText.includes(query);
   });
   const groupedExercises = groupExercisesByType(filteredExercises);
@@ -143,7 +140,7 @@ export default function ExerciseSelector({ onSelect, onCancel, title }: Exercise
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search exercises or types..."
+            placeholder="Search exercises or muscle groups..."
             className="w-full bg-zinc-900 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             autoFocus
           />

@@ -9,14 +9,14 @@ import {
 } from '@/lib/database';
 import { generateStretchInsights } from '@/lib/form-tips';
 import { STRETCH_MUSCLE_TAGS, normalizeTypeList } from '@/lib/muscle-tags';
+import { EXERCISE_TYPES } from '@/lib/constants';
+import { parseTimerSecondsFromText } from '@/lib/stretch-utils';
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 type RecommendedStretch = {
   name: string;
-  duration?: string;
   timerSeconds?: number;
-  sideCount?: number;
   tips?: string;
   muscleGroups?: string[];
   stretchTypes?: string[];
@@ -60,8 +60,8 @@ function buildSystemPrompt(
     'Ensure every primary muscle used in the exercises has at least one stretch in pre-workout and one in post-workout.',
     'Return ONLY valid JSON with this exact shape:',
     '{',
-    '  "preWorkoutStretches": [ { "name": string, "duration": string, "timerSeconds": number, "sideCount": 1|2, "tips": string (optional), "muscleGroups": string[] (optional) } ],',
-    '  "postWorkoutStretches": [ { "name": string, "duration": string, "timerSeconds": number, "sideCount": 1|2, "tips": string (optional), "muscleGroups": string[] (optional) } ]',
+    '  "preWorkoutStretches": [ { "name": string, "timerSeconds": number, "tips": string (optional), "muscleGroups": string[] (optional) } ],',
+    '  "postWorkoutStretches": [ { "name": string, "timerSeconds": number, "tips": string (optional), "muscleGroups": string[] (optional) } ]',
     '}',
     'Return at least 4 stretches per list.',
     'Increase stretch count with more exercises: 4-5 for <=4 exercises, 5-7 for 5-8, 7-9 for 9+.',
@@ -97,7 +97,6 @@ async function buildNameIndex(stretches: any[]): Promise<NameIndex> {
 async function findOrCreateStretchId(
   index: NameIndex,
   stretch: RecommendedStretch,
-  type: 'pre_workout' | 'post_workout',
   goalsText?: string | null
 ): Promise<{ id: number; created: boolean }> {
   const name = String(stretch.name || '').trim();
@@ -110,28 +109,22 @@ async function findOrCreateStretchId(
   const normalizedMatch = index.normalized.get(normalized);
   if (normalizedMatch) return { id: normalizedMatch, created: false };
 
-  const duration = stretch.duration || (type === 'pre_workout' ? '30 seconds' : '45 seconds');
   const providedTimer = Number.isFinite(Number(stretch.timerSeconds)) && Number(stretch.timerSeconds) > 0
     ? Math.round(Number(stretch.timerSeconds))
-    : null;
-  const providedSideCount = Number(stretch.sideCount) === 1 || Number(stretch.sideCount) === 2
-    ? Number(stretch.sideCount)
-    : null;
+    : parseTimerSecondsFromText(stretch.duration);
   const muscleGroupsInput = normalizeTypeList(
     stretch.muscleGroups || stretch.stretchTypes,
     STRETCH_MUSCLE_TAGS
   );
   let resolvedTips = stretch.tips || null;
   let resolvedTimerSeconds = providedTimer;
-  let resolvedSideCount = providedSideCount ?? 1;
   let muscleGroups = muscleGroupsInput;
 
-  if (!resolvedTimerSeconds || providedSideCount === null || !resolvedTips) {
+  if (!resolvedTimerSeconds || !resolvedTips) {
     const insights = await generateStretchInsights({
       kind: 'stretch',
       name,
-      duration,
-      stretchType: type,
+      timerSeconds: resolvedTimerSeconds ?? undefined,
       muscleGroups: muscleGroupsInput.length ? muscleGroupsInput : undefined,
       goalsText,
     });
@@ -140,9 +133,6 @@ async function findOrCreateStretchId(
     }
     if (!resolvedTimerSeconds) {
       resolvedTimerSeconds = insights?.timerSeconds ?? null;
-    }
-    if (providedSideCount === null && insights?.sideCount) {
-      resolvedSideCount = insights.sideCount;
     }
     if (muscleGroups.length === 0) {
       muscleGroups = normalizeTypeList(insights?.muscleGroups, STRETCH_MUSCLE_TAGS);
@@ -155,9 +145,7 @@ async function findOrCreateStretchId(
   const resolvedMuscleGroups = muscleGroups.length ? muscleGroups : ['unknown'];
   const id = await createStretch({
     name,
-    duration,
     timerSeconds: resolvedTimerSeconds,
-    sideCount: resolvedSideCount,
     tips: resolvedTips || undefined,
     muscleGroups: resolvedMuscleGroups,
   });
@@ -196,7 +184,7 @@ export async function POST(
 
     const exercises = await getRoutineExercises(routineId);
     const exerciseNames = exercises.flatMap((ex) => {
-      if (ex.exercise_type === 'b2b' && ex.b2b_partner_name) {
+      if (ex.exercise_type === EXERCISE_TYPES.b2b && ex.b2b_partner_name) {
         return [
           `Superset: ${ex.exercise_name} (sets: ${ex.sets ?? 'N/A'}, reps: ${ex.target_reps ?? 'N/A'}) + ${ex.b2b_partner_name} (sets: ${ex.b2b_sets ?? 'N/A'}, reps: ${ex.b2b_target_reps ?? 'N/A'})`,
         ];
@@ -290,14 +278,14 @@ export async function POST(
 
     for (const stretch of preList) {
       if (!stretch?.name) continue;
-      const result = await findOrCreateStretchId(index, stretch, 'pre_workout', goalsText);
+      const result = await findOrCreateStretchId(index, stretch, goalsText);
       if (result.created) createdIds.push(result.id);
       recommendedPreIds.push(result.id);
     }
 
     for (const stretch of postList) {
       if (!stretch?.name) continue;
-      const result = await findOrCreateStretchId(index, stretch, 'post_workout', goalsText);
+      const result = await findOrCreateStretchId(index, stretch, goalsText);
       if (result.created) createdIds.push(result.id);
       recommendedPostIds.push(result.id);
     }

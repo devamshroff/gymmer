@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAllExercises, searchExercises, createExercise, getUserGoals } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 import { generateExerciseInsights } from '@/lib/form-tips';
-import { EXERCISE_MUSCLE_TAGS, EXERCISE_TYPE_TAGS, normalizeTypeList } from '@/lib/muscle-tags';
+import { MUSCLE_GROUP_TAGS, normalizeTypeList } from '@/lib/muscle-tags';
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth();
@@ -35,7 +35,10 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { name, videoUrl, tips, equipment, difficulty } = body;
-    const exerciseTypesInput = normalizeTypeList(body.exerciseTypes ?? body.exerciseType, EXERCISE_TYPE_TAGS);
+    const muscleGroupsInput = normalizeTypeList(
+      body.muscleGroups ?? body.muscleGroup ?? body.exerciseTypes ?? body.exerciseType,
+      MUSCLE_GROUP_TAGS
+    );
 
     if (!name) {
       return NextResponse.json(
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     const normalizedTips = typeof tips === 'string' ? tips.trim() : '';
-    const promptMuscles = normalizeTypeList(exerciseTypesInput, EXERCISE_MUSCLE_TAGS);
+    const promptMuscles = normalizeTypeList(muscleGroupsInput, MUSCLE_GROUP_TAGS);
     const goalsText = await getUserGoals(user.id);
     const insights = await generateExerciseInsights({
       kind: 'exercise',
@@ -59,9 +62,11 @@ export async function POST(request: NextRequest) {
     const inferredBodyweight = typeof insights?.isBodyweight === 'boolean'
       ? insights.isBodyweight
       : false;
-    const inferredExerciseTypes = normalizeTypeList(insights?.exerciseTypes, EXERCISE_TYPE_TAGS);
-    const exerciseTypes = exerciseTypesInput.length ? exerciseTypesInput : inferredExerciseTypes;
-    const muscleGroups = normalizeTypeList(exerciseTypes, EXERCISE_MUSCLE_TAGS);
+    const resolvedDifficulty = typeof difficulty === 'string' && difficulty.trim()
+      ? difficulty.trim()
+      : insights?.difficulty || 'Intermediate';
+    const inferredMuscleGroups = normalizeTypeList(insights?.muscleGroups, MUSCLE_GROUP_TAGS);
+    const muscleGroups = muscleGroupsInput.length ? muscleGroupsInput : inferredMuscleGroups;
     const resolvedMuscleGroups = muscleGroups.length ? muscleGroups : ['unknown'];
 
     const exerciseId = await createExercise({
@@ -69,10 +74,9 @@ export async function POST(request: NextRequest) {
       videoUrl,
       tips: fallbackTips || undefined,
       muscleGroups: resolvedMuscleGroups,
-      exerciseTypes: exerciseTypes.length ? exerciseTypes : undefined,
       equipment,
       isBodyweight: inferredBodyweight,
-      difficulty
+      difficulty: resolvedDifficulty
     });
 
     return NextResponse.json(

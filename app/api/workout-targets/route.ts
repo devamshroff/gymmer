@@ -3,12 +3,13 @@ import { requireAuth } from '@/lib/auth-utils';
 import { getRecentExerciseLogs, getUserGoals } from '@/lib/database';
 import { resolveSessionMode } from '@/lib/workout-session';
 import type { SessionMode } from '@/lib/workout-session';
+import { EXERCISE_TYPES } from '@/lib/constants';
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 type ExercisePayload = {
   name: string;
-  type: 'single' | 'b2b';
+  type: typeof EXERCISE_TYPES.single | typeof EXERCISE_TYPES.b2b;
   sets: number;
   targetWeight: number;
   targetReps: number;

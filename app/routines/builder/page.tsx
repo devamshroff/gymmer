@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
 import SupersetSelector from '@/app/components/SupersetSelector';
 import { Card } from '@/app/components/SharedUi';
+import { EXERCISE_TYPES } from '@/lib/constants';
 
 function RoutineBuilderContent() {
   const router = useRouter();
@@ -40,9 +41,9 @@ function RoutineBuilderContent() {
 
       // Convert exercises to local format
       const loadedExercises = data.exercises.map((ex: any) => {
-        if (ex.exercise_type === 'b2b') {
+        if (ex.exercise_type === EXERCISE_TYPES.b2b) {
           return {
-            type: 'b2b',
+            type: EXERCISE_TYPES.b2b,
             exercise1: { id: ex.exercise_id, name: ex.exercise_name },
             exercise2: { id: ex.b2b_partner_id, name: ex.b2b_partner_name }
           };
@@ -99,7 +100,7 @@ function RoutineBuilderContent() {
         body: JSON.stringify({
           exerciseId: exercise.id,
           orderIndex: exercises.length,
-          exerciseType: 'single',
+          exerciseType: EXERCISE_TYPES.single,
           sets: 3,
           targetReps: 10,
           targetWeight: 0,
@@ -132,7 +133,7 @@ function RoutineBuilderContent() {
         body: JSON.stringify({
           exerciseId: exercise1.id,
           orderIndex: exercises.length,
-          exerciseType: 'b2b',
+          exerciseType: EXERCISE_TYPES.b2b,
           sets: 3,
           targetReps: 10,
           targetWeight: 0,
@@ -152,7 +153,7 @@ function RoutineBuilderContent() {
 
       // Add superset to local list
       setExercises([...exercises, {
-        type: 'b2b',
+        type: EXERCISE_TYPES.b2b,
         exercise1,
         exercise2
       }]);
@@ -241,7 +242,7 @@ function RoutineBuilderContent() {
               ) : (
                 <div className="space-y-3">
                   {exercises.map((exercise, index) => (
-                    exercise.type === 'b2b' ? (
+                    exercise.type === EXERCISE_TYPES.b2b ? (
                       <div key={index} className="bg-zinc-800 rounded-lg p-4 border-2 border-purple-700">
                         <div className="text-purple-400 text-xs font-bold mb-2">SUPERSET</div>
                         <div className="text-white font-semibold">{exercise.exercise1.name}</div>

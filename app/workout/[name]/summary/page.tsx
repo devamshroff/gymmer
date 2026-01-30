@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
 import { getWorkoutSession, WorkoutSessionData } from '@/lib/workout-session';
+import { EXERCISE_TYPES } from '@/lib/constants';
 
 export default function SummaryPage() {
   const params = useParams();
@@ -287,7 +288,7 @@ export default function SummaryPage() {
                 return (
                   <div key={index} className="border-l-4 border-green-500 pl-3">
                     <div className="text-white font-semibold mb-1">
-                      {exercise.type === 'single'
+                      {exercise.type === EXERCISE_TYPES.single
                         ? exercise.name
                         : `B2B: ${exercise.name} / ${exercise.b2bPartner?.name}`}
                     </div>

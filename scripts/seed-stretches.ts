@@ -1,6 +1,7 @@
 // scripts/seed-stretches.ts
 // Populate stretches database with comprehensive stretches library
 import { getDatabase } from '../lib/database';
+import { parseTimerSecondsFromText } from '../lib/stretch-utils';
 
 const stretches = [
   // Pre-Workout Dynamic Stretches
@@ -181,12 +182,11 @@ async function main() {
     for (const stretch of stretches) {
       try {
         await db.execute({
-          sql: `INSERT OR IGNORE INTO stretches (name, duration, type, muscle_groups, tips, video_url, is_custom)
-                VALUES (?, ?, ?, ?, ?, ?, 0)`,
+          sql: `INSERT OR IGNORE INTO stretches (name, timer_seconds, muscle_groups, tips, video_url)
+                VALUES (?, ?, ?, ?, ?)`,
           args: [
             stretch.name,
-            stretch.duration,
-            stretch.type,
+            parseTimerSecondsFromText(stretch.duration) ?? 0,
             stretch.muscle_groups,
             stretch.tips,
             stretch.video_url

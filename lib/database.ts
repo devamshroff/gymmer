@@ -1,6 +1,12 @@
 // lib/database.ts
 import { createClient, Client } from '@libsql/client';
 import type { WorkoutSession, WorkoutExerciseLog, WorkoutCardioLog } from './types';
+import {
+  EXERCISE_HISTORY_DISPLAY_MODES,
+  ExerciseHistoryDisplayMode,
+  ExerciseType,
+  EXERCISE_TYPES,
+} from './constants';
 
 // Initialize database connection
 let db: Client | null = null;
@@ -445,7 +451,7 @@ export async function updateWorkoutSession(
 export async function logExercise(data: {
   session_id: number;
   exercise_name: string;
-  exercise_type: 'single' | 'b2b' | 'circuit';
+  exercise_type: ExerciseType;
   warmup_weight?: number | null;
   warmup_reps?: number | null;
   set1_weight?: number | null;
@@ -474,7 +480,7 @@ export async function logExercise(data: {
 type WorkoutExerciseLogUpsert = {
   session_id: number;
   exercise_name: string;
-  exercise_type: 'single' | 'b2b' | 'circuit';
+  exercise_type: ExerciseType;
   warmup_weight?: number | null;
   warmup_reps?: number | null;
   set1_weight?: number | null;
@@ -730,7 +736,7 @@ export type ExerciseHistoryPoint = {
 };
 
 export type ExerciseHistorySeries = {
-  display_mode: 'weight' | 'reps';
+  display_mode: ExerciseHistoryDisplayMode;
   points: ExerciseHistoryPoint[];
 };
 
@@ -885,7 +891,9 @@ export async function getExerciseHistory(
   });
   const row = equipmentResult.rows[0] as any;
   const isBodyweight = row?.is_bodyweight === 1;
-  const displayMode: ExerciseHistorySeries['display_mode'] = isBodyweight ? 'reps' : 'weight';
+  const displayMode: ExerciseHistorySeries['display_mode'] = isBodyweight
+    ? EXERCISE_HISTORY_DISPLAY_MODES.reps
+    : EXERCISE_HISTORY_DISPLAY_MODES.weight;
 
   return { display_mode: displayMode, points };
 }
@@ -900,7 +908,6 @@ export async function createExercise(data: {
   videoUrl?: string;
   tips?: string;
   muscleGroups?: string[];
-  exerciseTypes?: string[];
   equipment?: string;
   isBodyweight?: boolean;
   difficulty?: string;
@@ -908,15 +915,14 @@ export async function createExercise(data: {
   const db = getDatabase();
   const result = await db.execute({
     sql: `
-      INSERT INTO exercises (name, video_url, tips, muscle_groups, exercise_type, equipment, is_bodyweight, difficulty)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO exercises (name, video_url, tips, muscle_groups, equipment, is_bodyweight, difficulty)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
     args: [
       data.name,
       data.videoUrl || null,
       data.tips || null,
       data.muscleGroups ? JSON.stringify(data.muscleGroups) : null,
-      data.exerciseTypes ? JSON.stringify(data.exerciseTypes) : null,
       data.equipment || null,
       typeof data.isBodyweight === 'boolean' ? (data.isBodyweight ? 1 : 0) : null,
       data.difficulty || null
@@ -1049,7 +1055,7 @@ export async function addExerciseToRoutine(data: {
   routineId: number;
   exerciseId: number;
   orderIndex: number;
-  exerciseType: 'single' | 'b2b';
+  exerciseType: typeof EXERCISE_TYPES.single | typeof EXERCISE_TYPES.b2b;
   sets?: number;
   targetReps?: number;
   targetWeight?: number;
@@ -1122,9 +1128,7 @@ export async function removeExerciseFromRoutine(routineExerciseId: number): Prom
 // Stretch CRUD
 export async function createStretch(data: {
   name: string;
-  duration: string;
   timerSeconds?: number;
-  sideCount?: number;
   videoUrl?: string;
   tips?: string;
   muscleGroups?: string[];
@@ -1132,14 +1136,12 @@ export async function createStretch(data: {
   const db = getDatabase();
   const result = await db.execute({
     sql: `
-      INSERT INTO stretches (name, duration, timer_seconds, side_count, video_url, tips, muscle_groups)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO stretches (name, timer_seconds, video_url, tips, muscle_groups)
+      VALUES (?, ?, ?, ?, ?)
     `,
     args: [
       data.name,
-      data.duration,
       typeof data.timerSeconds === 'number' ? data.timerSeconds : 0,
-      typeof data.sideCount === 'number' ? data.sideCount : 1,
       data.videoUrl || null,
       data.tips || null,
       data.muscleGroups ? JSON.stringify(data.muscleGroups) : null
@@ -1197,7 +1199,7 @@ export async function getRoutineStretches(routineId: number, type: 'pre' | 'post
   const tableName = type === 'pre' ? 'routine_pre_stretches' : 'routine_post_stretches';
   const result = await db.execute({
     sql: `
-      SELECT rs.*, s.name, s.duration, s.timer_seconds, s.side_count, s.video_url, s.tips, s.muscle_groups
+      SELECT rs.*, s.name, s.timer_seconds, s.video_url, s.tips, s.muscle_groups
       FROM ${tableName} rs
       JOIN stretches s ON rs.stretch_id = s.id
       WHERE rs.routine_id = ?

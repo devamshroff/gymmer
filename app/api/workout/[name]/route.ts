@@ -5,10 +5,12 @@ import path from 'path';
 import { WorkoutPlan } from '@/lib/types';
 import { getRoutineByName, getRoutineExercises, getRoutineStretches, getDatabase, getRoutineById, isFavorited } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
+import { EXERCISE_TYPES } from '@/lib/constants';
+import { parseTimerSecondsFromText } from '@/lib/stretch-utils';
 
 function withWarmupFlags(workout: WorkoutPlan): WorkoutPlan {
   const exercises = workout.exercises.map((exercise) => {
-    if (exercise.type === 'single') {
+    if (exercise.type === EXERCISE_TYPES.single) {
       const isBodyweight = exercise.isBodyweight ?? false;
       const hasWarmup = exercise.hasWarmup ?? !isBodyweight;
       return { ...exercise, isBodyweight, hasWarmup };
@@ -23,6 +25,24 @@ function withWarmupFlags(workout: WorkoutPlan): WorkoutPlan {
     };
   });
   return { ...workout, exercises };
+}
+
+function resolveStretchTimerSeconds(value?: number, durationText?: string): number {
+  if (Number.isFinite(value) && Number(value) > 0) {
+    return Math.round(Number(value));
+  }
+  const parsed = parseTimerSecondsFromText(durationText);
+  return parsed ?? 0;
+}
+
+function normalizeStretches(stretches: Array<any> | undefined): WorkoutPlan['preWorkoutStretches'] {
+  if (!Array.isArray(stretches)) return [];
+  return stretches.map((stretch) => ({
+    name: stretch.name,
+    timerSeconds: resolveStretchTimerSeconds(stretch.timerSeconds, stretch.duration),
+    videoUrl: stretch.videoUrl || '',
+    tips: stretch.tips || ''
+  }));
 }
 
 export async function GET(
@@ -90,10 +110,17 @@ export async function GET(
     for (const file of files) {
       const filePath = path.join(workoutPlansDir, file);
       const fileContent = fs.readFileSync(filePath, 'utf-8');
-      const workout = JSON.parse(fileContent) as WorkoutPlan;
+      const workout = JSON.parse(fileContent) as any;
 
       if (workout.name === workoutName) {
-        return NextResponse.json({ workout: withWarmupFlags(workout) });
+        const normalizedWorkout: WorkoutPlan = {
+          name: workout.name,
+          exercises: workout.exercises,
+          preWorkoutStretches: normalizeStretches(workout.preWorkoutStretches),
+          postWorkoutStretches: normalizeStretches(workout.postWorkoutStretches),
+          ...(workout.cardio ? { cardio: workout.cardio } : {})
+        };
+        return NextResponse.json({ workout: withWarmupFlags(normalizedWorkout) });
       }
     }
 
@@ -110,14 +137,14 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
   // Get exercises
   const routineExercises = await getRoutineExercises(routineId);
   const exercises = routineExercises.map((re: any) => {
-    if (re.exercise_type === 'single') {
+    if (re.exercise_type === EXERCISE_TYPES.single) {
       const targetWeight = re.target_weight || 0;
       const warmupWeight = re.warmup_weight || 0;
       const isBodyweight = typeof re.exercise_is_bodyweight === 'number'
         ? re.exercise_is_bodyweight === 1
         : false;
       return {
-        type: 'single' as const,
+        type: EXERCISE_TYPES.single,
         name: re.exercise_name,
         sets: re.sets || 3,
         targetReps: re.target_reps || 10,
@@ -132,7 +159,7 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
     } else {
       // B2B exercise
       return {
-        type: 'b2b' as const,
+        type: EXERCISE_TYPES.b2b,
         restTime: re.rest_time || 30,
         exercises: [
           {
@@ -190,9 +217,7 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
   const preStretches = await getRoutineStretches(routineId, 'pre');
   const preWorkoutStretches = preStretches.map((s: any) => ({
     name: s.name,
-    duration: s.duration,
     timerSeconds: s.timer_seconds ?? 0,
-    sideCount: s.side_count ?? 1,
     videoUrl: s.video_url || '',
     tips: s.tips || ''
   }));
@@ -201,9 +226,7 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
   const postStretches = await getRoutineStretches(routineId, 'post');
   const postWorkoutStretches = postStretches.map((s: any) => ({
     name: s.name,
-    duration: s.duration,
     timerSeconds: s.timer_seconds ?? 0,
-    sideCount: s.side_count ?? 1,
     videoUrl: s.video_url || '',
     tips: s.tips || ''
   }));

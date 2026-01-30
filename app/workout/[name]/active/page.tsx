@@ -13,6 +13,7 @@ import { acknowledgeChangeWarning, hasChangeWarningAck, loadSessionWorkout, save
 import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 import ExerciseHistoryModal from '@/app/components/ExerciseHistoryModal';
 import AutosaveBadge from '@/app/components/AutosaveBadge';
+import { EXERCISE_TYPES } from '@/lib/constants';
 
 interface SetData {
   weight: number;
@@ -26,7 +27,6 @@ type ExerciseOption = {
   tips: string | null;
   equipment?: string | null;
   is_bodyweight?: number | null;
-  is_custom?: number;
 };
 
 function normalizeDateString(value: string): string {
@@ -100,7 +100,7 @@ function ActiveWorkoutContent() {
     if (!workout) return {};
     const next: Record<string, { weight?: number | null; reps?: number | null }> = {};
     for (const exercise of workout.exercises) {
-      if (exercise.type === 'single') {
+      if (exercise.type === EXERCISE_TYPES.single) {
         next[exercise.name] = {
           weight: exercise.targetWeight,
           reps: exercise.targetReps,
@@ -130,7 +130,7 @@ function ActiveWorkoutContent() {
   type CompletedExerciseCache = {
     exerciseIndex: number;
     exerciseName: string;
-    type: 'single' | 'b2b';
+    type: typeof EXERCISE_TYPES.single | typeof EXERCISE_TYPES.b2b;
     completedSets?: SetData[];
     completedPairs?: Array<{ ex1: SetData; ex2: SetData }>;
     warmupCompleted?: boolean;
@@ -198,7 +198,7 @@ function ActiveWorkoutContent() {
 
         // Initialize exercise at startIndex
         const exercise = resolvedWorkout.exercises[startIndex];
-        if (exercise.type === 'single') {
+        if (exercise.type === EXERCISE_TYPES.single) {
           initSingleExerciseState(exercise);
         } else {
           // B2B exercise - no warmups, start at set 1
@@ -283,7 +283,7 @@ function ActiveWorkoutContent() {
 
       // Initialize next exercise
       const nextExercise = workout.exercises[nextExerciseIndex];
-      if (nextExercise.type === 'single') {
+      if (nextExercise.type === EXERCISE_TYPES.single) {
         initSingleExerciseState(nextExercise);
       } else {
         // B2B exercise - no warmups, start at set 1
@@ -326,7 +326,7 @@ function ActiveWorkoutContent() {
         }
       };
 
-      if (currentExercise.type === 'single') {
+      if (currentExercise.type === EXERCISE_TYPES.single) {
         const log = await fetchLog(currentExercise.name);
         setLastExerciseLog(log);
         setLastPartnerExerciseLog(null);
@@ -437,7 +437,7 @@ function ActiveWorkoutContent() {
         console.log('Finishing B2B exercise');
         addExerciseToSession({
           name: b2bExercise.exercises[0].name,
-          type: 'b2b',
+          type: EXERCISE_TYPES.b2b,
           sets: newCompletedPairs.map(pair => pair.ex1),
           b2bPartner: {
             name: b2bExercise.exercises[1].name,
@@ -449,7 +449,7 @@ function ActiveWorkoutContent() {
         setCompletedExercisesCache([...completedExercisesCache, {
           exerciseIndex: currentExerciseIndex,
           exerciseName: b2bExercise.exercises[0].name,
-          type: 'b2b',
+          type: EXERCISE_TYPES.b2b,
           completedPairs: newCompletedPairs,
         }]);
 
@@ -510,7 +510,7 @@ function ActiveWorkoutContent() {
       // Exercise complete - save to session
       addExerciseToSession({
         name: exercise.name,
-        type: 'single',
+        type: EXERCISE_TYPES.single,
         warmup: hasWarmup && warmupCompleted ? newCompletedSets[0] : undefined,
         sets: hasWarmup && warmupCompleted ? newCompletedSets.slice(1) : newCompletedSets,
       });
@@ -519,7 +519,7 @@ function ActiveWorkoutContent() {
       setCompletedExercisesCache([...completedExercisesCache, {
         exerciseIndex: currentExerciseIndex,
         exerciseName: exercise.name,
-        type: 'single',
+        type: EXERCISE_TYPES.single,
         completedSets: newCompletedSets,
         warmupCompleted,
       }]);
@@ -595,14 +595,14 @@ function ActiveWorkoutContent() {
     });
 
     // Save completed sets and move to next exercise
-    if (currentExercise.type === 'single') {
+    if (currentExercise.type === EXERCISE_TYPES.single) {
       const exercise = currentExercise as SingleExercise;
       const hasWarmup = resolveHasWarmup(exercise);
 
       if (completedSets.length > 0) {
         addExerciseToSession({
           name: exercise.name,
-          type: 'single',
+          type: EXERCISE_TYPES.single,
           warmup: hasWarmup && warmupCompleted ? completedSets[0] : undefined,
           sets: hasWarmup && warmupCompleted ? completedSets.slice(1) : completedSets,
         });
@@ -611,7 +611,7 @@ function ActiveWorkoutContent() {
         setCompletedExercisesCache([...completedExercisesCache, {
           exerciseIndex: currentExerciseIndex,
           exerciseName: exercise.name,
-          type: 'single',
+          type: EXERCISE_TYPES.single,
           completedSets: completedSets,
           warmupCompleted,
         }]);
@@ -627,7 +627,7 @@ function ActiveWorkoutContent() {
       if (completedPairs.length > 0) {
         addExerciseToSession({
           name: b2bExercise.exercises[0].name,
-          type: 'b2b',
+          type: EXERCISE_TYPES.b2b,
           sets: completedPairs.map(pair => pair.ex1),
           b2bPartner: {
             name: b2bExercise.exercises[1].name,
@@ -639,7 +639,7 @@ function ActiveWorkoutContent() {
         setCompletedExercisesCache([...completedExercisesCache, {
           exerciseIndex: currentExerciseIndex,
           exerciseName: b2bExercise.exercises[0].name,
-          type: 'b2b',
+          type: EXERCISE_TYPES.b2b,
           completedPairs: completedPairs,
         }]);
       }
@@ -708,7 +708,7 @@ function ActiveWorkoutContent() {
       ? exercise.is_bodyweight === 1
       : false;
     return {
-      type: 'single',
+      type: EXERCISE_TYPES.single,
       name: exercise.name,
       sets: 3,
       targetReps: 10,
@@ -730,7 +730,7 @@ function ActiveWorkoutContent() {
       ? exercise2.is_bodyweight === 1
       : false;
     return {
-      type: 'b2b',
+      type: EXERCISE_TYPES.b2b,
       restTime: 30,
       exercises: [
         {
@@ -775,7 +775,7 @@ function ActiveWorkoutContent() {
     setLastExerciseLog(null);
     setLastPartnerExerciseLog(null);
 
-    if (exercise.type === 'single') {
+    if (exercise.type === EXERCISE_TYPES.single) {
       initSingleExerciseState(exercise);
     } else {
       const b2bExercise = exercise as B2BExercise;
@@ -874,10 +874,10 @@ function ActiveWorkoutContent() {
 
   // Determine which exercise to display (for review mode vs active mode)
   const exerciseToDisplay = isReviewMode ? viewingExercise : currentExercise;
-  const modifyAccentClasses = exerciseToDisplay.type === 'b2b'
+  const modifyAccentClasses = exerciseToDisplay.type === EXERCISE_TYPES.b2b
     ? 'bg-purple-600 hover:bg-purple-500'
     : 'bg-rose-800 hover:bg-rose-700';
-  const hasExerciseStarted = currentExercise.type === 'b2b'
+  const hasExerciseStarted = currentExercise.type === EXERCISE_TYPES.b2b
     ? completedPairs.length > 0 || currentExerciseInPair !== 0
     : completedSets.length > 0;
   const canModifyExercise = !isReviewMode && !hasExerciseStarted;
@@ -990,7 +990,7 @@ function ActiveWorkoutContent() {
   );
 
   // Handle B2B/Superset exercises
-  if (exerciseToDisplay.type === 'b2b') {
+  if (exerciseToDisplay.type === EXERCISE_TYPES.b2b) {
     const b2bExercise = exerciseToDisplay as B2BExercise;
     const ex1 = b2bExercise.exercises[0];
     const ex2 = b2bExercise.exercises[1];
@@ -1461,7 +1461,7 @@ function ActiveWorkoutContent() {
 
                   // Initialize next exercise
                   const nextExercise = workout.exercises[nextExerciseIndex];
-                  if (nextExercise.type === 'single') {
+                  if (nextExercise.type === EXERCISE_TYPES.single) {
                     initSingleExerciseState(nextExercise);
                   } else {
                     const b2bEx = nextExercise as B2BExercise;
@@ -1518,7 +1518,7 @@ function ActiveWorkoutContent() {
   // Transition Screen (between exercises)
   if (isTransitioning) {
     const nextExercise = workout.exercises[currentExerciseIndex + 1];
-    const nextExerciseName = nextExercise.type === 'single'
+    const nextExerciseName = nextExercise.type === EXERCISE_TYPES.single
       ? nextExercise.name
       : `${nextExercise.exercises[0].name} / ${nextExercise.exercises[1].name}`;
 
@@ -1886,7 +1886,7 @@ function ActiveWorkoutContent() {
 
                   // Initialize next exercise
                   const nextExercise = workout.exercises[nextExerciseIndex];
-                  if (nextExercise.type === 'single') {
+                  if (nextExercise.type === EXERCISE_TYPES.single) {
                     initSingleExerciseState(nextExercise);
                   } else {
                     const b2bEx = nextExercise as B2BExercise;

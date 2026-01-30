@@ -1,5 +1,7 @@
 'use client';
 
+import { EXERCISE_TYPES } from '@/lib/constants';
+
 interface SetData {
   weight: number;
   reps: number;
@@ -11,7 +13,7 @@ interface SetDataInputProps {
   /** Callback when data changes */
   onChange: (data: SetData) => void;
   /** Visual variant for different contexts */
-  variant?: 'single' | 'b2b';
+  variant?: typeof EXERCISE_TYPES.single | typeof EXERCISE_TYPES.b2b;
   /** Accent color for focus ring */
   accentColor?: 'orange' | 'purple';
 }
@@ -25,10 +27,10 @@ interface SetDataInputProps {
 export default function SetDataInput({
   data,
   onChange,
-  variant = 'single',
+  variant = EXERCISE_TYPES.single,
   accentColor = 'orange',
 }: SetDataInputProps) {
-  const isSingle = variant === 'single';
+  const isSingle = variant === EXERCISE_TYPES.single;
   const ringColor = accentColor === 'orange' ? 'focus:ring-orange-500' : 'focus:ring-purple-500';
 
   // Variant-specific styles

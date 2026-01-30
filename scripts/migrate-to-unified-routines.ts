@@ -14,10 +14,11 @@ async function main() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
         description TEXT,
-        is_custom INTEGER DEFAULT 1,
         source_file TEXT,
         created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
+        updated_at TEXT DEFAULT (datetime('now')),
+        user_id TEXT REFERENCES users(id),
+        is_public INTEGER DEFAULT 1
       )
     `);
     console.log('✓ Routines table created');
@@ -37,8 +38,8 @@ async function main() {
 
       for (const routine of existingRoutines.rows) {
         await db.execute({
-          sql: `INSERT OR IGNORE INTO routines (id, name, description, is_custom, created_at, updated_at)
-                VALUES (?, ?, ?, 1, ?, ?)`,
+          sql: `INSERT OR IGNORE INTO routines (id, name, description, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)`,
           args: [
             routine.id,
             routine.name,

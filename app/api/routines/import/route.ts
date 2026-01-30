@@ -4,11 +4,12 @@ import { getDatabase, getUserGoals } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 import { generateExerciseInsights, generateStretchInsights } from '@/lib/form-tips';
 import {
-  EXERCISE_MUSCLE_TAGS,
-  EXERCISE_TYPE_TAGS,
+  MUSCLE_GROUP_TAGS,
   STRETCH_MUSCLE_TAGS,
   normalizeTypeList,
 } from '@/lib/muscle-tags';
+import { parseTimerSecondsFromText } from '@/lib/stretch-utils';
+import { EXERCISE_TYPES } from '@/lib/constants';
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth();
@@ -57,18 +58,19 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < workoutPlan.exercises.length; i++) {
       const exercise = workoutPlan.exercises[i];
 
-      if (exercise.type === 'single' && exercise.name) {
+      if (exercise.type === EXERCISE_TYPES.single && exercise.name) {
         const exerciseId = await getOrCreateExercise(db, exerciseIndex, exercise.name, goalsText);
 
         await db.execute({
           sql: `INSERT INTO routine_exercises (
             routine_id, exercise_id, order_index, exercise_type,
             sets, target_reps, target_weight, warmup_weight, rest_time
-          ) VALUES (?, ?, ?, 'single', ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           args: [
             routineId,
             exerciseId,
             i,
+            EXERCISE_TYPES.single,
             exercise.sets || null,
             exercise.targetReps || null,
             exercise.targetWeight || null,
@@ -76,7 +78,7 @@ export async function POST(request: NextRequest) {
             exercise.restTime || null
           ]
         });
-      } else if (exercise.type === 'b2b' && exercise.exercises && exercise.exercises.length >= 2) {
+      } else if (exercise.type === EXERCISE_TYPES.b2b && exercise.exercises && exercise.exercises.length >= 2) {
         const ex1 = exercise.exercises[0];
         const ex2 = exercise.exercises[1];
 
@@ -88,11 +90,12 @@ export async function POST(request: NextRequest) {
             routine_id, exercise_id, order_index, exercise_type,
             sets, target_reps, target_weight, warmup_weight,
             b2b_partner_id, b2b_sets, b2b_target_reps, b2b_target_weight, b2b_warmup_weight
-          ) VALUES (?, ?, ?, 'b2b', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           args: [
             routineId,
             exerciseId1,
             i,
+            EXERCISE_TYPES.b2b,
             ex1.sets || null,
             ex1.targetReps || null,
             ex1.targetWeight || null,
@@ -111,7 +114,7 @@ export async function POST(request: NextRequest) {
     if (workoutPlan.preWorkoutStretches) {
       for (let i = 0; i < workoutPlan.preWorkoutStretches.length; i++) {
         const stretch = workoutPlan.preWorkoutStretches[i];
-        const stretchId = await getOrCreateStretch(db, stretchIndex, stretch, 'pre_workout', goalsText);
+        const stretchId = await getOrCreateStretch(db, stretchIndex, stretch, goalsText);
         await db.execute({
           sql: 'INSERT INTO routine_pre_stretches (routine_id, stretch_id, order_index) VALUES (?, ?, ?)',
           args: [routineId, stretchId, i]
@@ -122,7 +125,7 @@ export async function POST(request: NextRequest) {
     if (workoutPlan.postWorkoutStretches) {
       for (let i = 0; i < workoutPlan.postWorkoutStretches.length; i++) {
         const stretch = workoutPlan.postWorkoutStretches[i];
-        const stretchId = await getOrCreateStretch(db, stretchIndex, stretch, 'post_workout', goalsText);
+        const stretchId = await getOrCreateStretch(db, stretchIndex, stretch, goalsText);
         await db.execute({
           sql: 'INSERT INTO routine_post_stretches (routine_id, stretch_id, order_index) VALUES (?, ?, ?)',
           args: [routineId, stretchId, i]
@@ -217,16 +220,16 @@ async function getOrCreateExercise(
     name,
     goalsText,
   });
-  const exerciseTypes = normalizeTypeList(insights?.exerciseTypes, EXERCISE_TYPE_TAGS);
-  const muscleGroups = normalizeTypeList(exerciseTypes, EXERCISE_MUSCLE_TAGS);
+  const muscleGroups = normalizeTypeList(insights?.muscleGroups, MUSCLE_GROUP_TAGS);
   const resolvedMuscleGroups = muscleGroups.length ? muscleGroups : ['unknown'];
+  const resolvedDifficulty = insights?.difficulty || 'Intermediate';
 
   const result = await db.execute({
-    sql: 'INSERT INTO exercises (name, muscle_groups, exercise_type) VALUES (?, ?, ?)',
+    sql: 'INSERT INTO exercises (name, muscle_groups, difficulty) VALUES (?, ?, ?)',
     args: [
       name,
       JSON.stringify(resolvedMuscleGroups),
-      exerciseTypes.length ? JSON.stringify(exerciseTypes) : null,
+      resolvedDifficulty,
     ]
   });
 
@@ -241,7 +244,6 @@ async function getOrCreateStretch(
   db: any,
   index: NameIndex,
   stretch: any,
-  type: string,
   goalsText?: string | null
 ): Promise<number> {
   const lowerName = String(stretch.name || '').toLowerCase();
@@ -255,28 +257,22 @@ async function getOrCreateStretch(
   const fuzzyMatch = await resolveFuzzyMatch(String(stretch.name || ''), index, goalsText);
   if (fuzzyMatch) return fuzzyMatch;
 
-  const duration = stretch.duration || (type === 'pre_workout' ? '30 seconds' : '45 seconds');
   const providedTimer = Number.isFinite(Number(stretch.timerSeconds)) && Number(stretch.timerSeconds) > 0
     ? Math.round(Number(stretch.timerSeconds))
-    : null;
-  const providedSideCount = Number(stretch.sideCount) === 1 || Number(stretch.sideCount) === 2
-    ? Number(stretch.sideCount)
-    : null;
+    : parseTimerSecondsFromText(stretch.duration);
   const muscleGroupsInput = normalizeTypeList(
     stretch.muscleGroups || stretch.stretchTypes,
     STRETCH_MUSCLE_TAGS
   );
   let resolvedTips = typeof stretch.tips === 'string' ? stretch.tips : null;
   let resolvedTimerSeconds = providedTimer;
-  let resolvedSideCount = providedSideCount ?? 1;
   let muscleGroups = muscleGroupsInput;
 
-  if (!resolvedTimerSeconds || providedSideCount === null || !resolvedTips) {
+  if (!resolvedTimerSeconds || !resolvedTips) {
     const insights = await generateStretchInsights({
       kind: 'stretch',
       name: stretch.name,
-      duration,
-      stretchType: type,
+      timerSeconds: resolvedTimerSeconds ?? undefined,
       muscleGroups: muscleGroupsInput.length ? muscleGroupsInput : undefined,
       goalsText,
     });
@@ -285,9 +281,6 @@ async function getOrCreateStretch(
     }
     if (!resolvedTimerSeconds) {
       resolvedTimerSeconds = insights?.timerSeconds ?? null;
-    }
-    if (providedSideCount === null && insights?.sideCount) {
-      resolvedSideCount = insights.sideCount;
     }
     if (muscleGroups.length === 0) {
       muscleGroups = normalizeTypeList(insights?.muscleGroups, STRETCH_MUSCLE_TAGS);
@@ -300,13 +293,11 @@ async function getOrCreateStretch(
 
   const resolvedMuscleGroups = muscleGroups.length ? muscleGroups : ['unknown'];
   const result = await db.execute({
-    sql: `INSERT INTO stretches (name, duration, timer_seconds, side_count, video_url, tips, muscle_groups)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO stretches (name, timer_seconds, video_url, tips, muscle_groups)
+          VALUES (?, ?, ?, ?, ?)`,
     args: [
       stretch.name,
-      duration,
       resolvedTimerSeconds,
-      resolvedSideCount,
       stretch.videoUrl || null,
       resolvedTips || null,
       JSON.stringify(resolvedMuscleGroups),

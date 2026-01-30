@@ -1,10 +1,16 @@
 import {
-  EXERCISE_TYPE_TAGS,
+  MUSCLE_GROUP_TAGS,
   STRETCH_MUSCLE_TAGS,
   normalizeTypeList,
 } from './muscle-tags';
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const DIFFICULTY_LABELS: Record<string, string> = {
+  beginner: 'Beginner',
+  intermediate: 'Intermediate',
+  medium: 'Intermediate',
+  advanced: 'Advanced',
+};
 
 type TipRequest = {
   kind: 'exercise' | 'stretch';
@@ -12,8 +18,7 @@ type TipRequest = {
   muscleGroups?: string[];
   equipment?: string;
   difficulty?: string;
-  duration?: string;
-  stretchType?: string;
+  timerSeconds?: number;
   goalsText?: string | null;
 };
 
@@ -27,8 +32,7 @@ function buildUserPrompt(data: TipRequest): string {
   if (data.kind === 'stretch') {
     return [
       `Stretch: ${data.name}`,
-      `Type: ${data.stretchType || 'Unknown'}`,
-      `Duration: ${data.duration || 'Unknown'}`,
+      `Timer seconds: ${data.timerSeconds ?? 'Unknown'}`,
       `Muscle groups: ${formatList(data.muscleGroups)}`,
       goalsLine,
       'Provide 1-2 concise form tips with posture and breathing cues.'
@@ -43,6 +47,13 @@ function buildUserPrompt(data: TipRequest): string {
     goalsLine,
     'Provide 1-2 concise form tips with safe technique cues.'
   ].join('\n');
+}
+
+function normalizeDifficulty(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const cleaned = value.trim().toLowerCase();
+  if (!cleaned || cleaned === 'unknown') return null;
+  return DIFFICULTY_LABELS[cleaned] || null;
 }
 
 function normalizeTipOutput(value: string): string {
@@ -64,13 +75,13 @@ function extractJson(content: string): string {
 export type ExerciseInsights = {
   tips: string | null;
   isBodyweight: boolean | null;
-  exerciseTypes: string[] | null;
+  muscleGroups: string[] | null;
+  difficulty: string | null;
 };
 
 export type StretchInsights = {
   tips: string | null;
   timerSeconds: number | null;
-  sideCount: number | null;
   muscleGroups: string[] | null;
 };
 
@@ -93,8 +104,9 @@ export async function generateExerciseInsights(data: TipRequest): Promise<Exerci
             role: 'system',
             content: [
               'You are a gym trainer helping users make consistent, incremental progress.',
-              'Return JSON only: {"tips":"...","isBodyweight":true|false,"exerciseTypes":["chest","upper body compound"]}.',
-              `exerciseTypes must be 1-2 items from: ${EXERCISE_TYPE_TAGS.join(', ')}.`,
+              'Return JSON only: {"tips":"...","isBodyweight":true|false,"muscleGroups":["chest","upper body compound"],"difficulty":"Intermediate"}.',
+              `muscleGroups must be 1-2 items from: ${MUSCLE_GROUP_TAGS.join(', ')}.`,
+              'difficulty must be one of: Beginner, Intermediate, Advanced.',
               'Use "unknown" if the muscle group is unclear.',
               'If the exercise is a compound movement, include one compound tag and one primary muscle tag when possible.',
               'tips should be 1-2 short sentences, no markdown.'
@@ -123,11 +135,16 @@ export async function generateExerciseInsights(data: TipRequest): Promise<Exerci
     const parsed = JSON.parse(rawJson);
     const tips = typeof parsed.tips === 'string' ? normalizeTipOutput(parsed.tips) : null;
     const isBodyweight = typeof parsed.isBodyweight === 'boolean' ? parsed.isBodyweight : null;
-    const exerciseTypes = normalizeTypeList(parsed.exerciseTypes, EXERCISE_TYPE_TAGS);
+    const muscleGroups = normalizeTypeList(
+      parsed.muscleGroups ?? parsed.exerciseTypes,
+      MUSCLE_GROUP_TAGS
+    );
+    const difficulty = normalizeDifficulty(parsed.difficulty);
     return {
       tips: tips && tips.length > 0 ? tips : null,
       isBodyweight,
-      exerciseTypes: exerciseTypes.length > 0 ? exerciseTypes : null,
+      muscleGroups: muscleGroups.length > 0 ? muscleGroups : null,
+      difficulty,
     };
   } catch (error) {
     console.error('OpenAI exercise insights request error:', error);
@@ -154,11 +171,10 @@ export async function generateStretchInsights(data: TipRequest): Promise<Stretch
             role: 'system',
             content: [
               'You are a gym trainer helping users make consistent, incremental progress.',
-              'Return JSON only: {"tips":"...","timerSeconds":30,"sideCount":1,"muscleGroups":["hamstrings","glutes"]}.',
+              'Return JSON only: {"tips":"...","timerSeconds":30,"muscleGroups":["hamstrings","glutes"]}.',
               `muscleGroups must be 1-2 items from: ${STRETCH_MUSCLE_TAGS.join(', ')}.`,
               'Use "unknown" if the muscle group is unclear.',
-              'timerSeconds is the hold time per side in seconds (integer).',
-              'sideCount must be 1 (single stretch) or 2 (each side).',
+              'timerSeconds is the hold time in seconds (integer).',
               'tips should be 1-2 short sentences, no markdown.'
             ].join(' ')
           },
@@ -188,13 +204,10 @@ export async function generateStretchInsights(data: TipRequest): Promise<Stretch
     const timerSeconds = Number.isFinite(timerSecondsRaw) && timerSecondsRaw > 0
       ? Math.round(timerSecondsRaw)
       : null;
-    const sideCountRaw = Number(parsed.sideCount);
-    const sideCount = sideCountRaw === 1 || sideCountRaw === 2 ? sideCountRaw : null;
     const muscleGroups = normalizeTypeList(parsed.muscleGroups ?? parsed.stretchTypes, STRETCH_MUSCLE_TAGS);
     return {
       tips: tips && tips.length > 0 ? tips : null,
       timerSeconds,
-      sideCount,
       muscleGroups: muscleGroups.length > 0 ? muscleGroups : null,
     };
   } catch (error) {

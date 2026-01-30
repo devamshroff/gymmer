@@ -1,9 +1,15 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import {
+  EXERCISE_HISTORY_AGGREGATION_MODES,
+  EXERCISE_HISTORY_DISPLAY_MODES,
+  ExerciseHistoryAggregationMode,
+  ExerciseHistoryDisplayMode,
+} from '@/lib/constants';
 
 type HistoryRange = 'week' | 'month' | 'all';
-type WeightMode = 'max' | 'avg';
+type WeightMode = ExerciseHistoryAggregationMode;
 
 type HistoryPoint = {
   day: string;
@@ -16,7 +22,7 @@ type HistoryPoint = {
 };
 
 type ExerciseHistorySeries = {
-  display_mode: 'weight' | 'reps';
+  display_mode: ExerciseHistoryDisplayMode;
   points: HistoryPoint[];
 };
 
@@ -59,7 +65,7 @@ function LineChart({
 }: {
   points: HistoryPoint[];
   weightMode: WeightMode;
-  mode: 'weight' | 'reps';
+  mode: ExerciseHistoryDisplayMode;
   targetValue?: number | null;
 }) {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; label: string } | null>(null);
@@ -71,10 +77,10 @@ function LineChart({
 
   const primaryValues = points
     .map((point) => {
-      if (mode === 'reps') {
-        return weightMode === 'max' ? point.reps_max : point.reps_avg;
+      if (mode === EXERCISE_HISTORY_DISPLAY_MODES.reps) {
+        return weightMode === EXERCISE_HISTORY_AGGREGATION_MODES.max ? point.reps_max : point.reps_avg;
       }
-      return weightMode === 'max' ? point.weight_max : point.weight_avg;
+      return weightMode === EXERCISE_HISTORY_AGGREGATION_MODES.max ? point.weight_max : point.weight_avg;
     })
     .filter((value): value is number => value !== null);
   const hasTargetValue = Number.isFinite(targetValue as number) && (targetValue as number) > 0;
@@ -82,7 +88,7 @@ function LineChart({
     primaryValues.push(targetValue as number);
   }
   const secondaryValues = points
-    .map((point) => (mode === 'reps' ? point.reps_total : point.volume))
+    .map((point) => (mode === EXERCISE_HISTORY_DISPLAY_MODES.reps ? point.reps_total : point.volume))
     .filter((value): value is number => value !== null);
 
   let primaryMin = primaryValues.length ? Math.min(...primaryValues) : 0;
@@ -106,10 +112,10 @@ function LineChart({
 
   const stepX = points.length > 1 ? plotWidth / (points.length - 1) : 0;
   const basePoints = points.map((point, index) => {
-    const primaryValue = mode === 'reps'
-      ? (weightMode === 'max' ? point.reps_max : point.reps_avg)
-      : (weightMode === 'max' ? point.weight_max : point.weight_avg);
-    const secondaryValue = mode === 'reps' ? point.reps_total : point.volume;
+    const primaryValue = mode === EXERCISE_HISTORY_DISPLAY_MODES.reps
+      ? (weightMode === EXERCISE_HISTORY_AGGREGATION_MODES.max ? point.reps_max : point.reps_avg)
+      : (weightMode === EXERCISE_HISTORY_AGGREGATION_MODES.max ? point.weight_max : point.weight_avg);
+    const secondaryValue = mode === EXERCISE_HISTORY_DISPLAY_MODES.reps ? point.reps_total : point.volume;
     const baseX = margin.left + index * stepX;
     const hasPrimary = primaryValue !== null;
     const hasSecondary = secondaryValue !== null;
@@ -141,8 +147,8 @@ function LineChart({
 
   const primaryPath = buildLinePath(primaryPoints.map(({ x, y }) => ({ x, y })));
   const secondaryPath = buildLinePath(secondaryPoints.map(({ x, y }) => ({ x, y })));
-  const primaryLabel = mode === 'reps' ? 'Reps' : 'Weight';
-  const secondaryLabel = mode === 'reps' ? 'Total Reps' : 'Volume';
+  const primaryLabel = mode === EXERCISE_HISTORY_DISPLAY_MODES.reps ? 'Reps' : 'Weight';
+  const secondaryLabel = mode === EXERCISE_HISTORY_DISPLAY_MODES.reps ? 'Total Reps' : 'Volume';
 
   const labelIndexes = points.length <= 1 ? [0] : [0, Math.floor((points.length - 1) / 2), points.length - 1];
   const labelIndexesUnique = Array.from(new Set(labelIndexes)).filter((idx) => points[idx]);
@@ -315,7 +321,7 @@ export default function ExerciseHistoryModal({
   targets,
 }: ExerciseHistoryModalProps) {
   const [range, setRange] = useState<HistoryRange>('month');
-  const [weightMode, setWeightMode] = useState<WeightMode>('max');
+  const [weightMode, setWeightMode] = useState<WeightMode>(EXERCISE_HISTORY_AGGREGATION_MODES.max);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<Record<string, ExerciseHistorySeries>>({});
@@ -405,7 +411,7 @@ export default function ExerciseHistoryModal({
               ))}
             </div>
             <div className="flex gap-2">
-              {(['max', 'avg'] as WeightMode[]).map((value) => (
+              {(Object.values(EXERCISE_HISTORY_AGGREGATION_MODES) as WeightMode[]).map((value) => (
                 <button
                   key={value}
                   onClick={() => setWeightMode(value)}
@@ -415,7 +421,7 @@ export default function ExerciseHistoryModal({
                       : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-white'
                   }`}
                 >
-                  {value === 'max' ? 'Max' : 'Avg'}
+                  {value === EXERCISE_HISTORY_AGGREGATION_MODES.max ? 'Max' : 'Avg'}
                 </button>
               ))}
             </div>
@@ -440,9 +446,13 @@ export default function ExerciseHistoryModal({
             const series = history[name];
             const points = series?.points || [];
             const explicitMode = series?.display_mode;
-            const mode = explicitMode === 'reps' ? 'reps' : 'weight';
+            const mode = explicitMode === EXERCISE_HISTORY_DISPLAY_MODES.reps
+              ? EXERCISE_HISTORY_DISPLAY_MODES.reps
+              : EXERCISE_HISTORY_DISPLAY_MODES.weight;
             const targetEntry = targets?.[name];
-            const rawTargetValue = mode === 'reps' ? targetEntry?.reps : targetEntry?.weight;
+            const rawTargetValue = mode === EXERCISE_HISTORY_DISPLAY_MODES.reps
+              ? targetEntry?.reps
+              : targetEntry?.weight;
             const targetValue = Number.isFinite(rawTargetValue as number) && (rawTargetValue as number) > 0
               ? (rawTargetValue as number)
               : null;
@@ -453,11 +463,11 @@ export default function ExerciseHistoryModal({
                   <div className="flex items-center gap-3 text-xs text-zinc-400">
                     <span className="flex items-center gap-2">
                       <span className="h-2 w-2 rounded-full bg-sky-400" />
-                      {mode === 'reps' ? 'Reps' : 'Weight'}
+                      {mode === EXERCISE_HISTORY_DISPLAY_MODES.reps ? 'Reps' : 'Weight'}
                     </span>
                     <span className="flex items-center gap-2">
                       <span className="h-2 w-2 rounded-full bg-green-400" />
-                      {mode === 'reps' ? 'Total Reps' : 'Volume'}
+                      {mode === EXERCISE_HISTORY_DISPLAY_MODES.reps ? 'Total Reps' : 'Volume'}
                     </span>
                     {targetValue !== null && (
                       <span className="flex items-center gap-2">

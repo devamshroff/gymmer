@@ -16,13 +16,10 @@ import { acknowledgeChangeWarning, hasChangeWarningAck, loadSessionWorkout, save
 type StretchOption = {
   id: number;
   name: string;
-  duration: string;
   timer_seconds?: number | null;
-  side_count?: number | null;
   muscle_groups: string | null;
   video_url: string | null;
   tips: string | null;
-  is_custom: number;
 };
 
 function StretchesContent() {
@@ -136,9 +133,7 @@ function StretchesContent() {
     if (!stretchActionMode) return;
     const updatedStretch: Stretch = {
       name: stretch.name,
-      duration: stretch.duration,
       timerSeconds: stretch.timer_seconds ?? 0,
-      sideCount: stretch.side_count ?? 1,
       videoUrl: stretch.video_url || '',
       tips: stretch.tips || ''
     };

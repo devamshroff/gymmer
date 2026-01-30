@@ -16,9 +16,8 @@ type ExerciseRow = {
 type StretchRow = {
   id: number;
   name: string;
-  duration: string;
-  type: string;
   muscle_groups: string | null;
+  timer_seconds: number | null;
 };
 
 function toNullableString(value: unknown): string | null {
@@ -100,7 +99,7 @@ async function backfillExercises(db: ReturnType<typeof getDatabase>) {
 async function backfillStretches(db: ReturnType<typeof getDatabase>) {
   const result = await db.execute({
     sql: `
-      SELECT id, name, duration, type, muscle_groups
+      SELECT id, name, timer_seconds, muscle_groups
       FROM stretches
       WHERE tips IS NULL OR tips = ''
     `
@@ -108,9 +107,8 @@ async function backfillStretches(db: ReturnType<typeof getDatabase>) {
   const rows: StretchRow[] = result.rows.map((row) => ({
     id: Number(row.id),
     name: String(row.name),
-    duration: String(row.duration),
-    type: String(row.type),
     muscle_groups: toNullableString(row.muscle_groups),
+    timer_seconds: typeof row.timer_seconds === 'number' ? row.timer_seconds : null,
   }));
   let updated = 0;
 
@@ -118,8 +116,7 @@ async function backfillStretches(db: ReturnType<typeof getDatabase>) {
     const tips = await generateFormTips({
       kind: 'stretch',
       name: row.name,
-      duration: row.duration,
-      stretchType: row.type,
+      timerSeconds: row.timer_seconds ?? undefined,
       muscleGroups: parseMuscleGroups(row.muscle_groups),
     });
     if (!tips) {

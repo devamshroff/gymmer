@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
+import { EXERCISE_TYPES } from '@/lib/constants';
 import { getWorkoutSession, clearWorkoutSession, WorkoutSessionData } from '@/lib/workout-session';
 import { Card } from '@/app/components/SharedUi';
 
@@ -165,7 +166,7 @@ export default function StatsPage() {
                     <div className="flex justify-between items-start mb-3">
                       <div>
                         <div className="text-white font-bold text-lg mb-1">
-                          {exercise.type === 'single'
+                          {exercise.type === EXERCISE_TYPES.single
                             ? exercise.name
                             : `B2B: ${exercise.name} / ${exercise.b2bPartner?.name}`}
                         </div>

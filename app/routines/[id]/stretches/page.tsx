@@ -2,16 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { parseTagJson } from '@/lib/muscle-tags';
+import { parseTagJson, STRETCH_MUSCLE_TAGS } from '@/lib/muscle-tags';
+import { formatStretchTimer } from '@/lib/stretch-utils';
 
 interface Stretch {
   id: number;
   name: string;
-  duration: string;
+  timer_seconds?: number | null;
   muscle_groups: string | null;
   tips: string | null;
   video_url: string | null;
-  is_custom: number;
 }
 
 export default function RoutineStretchesPage() {
@@ -157,7 +157,7 @@ export default function RoutineStretchesPage() {
   };
 
 function getMuscleGroups(stretch: Stretch): string[] {
-  return parseTagJson(stretch.muscle_groups);
+  return parseTagJson(stretch.muscle_groups, STRETCH_MUSCLE_TAGS);
 }
 
   // Get all types covered by selected stretches for the current tab
@@ -310,7 +310,9 @@ function getMuscleGroups(stretch: Stretch): string[] {
                           </span>
                         )}
                       </div>
-                      <div className="text-zinc-400 text-sm mb-2">{stretch.duration}</div>
+                      <div className="text-zinc-400 text-sm mb-2">
+                        {formatStretchTimer(stretch.timer_seconds)}
+                      </div>
                       {muscleGroups.length > 0 && (
                         <div className="flex flex-wrap gap-2">
                           {muscleGroups.map((muscle: string, idx: number) => (

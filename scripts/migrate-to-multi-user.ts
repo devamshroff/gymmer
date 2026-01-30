@@ -33,8 +33,10 @@ async function main() {
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         email TEXT NOT NULL UNIQUE,
+        username TEXT,
         name TEXT,
         image TEXT,
+        goals_text TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       )

@@ -9,6 +9,7 @@ import {
   upsertWorkoutExerciseLog
 } from '@/lib/database';
 import { resolveSessionMode } from '@/lib/workout-session';
+import { EXERCISE_TYPES } from '@/lib/constants';
 
 type AutosaveEvent =
   | {
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest) {
         await upsertWorkoutExerciseLog({
           session_id: sessionId,
           exercise_name: event.exerciseName,
-          exercise_type: 'single',
+          exercise_type: EXERCISE_TYPES.single,
           warmup_weight: event.weight,
           warmup_reps: event.reps,
         });
@@ -131,7 +132,7 @@ export async function POST(request: NextRequest) {
         await upsertWorkoutExerciseLog({
           session_id: sessionId,
           exercise_name: event.exerciseName,
-          exercise_type: 'single',
+          exercise_type: EXERCISE_TYPES.single,
           [`set${setIndex}_weight`]: event.weight,
           [`set${setIndex}_reps`]: event.reps,
         });
@@ -143,7 +144,7 @@ export async function POST(request: NextRequest) {
       await upsertWorkoutExerciseLog({
         session_id: sessionId,
         exercise_name: event.exerciseName,
-        exercise_type: 'b2b',
+        exercise_type: EXERCISE_TYPES.b2b,
         b2b_partner_name: event.partnerName,
         [`set${setIndex}_weight`]: event.weight,
         [`set${setIndex}_reps`]: event.reps,

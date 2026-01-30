@@ -1,16 +1,16 @@
 // lib/types.ts
 
+import { EXERCISE_TYPES, ExerciseType } from '@/lib/constants';
+
 export interface Stretch {
   name: string;
-  duration: string;
-  timerSeconds: number;  // Hold time in seconds (per side if sideCount = 2)
-  sideCount: number; // 1 = single stretch, 2 = each side
+  timerSeconds: number;  // Hold time in seconds
   videoUrl: string;
   tips: string;
 }
 
 export interface SingleExercise {
-  type: 'single';
+  type: typeof EXERCISE_TYPES.single;
   name: string;
   sets: number;
   targetReps: number;
@@ -24,7 +24,7 @@ export interface SingleExercise {
 }
 
 export interface B2BExercise {
-  type: 'b2b';
+  type: typeof EXERCISE_TYPES.b2b;
   exercises: [
     {
       name: string;
@@ -101,7 +101,7 @@ export interface WorkoutExerciseLog {
   id: number;
   session_id: number;
   exercise_name: string;
-  exercise_type: 'single' | 'b2b' | 'circuit';
+  exercise_type: ExerciseType;
 
   // Warmup
   warmup_weight: number | null;
@@ -148,24 +148,19 @@ export interface ExerciseDB {
   video_url: string | null;
   tips: string | null;
   muscle_groups: string | null;  // JSON string
-  exercise_type: string | null;  // JSON array of tags
   equipment: string | null;
   is_bodyweight?: number | null;
   difficulty: string | null;
-  is_custom: number;  // SQLite boolean (0 or 1)
   created_at: string;
 }
 
 export interface StretchDB {
   id: number;
   name: string;
-  duration: string;
   timer_seconds?: number | null;
-  side_count?: number | null;
   video_url: string | null;
   tips: string | null;
   muscle_groups: string | null;  // JSON array: ["hamstrings", "glutes", "lower back"]
-  is_custom: number;
   created_at: string;
 }
 
@@ -181,7 +176,7 @@ export interface RoutineExerciseConfig {
   routine_id: number;
   exercise_id: number;
   order_index: number;
-  exercise_type: 'single' | 'b2b';
+  exercise_type: typeof EXERCISE_TYPES.single | typeof EXERCISE_TYPES.b2b;
   sets: number | null;
   target_reps: number | null;
   target_weight: number | null;

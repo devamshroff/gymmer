@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
 import SupersetSelector from '@/app/components/SupersetSelector';
 import StretchSelector from '@/app/components/StretchSelector';
+import { EXERCISE_TYPES } from '@/lib/constants';
 import {
   AddButton,
   CardioForm,
@@ -19,7 +20,7 @@ interface RoutineStretch {
   id: number;
   stretch_id: number;
   name: string;
-  duration: string;
+  timerSeconds: number;
   muscle_groups: string | null;
 }
 
@@ -27,7 +28,7 @@ interface RoutineExercise {
   id: number;
   exercise_id: number;
   exercise_name: string;
-  exercise_type: 'single' | 'b2b';
+  exercise_type: typeof EXERCISE_TYPES.single | typeof EXERCISE_TYPES.b2b;
   b2b_partner_id: number | null;
   b2b_partner_name: string | null;
 }
@@ -95,7 +96,7 @@ export default function EditRoutinePage() {
           id: idx,
           stretch_id: dbStretch?.id || 0,
           name: s.name,
-          duration: s.duration,
+          timerSeconds: s.timerSeconds ?? 0,
           muscle_groups: dbStretch?.muscle_groups || null
         };
       });
@@ -106,7 +107,7 @@ export default function EditRoutinePage() {
           id: idx,
           stretch_id: dbStretch?.id || 0,
           name: s.name,
-          duration: s.duration,
+          timerSeconds: s.timerSeconds ?? 0,
           muscle_groups: dbStretch?.muscle_groups || null
         };
       });
@@ -239,7 +240,7 @@ export default function EditRoutinePage() {
       id: Date.now(),
       stretch_id: stretch.id,
       name: stretch.name,
-      duration: stretch.duration,
+      timerSeconds: stretch.timer_seconds ?? 0,
       muscle_groups: stretch.muscle_groups
     };
     const newStretches = [...preStretches];
@@ -265,7 +266,7 @@ export default function EditRoutinePage() {
       id: Date.now(),
       stretch_id: stretch.id,
       name: stretch.name,
-      duration: stretch.duration,
+      timerSeconds: stretch.timer_seconds ?? 0,
       muscle_groups: stretch.muscle_groups
     };
     const newStretches = [...postStretches];
@@ -284,7 +285,7 @@ export default function EditRoutinePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           exerciseId: exercise.id,
-          exerciseType: 'single',
+          exerciseType: EXERCISE_TYPES.single,
           sets: 3,
           targetReps: 10,
           targetWeight: 0,
@@ -299,7 +300,7 @@ export default function EditRoutinePage() {
         id: data.id,
         exercise_id: exercise.id,
         exercise_name: exercise.name,
-        exercise_type: 'single',
+        exercise_type: EXERCISE_TYPES.single,
         b2b_partner_id: null,
         b2b_partner_name: null
       };
@@ -331,7 +332,7 @@ export default function EditRoutinePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           exerciseId: exercise1.id,
-          exerciseType: 'b2b',
+          exerciseType: EXERCISE_TYPES.b2b,
           sets: 3,
           targetReps: 10,
           targetWeight: 0,
@@ -351,7 +352,7 @@ export default function EditRoutinePage() {
         id: data.id,
         exercise_id: exercise1.id,
         exercise_name: exercise1.name,
-        exercise_type: 'b2b',
+        exercise_type: EXERCISE_TYPES.b2b,
         b2b_partner_id: exercise2.id,
         b2b_partner_name: exercise2.name
       };

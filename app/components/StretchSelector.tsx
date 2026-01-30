@@ -2,18 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import QuickStretchForm from './QuickStretchForm';
-import { STRETCH_MUSCLE_ORDER, formatTypeLabel, parseTagJson } from '@/lib/muscle-tags';
+import { STRETCH_MUSCLE_ORDER, STRETCH_MUSCLE_TAGS, formatTypeLabel, parseTagJson } from '@/lib/muscle-tags';
+import { formatStretchTimer } from '@/lib/stretch-utils';
 
 interface Stretch {
   id: number;
   name: string;
-  duration: string;
   timer_seconds?: number | null;
-  side_count?: number | null;
   muscle_groups: string | null;
   video_url: string | null;
   tips: string | null;
-  is_custom: number;
 }
 
 interface StretchSelectorProps {
@@ -26,7 +24,7 @@ interface StretchSelectorProps {
 const FALLBACK_GROUP = 'other';
 
 function getMuscleGroups(stretch: Stretch): string[] {
-  return parseTagJson(stretch.muscle_groups);
+  return parseTagJson(stretch.muscle_groups, STRETCH_MUSCLE_TAGS);
 }
 
 function groupStretchesByMuscleGroup(items: Stretch[]): Array<{ type: string; stretches: Stretch[] }> {
@@ -83,7 +81,6 @@ export default function StretchSelector({ onSelect, onCancel, filterType, title 
 
   const handleCreateStretch = async (stretchData: {
     name: string;
-    duration?: string;
     timerSeconds?: number;
     videoUrl?: string;
     tips?: string;
@@ -110,13 +107,10 @@ export default function StretchSelector({ onSelect, onCancel, filterType, title 
       const newStretch: Stretch = {
         id: data.id,
         name: stretchData.name,
-        duration: data.duration || stretchData.duration || (data.timer_seconds ? `${data.timer_seconds} seconds` : ''),
         timer_seconds: typeof data.timer_seconds === 'number' ? data.timer_seconds : null,
-        side_count: typeof data.side_count === 'number' ? data.side_count : null,
         muscle_groups: muscleGroupsJson,
         video_url: stretchData.videoUrl || null,
-        tips: typeof data.tips === 'string' ? data.tips : stretchData.tips || null,
-        is_custom: 1
+        tips: typeof data.tips === 'string' ? data.tips : stretchData.tips || null
       };
 
       setShowCreateForm(false);
@@ -197,7 +191,9 @@ export default function StretchSelector({ onSelect, onCancel, filterType, title 
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="text-white font-semibold">{stretch.name}</div>
-                            <div className="text-zinc-400 text-sm mt-1">{stretch.duration}</div>
+                            <div className="text-zinc-400 text-sm mt-1">
+                              {formatStretchTimer(stretch.timer_seconds)}
+                            </div>
                             {muscleGroups.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-2">
                                 {muscleGroups.map((muscle, idx) => (

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import QuickExerciseForm from './QuickExerciseForm';
-import { EXERCISE_TYPE_ORDER, formatTypeLabel, parseTagJson } from '@/lib/muscle-tags';
+import { MUSCLE_GROUP_ORDER, formatTypeLabel, parseTagJson, MUSCLE_GROUP_TAGS } from '@/lib/muscle-tags';
 
 interface Exercise {
   id: number;
@@ -11,9 +11,7 @@ interface Exercise {
   tips: string | null;
   equipment: string | null;
   is_bodyweight?: number | null;
-  exercise_type?: string | null;
   muscle_groups?: string | null;
-  is_custom: number;
 }
 
 interface SupersetSelectorProps {
@@ -23,8 +21,8 @@ interface SupersetSelectorProps {
 
 const FALLBACK_GROUP = 'other';
 
-function getExerciseTypeTags(exercise: Exercise): string[] {
-  return parseTagJson(exercise.exercise_type);
+function getMuscleGroups(exercise: Exercise): string[] {
+  return parseTagJson(exercise.muscle_groups, MUSCLE_GROUP_TAGS);
 }
 
 function groupExercisesByType(items: Exercise[]): Array<{ type: string; exercises: Exercise[] }> {
@@ -32,7 +30,7 @@ function groupExercisesByType(items: Exercise[]): Array<{ type: string; exercise
   const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name));
 
   for (const exercise of sorted) {
-    const tags = getExerciseTypeTags(exercise);
+    const tags = getMuscleGroups(exercise);
     const keys = tags.length > 0 ? tags : [FALLBACK_GROUP];
     for (const key of keys) {
       const list = grouped.get(key);
@@ -44,7 +42,7 @@ function groupExercisesByType(items: Exercise[]): Array<{ type: string; exercise
     }
   }
 
-  const order = [...EXERCISE_TYPE_ORDER, FALLBACK_GROUP];
+  const order = [...MUSCLE_GROUP_ORDER, FALLBACK_GROUP];
   const keys = Array.from(grouped.keys()).sort((a, b) => {
     const aIndex = order.indexOf(a);
     const bIndex = order.indexOf(b);
@@ -103,8 +101,7 @@ export default function SupersetSelector({ onSelect, onCancel }: SupersetSelecto
         name: exerciseData.name,
         video_url: exerciseData.videoUrl || null,
         tips: exerciseData.tips || null,
-        equipment: exerciseData.equipment || null,
-        is_custom: 1
+        equipment: exerciseData.equipment || null
       };
 
       if (createTarget === 'exercise1') {
@@ -126,14 +123,14 @@ export default function SupersetSelector({ onSelect, onCancel }: SupersetSelecto
   const filteredExercises1 = exercises.filter((exercise) => {
     if (!searchQuery1) return true;
     const query = searchQuery1.toLowerCase();
-    const tagText = getExerciseTypeTags(exercise).join(' ').toLowerCase();
+    const tagText = getMuscleGroups(exercise).join(' ').toLowerCase();
     return exercise.name.toLowerCase().includes(query) || tagText.includes(query);
   });
 
   const filteredExercises2 = exercises.filter((exercise) => {
     if (!searchQuery2) return true;
     const query = searchQuery2.toLowerCase();
-    const tagText = getExerciseTypeTags(exercise).join(' ').toLowerCase();
+    const tagText = getMuscleGroups(exercise).join(' ').toLowerCase();
     return exercise.name.toLowerCase().includes(query) || tagText.includes(query);
   });
 
@@ -185,7 +182,7 @@ export default function SupersetSelector({ onSelect, onCancel }: SupersetSelecto
                     type="text"
                     value={searchQuery1}
                     onChange={(e) => setSearchQuery1(e.target.value)}
-                    placeholder="Search exercises or types..."
+                    placeholder="Search exercises or muscle groups..."
                     className="w-full bg-zinc-900 text-white px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                     autoFocus
                   />
@@ -260,7 +257,7 @@ export default function SupersetSelector({ onSelect, onCancel }: SupersetSelecto
                     type="text"
                     value={searchQuery2}
                     onChange={(e) => setSearchQuery2(e.target.value)}
-                    placeholder="Search exercises or types..."
+                    placeholder="Search exercises or muscle groups..."
                     className="w-full bg-zinc-900 text-white px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
                   <button

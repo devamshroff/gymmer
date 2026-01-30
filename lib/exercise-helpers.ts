@@ -5,9 +5,11 @@
  * Handles the distinction between single exercises and B2B (back-to-back) supersets.
  */
 
+import { EXERCISE_TYPES } from '@/lib/constants';
+
 // Re-export types from the main types file for convenience
 export interface SingleExercise {
-  type: 'single';
+  type: typeof EXERCISE_TYPES.single;
   name: string;
   sets: number;
   targetReps: number;
@@ -30,7 +32,7 @@ export interface B2BExerciseItem {
 }
 
 export interface B2BExercise {
-  type: 'b2b';
+  type: typeof EXERCISE_TYPES.b2b;
   exercises: [B2BExerciseItem, B2BExerciseItem];
 }
 
@@ -40,14 +42,14 @@ export type Exercise = SingleExercise | B2BExercise;
  * Type guard to check if an exercise is a B2B superset
  */
 export function isB2BExercise(exercise: Exercise): exercise is B2BExercise {
-  return exercise.type === 'b2b';
+  return exercise.type === EXERCISE_TYPES.b2b;
 }
 
 /**
  * Type guard to check if an exercise is a single exercise
  */
 export function isSingleExercise(exercise: Exercise): exercise is SingleExercise {
-  return exercise.type === 'single';
+  return exercise.type === EXERCISE_TYPES.single;
 }
 
 /**
@@ -72,7 +74,7 @@ export function getExerciseName(exercise: Exercise, primaryOnly = false): string
  * Single exercise display info
  */
 export interface SingleExerciseDisplayInfo {
-  type: 'single';
+  type: typeof EXERCISE_TYPES.single;
   name: string;
   sets: number;
   targetReps: number;
@@ -88,7 +90,7 @@ export interface SingleExerciseDisplayInfo {
  * B2B exercise display info
  */
 export interface B2BExerciseDisplayInfo {
-  type: 'b2b';
+  type: typeof EXERCISE_TYPES.b2b;
   name: string;
   sets: number;
   exercise1: {
@@ -118,7 +120,7 @@ export function getExerciseDisplayInfo(exercise: Exercise): ExerciseDisplayInfo 
       ? exercise.hasWarmup
       : !exercise.isBodyweight;
     return {
-      type: 'single',
+      type: EXERCISE_TYPES.single,
       name: exercise.name,
       sets: exercise.sets,
       targetReps: exercise.targetReps,
@@ -136,7 +138,7 @@ export function getExerciseDisplayInfo(exercise: Exercise): ExerciseDisplayInfo 
   const ex2 = exercise.exercises[1];
 
   return {
-    type: 'b2b',
+    type: EXERCISE_TYPES.b2b,
     name: `${ex1.name} / ${ex2.name}`,
     sets: ex1.sets,
     exercise1: {
