@@ -4,7 +4,7 @@ import { getDatabase } from '../lib/database';
 import {
   EXERCISE_MUSCLE_TAGS,
   EXERCISE_TYPE_TAGS,
-  STRETCH_TYPE_TAGS,
+  STRETCH_MUSCLE_TAGS,
   normalizeTypeList,
 } from '../lib/muscle-tags';
 
@@ -77,7 +77,7 @@ function buildStretchPrompt(rows: StretchRow[]): string {
   return [
     'Categorize each stretch by its primary muscles (up to 2 tags).',
     'Return JSON only in this format: {"items":[{"id":1,"stretchTypes":["hamstrings","glutes"]}]}',
-    `stretchTypes must be 1-2 tags from: ${STRETCH_TYPE_TAGS.join(', ')}`,
+    `stretchTypes must be 1-2 tags from: ${STRETCH_MUSCLE_TAGS.join(', ')}`,
     'Items:',
     ...lines,
   ].join('\n');
@@ -192,7 +192,7 @@ async function classifyStretchBatch(rows: StretchRow[]): Promise<Map<number, str
   const map = new Map<number, string[]>();
   if (Array.isArray(parsed.items)) {
     for (const item of parsed.items) {
-      const types = normalizeTypeList(item?.stretchTypes, STRETCH_TYPE_TAGS);
+      const types = normalizeTypeList(item?.stretchTypes, STRETCH_MUSCLE_TAGS);
       if (typeof item?.id === 'number' && types.length > 0) {
         map.set(item.id, types);
       }

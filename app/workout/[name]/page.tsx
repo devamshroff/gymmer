@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { WorkoutPlan, Exercise, Stretch, Cardio } from '@/lib/types';
+import { WorkoutPlan, Exercise, Stretch, Cardio, SingleExercise } from '@/lib/types';
 import { getFormTips, getVideoUrl } from '@/lib/workout-media';
 import { initWorkoutSession, isSessionMode, resolveSessionMode } from '@/lib/workout-session';
 import type { SessionMode } from '@/lib/workout-session';
@@ -27,6 +27,7 @@ type ExerciseHistorySeries = {
 };
 
 const WEIGHT_INCREMENT = 2.5;
+type TargetExercise = Pick<SingleExercise, 'name' | 'targetWeight' | 'targetReps' | 'isBodyweight'>;
 
 function roundUpToIncrement(value: number, increment: number) {
   if (!Number.isFinite(value)) return 0;
@@ -199,7 +200,7 @@ export default function WorkoutDetailPage() {
     const fallback: Record<string, ExerciseTarget> = {};
     const { weight: weightFactor, reps: repsFactor } = getSessionFactors(sessionMode as SessionMode);
 
-    const buildTarget = (exercise: Exercise) => {
+    const buildTarget = (exercise: TargetExercise) => {
       const series = history[exercise.name];
       const points = series?.points || [];
       const { maxWeight, repsAtMax, maxReps } = getMaxWeightAndReps(points);

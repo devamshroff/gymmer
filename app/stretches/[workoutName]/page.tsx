@@ -19,7 +19,6 @@ type StretchOption = {
   duration: string;
   timer_seconds?: number | null;
   side_count?: number | null;
-  type: string;
   muscle_groups: string | null;
   video_url: string | null;
   tips: string | null;
