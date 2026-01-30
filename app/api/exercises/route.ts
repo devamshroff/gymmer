@@ -2,7 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllExercises, searchExercises, createExercise, getUserGoals } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
-import { generateFormTips } from '@/lib/form-tips';
+import { generateExerciseInsights } from '@/lib/form-tips';
+import { EXERCISE_MUSCLE_TAGS, EXERCISE_TYPE_TAGS, normalizeTypeList } from '@/lib/muscle-tags';
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth();
@@ -33,7 +34,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, videoUrl, tips, muscleGroups, equipment, difficulty } = body;
+    const { name, videoUrl, tips, equipment, difficulty } = body;
+    const exerciseTypesInput = normalizeTypeList(body.exerciseTypes ?? body.exerciseType, EXERCISE_TYPE_TAGS);
 
     if (!name) {
       return NextResponse.json(
@@ -43,28 +45,40 @@ export async function POST(request: NextRequest) {
     }
 
     const normalizedTips = typeof tips === 'string' ? tips.trim() : '';
+    const promptMuscles = normalizeTypeList(exerciseTypesInput, EXERCISE_MUSCLE_TAGS);
     const goalsText = await getUserGoals(user.id);
-    const fallbackTips = normalizedTips
-      ? normalizedTips
-      : await generateFormTips({
-          kind: 'exercise',
-          name,
-          muscleGroups: Array.isArray(muscleGroups) ? muscleGroups : undefined,
-          equipment: typeof equipment === 'string' ? equipment : undefined,
-          difficulty: typeof difficulty === 'string' ? difficulty : undefined,
-          goalsText,
-        });
+    const insights = await generateExerciseInsights({
+      kind: 'exercise',
+      name,
+      muscleGroups: promptMuscles.length ? promptMuscles : undefined,
+      equipment: typeof equipment === 'string' ? equipment : undefined,
+      difficulty: typeof difficulty === 'string' ? difficulty : undefined,
+      goalsText,
+    });
+    const fallbackTips = normalizedTips || insights?.tips || null;
+    const inferredBodyweight = typeof insights?.isBodyweight === 'boolean'
+      ? insights.isBodyweight
+      : false;
+    const inferredExerciseTypes = normalizeTypeList(insights?.exerciseTypes, EXERCISE_TYPE_TAGS);
+    const exerciseTypes = exerciseTypesInput.length ? exerciseTypesInput : inferredExerciseTypes;
+    const muscleGroups = normalizeTypeList(exerciseTypes, EXERCISE_MUSCLE_TAGS);
+    const resolvedMuscleGroups = muscleGroups.length ? muscleGroups : ['unknown'];
 
     const exerciseId = await createExercise({
       name,
       videoUrl,
       tips: fallbackTips || undefined,
-      muscleGroups,
+      muscleGroups: resolvedMuscleGroups,
+      exerciseTypes: exerciseTypes.length ? exerciseTypes : undefined,
       equipment,
+      isBodyweight: inferredBodyweight,
       difficulty
     });
 
-    return NextResponse.json({ id: exerciseId, success: true }, { status: 201 });
+    return NextResponse.json(
+      { id: exerciseId, success: true, is_bodyweight: inferredBodyweight ? 1 : 0 },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Error creating exercise:', error);
     return NextResponse.json(

@@ -3,7 +3,8 @@
 export interface Stretch {
   name: string;
   duration: string;
-  timerSeconds: number;  // 0 means no timer (rep-based), >0 shows timer
+  timerSeconds: number;  // Hold time in seconds (per side if sideCount = 2)
+  sideCount: number; // 1 = single stretch, 2 = each side
   videoUrl: string;
   tips: string;
 }
@@ -15,6 +16,7 @@ export interface SingleExercise {
   targetReps: number;
   targetWeight: number;
   warmupWeight: number;
+  hasWarmup?: boolean;
   restTime: number;  // seconds
   videoUrl: string;
   tips: string;
@@ -30,6 +32,7 @@ export interface B2BExercise {
       targetReps: number;
       targetWeight: number;
       warmupWeight: number;
+      hasWarmup?: boolean;
       videoUrl: string;
       tips: string;
       isBodyweight?: boolean;
@@ -40,6 +43,7 @@ export interface B2BExercise {
       targetReps: number;
       targetWeight: number;
       warmupWeight: number;
+      hasWarmup?: boolean;
       videoUrl: string;
       tips: string;
       isBodyweight?: boolean;
@@ -83,6 +87,8 @@ export interface ExerciseHistory {
 // Database Types (v1.0)
 export interface WorkoutSession {
   id: number;
+  routine_id?: number | null;
+  session_key?: string | null;
   workout_plan_name: string;
   date_completed: string; // ISO 8601
   total_duration_minutes: number | null;
@@ -142,7 +148,9 @@ export interface ExerciseDB {
   video_url: string | null;
   tips: string | null;
   muscle_groups: string | null;  // JSON string
+  exercise_type: string | null;  // JSON array of tags
   equipment: string | null;
+  is_bodyweight?: number | null;
   difficulty: string | null;
   is_custom: number;  // SQLite boolean (0 or 1)
   created_at: string;
@@ -152,9 +160,10 @@ export interface StretchDB {
   id: number;
   name: string;
   duration: string;
+  timer_seconds?: number | null;
+  side_count?: number | null;
   video_url: string | null;
   tips: string | null;
-  type: string;
   muscle_groups: string | null;  // JSON array: ["hamstrings", "glutes", "lower back"]
   is_custom: number;
   created_at: string;

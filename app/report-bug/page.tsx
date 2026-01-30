@@ -1,3 +1,7 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+
 const statusMessages = {
   sent: {
     title: 'Thanks for the report!',
@@ -13,14 +17,19 @@ const statusMessages = {
   }
 } as const;
 
-type ReportBugPageProps = {
-  searchParams?: {
-    status?: keyof typeof statusMessages;
-  };
-};
+type StatusKey = keyof typeof statusMessages;
 
-export default function ReportBugPage({ searchParams }: ReportBugPageProps) {
-  const status = searchParams?.status;
+export default function ReportBugPage() {
+  const [status, setStatus] = useState<StatusKey | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const value = params.get('status');
+    if (value && value in statusMessages) {
+      setStatus(value as StatusKey);
+    }
+  }, []);
+
   const message = status ? statusMessages[status] : null;
 
   return (

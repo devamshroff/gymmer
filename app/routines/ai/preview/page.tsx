@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Header from '@/app/components/Header';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
 import SupersetSelector from '@/app/components/SupersetSelector';
 import StretchSelector from '@/app/components/StretchSelector';
@@ -312,7 +311,7 @@ export default function AiRoutinePreviewPage() {
 
       localStorage.removeItem(STORAGE_KEY);
       setSuccess(`Saved "${workoutPlan.name}" to your routines.`);
-      setTimeout(() => router.push('/'), 1500);
+      setTimeout(() => router.push('/routines'), 1500);
     } catch (err: any) {
       setError(err.message || 'Failed to save routine');
     } finally {
@@ -324,7 +323,6 @@ export default function AiRoutinePreviewPage() {
     return (
       <div className="min-h-screen bg-zinc-900 p-4">
         <div className="max-w-3xl mx-auto py-12">
-          <Header />
           <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-6">
             <h1 className="text-2xl font-bold text-white mb-2">No routine to preview</h1>
             <p className="text-zinc-400 mb-4">
@@ -350,7 +348,6 @@ export default function AiRoutinePreviewPage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4 pb-32">
       <div className="max-w-4xl mx-auto">
-        <Header />
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-white">Routine Preview</h1>

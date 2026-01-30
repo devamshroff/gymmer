@@ -5,6 +5,7 @@ import Timer from '@/app/components/Timer';
 describe('Timer Component', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
   });
 
   afterEach(() => {
@@ -136,6 +137,22 @@ describe('Timer Component', () => {
 
       expect(screen.getByText('0:30')).toBeInTheDocument();
       expect(screen.getByText('Start Timer')).toBeInTheDocument();
+    });
+  });
+
+  describe('Background behavior', () => {
+    it('catches up when focus returns after time passes', () => {
+      render(<Timer timerSeconds={10} />);
+      fireEvent.click(screen.getByText('Start Timer'));
+
+      const baseTime = Date.now();
+
+      act(() => {
+        vi.setSystemTime(baseTime + 5000);
+        window.dispatchEvent(new Event('focus'));
+      });
+
+      expect(screen.getByText('0:05')).toBeInTheDocument();
     });
   });
 

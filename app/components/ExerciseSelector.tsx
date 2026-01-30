@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import QuickExerciseForm from './QuickExerciseForm';
+import { EXERCISE_TYPE_ORDER, formatTypeLabel, parseTagJson } from '@/lib/muscle-tags';
 
 interface Exercise {
   id: number;
@@ -9,6 +10,9 @@ interface Exercise {
   video_url: string | null;
   tips: string | null;
   equipment: string | null;
+  is_bodyweight?: number | null;
+  exercise_type?: string | null;
+  muscle_groups?: string | null;
   is_custom: number;
 }
 
@@ -16,6 +20,42 @@ interface ExerciseSelectorProps {
   onSelect: (exercise: Exercise) => void;
   onCancel: () => void;
   title?: string;
+}
+
+const FALLBACK_GROUP = 'other';
+
+function getExerciseTypeTags(exercise: Exercise): string[] {
+  return parseTagJson(exercise.exercise_type);
+}
+
+function groupExercisesByType(items: Exercise[]): Array<{ type: string; exercises: Exercise[] }> {
+  const grouped = new Map<string, Exercise[]>();
+  const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const exercise of sorted) {
+    const tags = getExerciseTypeTags(exercise);
+    const keys = tags.length > 0 ? tags : [FALLBACK_GROUP];
+    for (const key of keys) {
+      const list = grouped.get(key);
+      if (list) {
+        list.push(exercise);
+      } else {
+        grouped.set(key, [exercise]);
+      }
+    }
+  }
+
+  const order = [...EXERCISE_TYPE_ORDER, FALLBACK_GROUP];
+  const keys = Array.from(grouped.keys()).sort((a, b) => {
+    const aIndex = order.indexOf(a);
+    const bIndex = order.indexOf(b);
+    if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
+    if (aIndex === -1) return 1;
+    if (bIndex === -1) return -1;
+    return aIndex - bIndex;
+  });
+
+  return keys.map((key) => ({ type: key, exercises: grouped.get(key) || [] }));
 }
 
 export default function ExerciseSelector({ onSelect, onCancel, title }: ExerciseSelectorProps) {
@@ -64,6 +104,7 @@ export default function ExerciseSelector({ onSelect, onCancel, title }: Exercise
         video_url: exerciseData.videoUrl || null,
         tips: exerciseData.tips || null,
         equipment: exerciseData.equipment || null,
+        is_bodyweight: typeof data.is_bodyweight === 'number' ? data.is_bodyweight : null,
         is_custom: 1
       };
 
@@ -74,9 +115,13 @@ export default function ExerciseSelector({ onSelect, onCancel, title }: Exercise
     }
   };
 
-  const filteredExercises = exercises.filter(ex =>
-    ex.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredExercises = exercises.filter((exercise) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    const tagText = getExerciseTypeTags(exercise).join(' ').toLowerCase();
+    return exercise.name.toLowerCase().includes(query) || tagText.includes(query);
+  });
+  const groupedExercises = groupExercisesByType(filteredExercises);
 
   if (showCreateForm) {
     return (
@@ -98,7 +143,7 @@ export default function ExerciseSelector({ onSelect, onCancel, title }: Exercise
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search exercises..."
+            placeholder="Search exercises or types..."
             className="w-full bg-zinc-900 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             autoFocus
           />
@@ -115,25 +160,34 @@ export default function ExerciseSelector({ onSelect, onCancel, title }: Exercise
         <div className="flex-1 overflow-y-auto mb-4 space-y-2">
           {loading ? (
             <div className="text-center text-zinc-400 py-8">Loading exercises...</div>
-          ) : filteredExercises.length === 0 ? (
+          ) : groupedExercises.length === 0 ? (
             <div className="text-center text-zinc-400 py-8">
               {searchQuery ? 'No exercises found' : 'No exercises available'}
             </div>
           ) : (
-            filteredExercises.map((exercise) => (
-              <button
-                key={exercise.id}
-                onClick={() => onSelect(exercise)}
-                className="w-full bg-zinc-900 hover:bg-zinc-700 text-left p-4 rounded-lg transition-colors border-2 border-zinc-700 hover:border-blue-500"
-              >
-                <div>
-                  <div className="text-white font-semibold">{exercise.name}</div>
-                  {exercise.equipment && (
-                    <div className="text-zinc-400 text-sm mt-1">{exercise.equipment}</div>
-                  )}
+            <div className="space-y-4">
+              {groupedExercises.map(({ type, exercises: groupExercises }) => (
+                <div key={type} className="space-y-2">
+                  <div className="text-xs uppercase tracking-wide text-zinc-400">
+                    {formatTypeLabel(type)}
+                  </div>
+                  {groupExercises.map((exercise) => (
+                    <button
+                      key={exercise.id}
+                      onClick={() => onSelect(exercise)}
+                      className="w-full bg-zinc-900 hover:bg-zinc-700 text-left p-4 rounded-lg transition-colors border-2 border-zinc-700 hover:border-blue-500"
+                    >
+                      <div>
+                        <div className="text-white font-semibold">{exercise.name}</div>
+                        {exercise.equipment && (
+                          <div className="text-zinc-400 text-sm mt-1">{exercise.equipment}</div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
                 </div>
-              </button>
-            ))
+              ))}
+            </div>
           )}
         </div>
 

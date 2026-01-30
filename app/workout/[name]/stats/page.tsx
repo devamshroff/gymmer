@@ -5,7 +5,6 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
 import { getWorkoutSession, clearWorkoutSession, WorkoutSessionData } from '@/lib/workout-session';
-import Header from '@/app/components/Header';
 import { Card } from '@/app/components/SharedUi';
 
 export default function StatsPage() {
@@ -103,8 +102,8 @@ export default function StatsPage() {
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="text-white text-2xl mb-4">Workout not found</div>
-          <Link href="/" className="text-blue-400 hover:text-blue-300">
-            Back to home
+          <Link href="/routines" className="text-blue-400 hover:text-blue-300">
+            Back to routines
           </Link>
         </div>
       </div>
@@ -114,7 +113,6 @@ export default function StatsPage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto">
-        <Header />
         {/* Stats Header */}
         <div className="text-center mb-8">
           <div className="text-6xl mb-4">💪</div>
@@ -219,12 +217,12 @@ export default function StatsPage() {
           📥 Export Workout JSON
         </button>
 
-        {/* Back to Home */}
+        {/* Back to Routines */}
         <Link
-          href="/"
+          href="/routines"
           className="block w-full bg-zinc-700 hover:bg-zinc-600 text-white text-center py-4 rounded-lg text-lg font-semibold transition-colors"
         >
-          ← Back to Home
+          ← Back to Routines
         </Link>
       </div>
     </div>

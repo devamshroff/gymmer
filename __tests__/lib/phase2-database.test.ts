@@ -16,6 +16,7 @@ import {
   setUsername,
   getUsernameExists,
   getUserWithUsername,
+  getUserSettings,
   getPublicRoutines,
   addFavorite,
   removeFavorite,
@@ -23,6 +24,7 @@ import {
   getFavoritedRoutines,
   cloneRoutine,
   setRoutinePublic,
+  upsertUserSettings,
 } from '@/lib/database';
 
 describe('Phase 2: Username Functions', () => {
@@ -123,7 +125,10 @@ describe('Phase 2: Public Routines Functions', () => {
       const routines = [
         { id: 2, name: 'Routine 2', is_public: 1, creator_username: 'user2' },
       ];
-      mockExecute.mockResolvedValueOnce({ rows: routines });
+      mockExecute
+        .mockResolvedValueOnce({ rows: [{ name: 'routine_id' }] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: routines });
 
       const result = await getPublicRoutines('user1-id');
 
@@ -155,6 +160,71 @@ describe('Phase 2: Public Routines Functions', () => {
       expect(mockExecute).toHaveBeenCalledWith({
         sql: expect.stringContaining('UPDATE routines SET is_public'),
         args: [0, 1, 'user-123'],
+      });
+    });
+  });
+});
+
+describe('Phase 2: User Settings Functions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExecute.mockResolvedValue({ rows: [] });
+  });
+
+  describe('getUserSettings', () => {
+    it('returns defaults when settings are missing', async () => {
+      mockExecute
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      const settings = await getUserSettings('user-123');
+
+      expect(settings).toEqual({
+        restTimeSeconds: 60,
+        supersetRestSeconds: 15,
+      });
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: expect.stringContaining('CREATE TABLE IF NOT EXISTS user_settings'),
+      });
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: 'SELECT rest_time_seconds, superset_rest_seconds FROM user_settings WHERE user_id = ?',
+        args: ['user-123'],
+      });
+    });
+
+    it('returns stored settings when present', async () => {
+      mockExecute
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({
+          rows: [{ rest_time_seconds: 45, superset_rest_seconds: 20 }],
+        });
+
+      const settings = await getUserSettings('user-123');
+
+      expect(settings).toEqual({
+        restTimeSeconds: 45,
+        supersetRestSeconds: 20,
+      });
+    });
+  });
+
+  describe('upsertUserSettings', () => {
+    it('inserts or updates user settings', async () => {
+      mockExecute
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      await upsertUserSettings('user-123', {
+        restTimeSeconds: 90,
+        supersetRestSeconds: 30,
+      });
+
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: expect.stringContaining('CREATE TABLE IF NOT EXISTS user_settings'),
+      });
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: expect.stringContaining('INSERT INTO user_settings'),
+        args: ['user-123', 90, 30],
       });
     });
   });
@@ -221,7 +291,15 @@ describe('Phase 2: Favorites Functions', () => {
           is_favorited: 1,
         },
       ];
-      mockExecute.mockResolvedValueOnce({ rows: favorites });
+      mockExecute.mockImplementation(({ sql }) => {
+        if (typeof sql === 'string' && sql.includes('FROM routine_favorites')) {
+          return Promise.resolve({ rows: favorites });
+        }
+        if (typeof sql === 'string' && sql.includes('PRAGMA table_info(workout_sessions)')) {
+          return Promise.resolve({ rows: [{ name: 'routine_id' }] });
+        }
+        return Promise.resolve({ rows: [] });
+      });
 
       const result = await getFavoritedRoutines('user-123');
 

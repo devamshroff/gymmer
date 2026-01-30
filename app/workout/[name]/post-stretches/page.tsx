@@ -3,18 +3,21 @@
 import { useEffect, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { WorkoutPlan, Stretch } from '@/lib/types';
-import Header from '@/app/components/Header';
 import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 import StretchCard from '@/app/components/StretchCard';
 import StretchSelector from '@/app/components/StretchSelector';
 import LoadingScreen from '@/app/components/LoadingScreen';
 import ErrorScreen from '@/app/components/ErrorScreen';
+import AutosaveBadge from '@/app/components/AutosaveBadge';
 import { acknowledgeChangeWarning, hasChangeWarningAck, loadSessionWorkout, saveSessionWorkout } from '@/lib/session-workout';
+import { autosaveWorkout } from '@/lib/workout-autosave';
 
 type StretchOption = {
   id: number;
   name: string;
   duration: string;
+  timer_seconds?: number | null;
+  side_count?: number | null;
   type: string;
   muscle_groups: string | null;
   video_url: string | null;
@@ -123,7 +126,8 @@ function PostStretchesContent() {
     const updatedStretch: Stretch = {
       name: stretch.name,
       duration: stretch.duration,
-      timerSeconds: 0,
+      timerSeconds: stretch.timer_seconds ?? 0,
+      sideCount: stretch.side_count ?? 1,
       videoUrl: stretch.video_url || '',
       tips: stretch.tips || ''
     };
@@ -223,6 +227,7 @@ function PostStretchesContent() {
   const progressPercentage = (currentProgress / totalItems) * 100;
 
   const handleNext = () => {
+    void autosaveWorkout({ type: 'stretch', phase: 'post', index: currentIndex });
     if (currentIndex < stretches.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
@@ -247,7 +252,6 @@ function PostStretchesContent() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto">
-        <Header />
         {/* Navigation */}
         <WorkoutNavHeader
           exitUrl={`/workout/${workoutName}${routineQuery}`}
@@ -256,6 +260,9 @@ function PostStretchesContent() {
           skipLabel="Skip All"
           onSkip={handleSkipAll}
         />
+        <div className="flex justify-end mb-4">
+          <AutosaveBadge />
+        </div>
 
         {/* Title */}
         <div className="text-center mb-4">

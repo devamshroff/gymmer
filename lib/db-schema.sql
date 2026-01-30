@@ -15,6 +15,16 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 
+-- User settings (per-user preferences)
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id TEXT PRIMARY KEY,
+  rest_time_seconds INTEGER DEFAULT 60,
+  superset_rest_seconds INTEGER DEFAULT 15,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- ============================================================================
 -- Workout History Tables
 -- ============================================================================
@@ -22,6 +32,8 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS workout_sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,  -- Owner of this workout session
+  routine_id INTEGER, -- Optional routine reference
+  session_key TEXT, -- Stable client session key (e.g., startTime)
   workout_plan_name TEXT NOT NULL,
   date_completed TEXT NOT NULL, -- ISO 8601 format
   total_duration_minutes INTEGER,
@@ -82,6 +94,8 @@ CREATE TABLE IF NOT EXISTS workout_cardio_logs (
 -- Indexes for workout history
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON workout_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_workout_name ON workout_sessions(workout_plan_name);
+CREATE INDEX IF NOT EXISTS idx_sessions_routine ON workout_sessions(routine_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_user_key ON workout_sessions(user_id, session_key);
 CREATE INDEX IF NOT EXISTS idx_sessions_date ON workout_sessions(date_completed);
 CREATE INDEX IF NOT EXISTS idx_exercise_logs_session ON workout_exercise_logs(session_id);
 CREATE INDEX IF NOT EXISTS idx_exercise_logs_name ON workout_exercise_logs(exercise_name);
@@ -98,7 +112,9 @@ CREATE TABLE IF NOT EXISTS exercises (
   video_url TEXT,
   tips TEXT,
   muscle_groups TEXT,  -- JSON array: ["chest", "triceps"]
+  exercise_type TEXT,  -- JSON array: ["chest", "upper body compound"]
   equipment TEXT,      -- e.g., "Dumbbells", "Barbell", "Bodyweight"
+  is_bodyweight INTEGER DEFAULT 0, -- 1 = bodyweight, 0 = not bodyweight
   difficulty TEXT,     -- "Beginner", "Intermediate", "Advanced"
   created_at TEXT DEFAULT (datetime('now'))
 );
@@ -107,10 +123,10 @@ CREATE TABLE IF NOT EXISTS stretches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
   duration TEXT NOT NULL,
-  timer_seconds INTEGER DEFAULT 0,  -- 0 means no timer needed (rep-based), >0 means show timer
+  timer_seconds INTEGER DEFAULT 0,  -- Hold time in seconds (per side if side_count = 2)
+  side_count INTEGER DEFAULT 1,     -- 1 = single stretch, 2 = each side
   video_url TEXT,
   tips TEXT,
-  type TEXT,  -- "pre_workout" or "post_workout"
   muscle_groups TEXT,  -- JSON array: ["hamstrings", "glutes", "lower back"]
   created_at TEXT DEFAULT (datetime('now'))
 );
@@ -118,7 +134,6 @@ CREATE TABLE IF NOT EXISTS stretches (
 -- Indexes for exercise/stretch libraries
 CREATE INDEX IF NOT EXISTS idx_exercises_name ON exercises(name);
 CREATE INDEX IF NOT EXISTS idx_exercises_muscle ON exercises(muscle_groups);
-CREATE INDEX IF NOT EXISTS idx_stretches_type ON stretches(type);
 
 -- ============================================================================
 -- Routines (Owned by users)

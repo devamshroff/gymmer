@@ -97,7 +97,7 @@ export async function POST(request: Request) {
     ? `${user.name ? `${user.name} ` : ''}<${user.email}>`
     : 'Anonymous user';
   const replyTo = user?.email;
-  const fromAddress = replyTo ? `${replyTo} <${fromEmail}>` : fromEmail;
+  const fromAddress = fromEmail;
 
   const textBody = [
     'New bug report',
@@ -126,15 +126,18 @@ export async function POST(request: Request) {
 
   try {
     const resend = new Resend(resendApiKey);
-    await resend.emails.send({
+    const emailPayload: Parameters<typeof resend.emails.send>[0] = {
       from: fromAddress,
       to: toEmail,
       subject: `Bug report from ${reporterLine}`,
       text: textBody,
       html: htmlBody,
-      attachments: attachment ? [attachment] : undefined,
-      reply_to: replyTo
-    });
+      attachments: attachment ? [attachment] : undefined
+    };
+    if (replyTo) {
+      emailPayload.reply_to = replyTo;
+    }
+    await resend.emails.send(emailPayload);
   } catch (error) {
     console.error('Failed to send bug report email.', error);
     return NextResponse.redirect(

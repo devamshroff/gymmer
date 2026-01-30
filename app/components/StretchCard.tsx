@@ -7,6 +7,7 @@ export interface StretchData {
   name: string;
   duration: string;
   timerSeconds?: number;
+  sideCount?: number;
   tips?: string | null;
   videoUrl?: string | null;
 }
@@ -32,17 +33,22 @@ export default function StretchCard({
   const emoji = variant === 'pre' ? '🏃' : '🧘';
   const tips = getFormTips(stretch.tips);
   const videoHref = getVideoUrl(stretch.name, stretch.videoUrl);
+  const timerSeconds = stretch.timerSeconds || 0;
+  const sideLabel = (stretch.sideCount || 1) > 1 ? 'Each side' : null;
 
   return (
     <div className={`bg-zinc-800 rounded-lg p-8 border-2 ${borderColor} mb-8`}>
       <div className="text-center mb-6">
         <div className="text-6xl mb-4">{emoji}</div>
         <h2 className="text-3xl font-bold text-white mb-4">{stretch.name}</h2>
-        <div className="text-xl text-blue-300 font-semibold mb-4">{stretch.duration}</div>
+        <div className="text-xl text-blue-300 font-semibold mb-4">
+          {stretch.duration}
+          {sideLabel ? ` • ${sideLabel}` : ''}
+        </div>
       </div>
 
       {/* Timer - only shows if stretch has a timer value */}
-      <Timer key={timerKey} timerSeconds={stretch.timerSeconds || 0} />
+      <Timer key={timerKey} timerSeconds={timerSeconds} />
 
       <div className="bg-zinc-900 rounded-lg p-4 mb-6">
         <div className="text-zinc-400 text-sm mb-2">Tips:</div>

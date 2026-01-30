@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/app/components/SharedUi';
+import { initWorkoutSession } from '@/lib/workout-session';
 
 interface PublicRoutine {
   id: number;
@@ -163,7 +164,7 @@ export default function BrowseRoutinesPage() {
       <main className="max-w-2xl mx-auto py-8">
         <div className="flex items-center gap-4 mb-8">
           <Link
-            href="/"
+            href="/routines"
             className="text-zinc-400 hover:text-white transition-colors"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -203,7 +204,7 @@ export default function BrowseRoutinesPage() {
                         </span>
                       </p>
                     </div>
-                    <div className="text-sm text-zinc-500">
+                    <div className="text-sm text-zinc-500 whitespace-nowrap shrink-0">
                       Last:{' '}
                       <span className={lastDate ? 'text-blue-400' : 'text-zinc-600'}>
                         {formattedDate}
@@ -254,6 +255,7 @@ export default function BrowseRoutinesPage() {
                     {/* Use Routine Button */}
                     <Link
                       href={`/stretches/${encodeURIComponent(routine.name)}?routineId=${routine.id}`}
+                      onClick={() => initWorkoutSession(routine.name, 'incremental', routine.id)}
                       className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium bg-green-600 hover:bg-green-700 text-white transition-colors"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

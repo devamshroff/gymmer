@@ -17,6 +17,7 @@ describe('Exercise Type Helpers', () => {
     targetReps: 10,
     targetWeight: 185,
     warmupWeight: 135,
+    hasWarmup: true,
     restTime: 90,
     tips: 'Keep your back flat',
     videoUrl: 'https://youtube.com/watch?v=123',
@@ -122,6 +123,7 @@ describe('Exercise Type Helpers', () => {
       const noWarmupExercise: SingleExercise = {
         ...singleExercise,
         warmupWeight: 185, // Same as target weight
+        hasWarmup: false,
       };
       const info = getExerciseDisplayInfo(noWarmupExercise);
       expect(info.hasWarmup).toBe(false);
@@ -137,6 +139,7 @@ describe('Exercise Type Helpers', () => {
         targetReps: 8,
         targetWeight: 225,
         warmupWeight: 225,
+        hasWarmup: false,
         restTime: 120,
         tips: '',
         videoUrl: '',

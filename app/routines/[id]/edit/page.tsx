@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Header from '@/app/components/Header';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
 import SupersetSelector from '@/app/components/SupersetSelector';
 import StretchSelector from '@/app/components/StretchSelector';
@@ -440,8 +439,6 @@ export default function EditRoutinePage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4 pb-24">
       <div className="max-w-2xl mx-auto">
-        <Header />
-
         {/* Header */}
         <div className="mb-6">
           <button

@@ -5,6 +5,10 @@ import type { WorkoutSession, WorkoutExerciseLog, WorkoutCardioLog } from './typ
 // Initialize database connection
 let db: Client | null = null;
 let workoutSessionModeColumnReady: boolean | null = null;
+let workoutSessionRoutineIdColumnReady: boolean | null = null;
+let workoutSessionKeyColumnReady: boolean | null = null;
+const DEFAULT_REST_TIME_SECONDS = 60;
+const DEFAULT_SUPERSET_REST_TIME_SECONDS = 15;
 
 export function getDatabase(): Client {
   if (!db) {
@@ -84,6 +88,109 @@ async function hasWorkoutSessionModeColumn(): Promise<boolean> {
   return workoutSessionModeColumnReady;
 }
 
+async function hasWorkoutSessionRoutineIdColumn(): Promise<boolean> {
+  if (workoutSessionRoutineIdColumnReady !== null) return workoutSessionRoutineIdColumnReady;
+  const db = getDatabase();
+  try {
+    const result = await db.execute({
+      sql: 'PRAGMA table_info(workout_sessions)'
+    });
+    workoutSessionRoutineIdColumnReady = result.rows.some((row: any) => row.name === 'routine_id');
+  } catch (error) {
+    console.warn('Failed to inspect workout_sessions routine_id schema:', error);
+    workoutSessionRoutineIdColumnReady = false;
+  }
+  return workoutSessionRoutineIdColumnReady;
+}
+
+async function hasWorkoutSessionKeyColumn(): Promise<boolean> {
+  if (workoutSessionKeyColumnReady !== null) return workoutSessionKeyColumnReady;
+  const db = getDatabase();
+  try {
+    const result = await db.execute({
+      sql: 'PRAGMA table_info(workout_sessions)'
+    });
+    workoutSessionKeyColumnReady = result.rows.some((row: any) => row.name === 'session_key');
+  } catch (error) {
+    console.warn('Failed to inspect workout_sessions session_key schema:', error);
+    workoutSessionKeyColumnReady = false;
+  }
+  return workoutSessionKeyColumnReady;
+}
+
+async function ensureWorkoutSessionKeyColumn(): Promise<boolean> {
+  const hasColumn = await hasWorkoutSessionKeyColumn();
+  if (hasColumn) return true;
+  const db = getDatabase();
+  try {
+    await db.execute({
+      sql: 'ALTER TABLE workout_sessions ADD COLUMN session_key TEXT'
+    });
+    workoutSessionKeyColumnReady = true;
+  } catch (error: any) {
+    const message = String(error?.message || error);
+    if (message.toLowerCase().includes('duplicate') || message.toLowerCase().includes('already exists')) {
+      workoutSessionKeyColumnReady = true;
+    } else {
+      console.warn('Failed to add session_key column to workout_sessions:', error);
+      workoutSessionKeyColumnReady = false;
+      return false;
+    }
+  }
+
+  try {
+    await db.execute({
+      sql: 'CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_user_key ON workout_sessions(user_id, session_key)'
+    });
+  } catch (error) {
+    console.warn('Failed to create session_key index:', error);
+  }
+
+  return workoutSessionKeyColumnReady === true;
+}
+
+async function ensureWorkoutSessionRoutineIdColumn(): Promise<boolean> {
+  const hasColumn = await hasWorkoutSessionRoutineIdColumn();
+  if (hasColumn) return true;
+  const db = getDatabase();
+  try {
+    await db.execute({
+      sql: 'ALTER TABLE workout_sessions ADD COLUMN routine_id INTEGER'
+    });
+    workoutSessionRoutineIdColumnReady = true;
+    return true;
+  } catch (error: any) {
+    const message = String(error?.message || error);
+    if (message.toLowerCase().includes('duplicate') || message.toLowerCase().includes('already exists')) {
+      workoutSessionRoutineIdColumnReady = true;
+      return true;
+    }
+    console.warn('Failed to add routine_id column to workout_sessions:', error);
+    workoutSessionRoutineIdColumnReady = false;
+    return false;
+  }
+}
+
+async function backfillWorkoutSessionRoutineIds(userId: string): Promise<void> {
+  const hasColumn = await ensureWorkoutSessionRoutineIdColumn();
+  if (!hasColumn) return;
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      UPDATE workout_sessions
+      SET routine_id = (
+        SELECT r.id
+        FROM routines r
+        WHERE r.user_id = workout_sessions.user_id
+          AND r.name = workout_sessions.workout_plan_name
+        LIMIT 1
+      )
+      WHERE routine_id IS NULL AND user_id = ?
+    `,
+    args: [userId]
+  });
+}
+
 export async function getUserGoals(userId: string): Promise<string | null> {
   const db = getDatabase();
   const result = await db.execute({
@@ -102,12 +209,71 @@ export async function upsertUserGoals(userId: string, goalsText: string | null):
   });
 }
 
+async function ensureUserSettingsTable(): Promise<void> {
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      CREATE TABLE IF NOT EXISTS user_settings (
+        user_id TEXT PRIMARY KEY,
+        rest_time_seconds INTEGER DEFAULT 60,
+        superset_rest_seconds INTEGER DEFAULT 15,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `
+  });
+}
+
+export async function getUserSettings(userId: string): Promise<{
+  restTimeSeconds: number;
+  supersetRestSeconds: number;
+}> {
+  await ensureUserSettingsTable();
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT rest_time_seconds, superset_rest_seconds FROM user_settings WHERE user_id = ?',
+    args: [userId]
+  });
+  const row = result.rows[0] as any | undefined;
+  const restTimeSeconds = Number(row?.rest_time_seconds);
+  const supersetRestSeconds = Number(row?.superset_rest_seconds);
+
+  return {
+    restTimeSeconds: Number.isFinite(restTimeSeconds) ? restTimeSeconds : DEFAULT_REST_TIME_SECONDS,
+    supersetRestSeconds: Number.isFinite(supersetRestSeconds)
+      ? supersetRestSeconds
+      : DEFAULT_SUPERSET_REST_TIME_SECONDS
+  };
+}
+
+export async function upsertUserSettings(userId: string, data: {
+  restTimeSeconds: number;
+  supersetRestSeconds: number;
+}): Promise<void> {
+  await ensureUserSettingsTable();
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      INSERT INTO user_settings (user_id, rest_time_seconds, superset_rest_seconds, updated_at)
+      VALUES (?, ?, ?, datetime('now'))
+      ON CONFLICT(user_id) DO UPDATE SET
+        rest_time_seconds = excluded.rest_time_seconds,
+        superset_rest_seconds = excluded.superset_rest_seconds,
+        updated_at = datetime('now')
+    `,
+    args: [userId, data.restTimeSeconds, data.supersetRestSeconds]
+  });
+}
+
 // ============================================================================
 // Workout History Functions
 // ============================================================================
 
 export async function createWorkoutSession(data: {
   user_id: string;
+  routine_id?: number | null;
+  session_key?: string | null;
   workout_plan_name: string;
   date_completed: string;
   total_duration_minutes?: number;
@@ -115,22 +281,165 @@ export async function createWorkoutSession(data: {
   session_mode?: string | null;
 }): Promise<number> {
   const db = getDatabase();
+  const hasRoutineIdColumn = await ensureWorkoutSessionRoutineIdColumn();
+  const hasSessionModeColumn = await hasWorkoutSessionModeColumn();
+  const includeSessionKey = data.session_key !== undefined
+    ? await ensureWorkoutSessionKeyColumn()
+    : await hasWorkoutSessionKeyColumn();
+  const routineIdValue = data.routine_id ?? null;
+  const sessionKeyValue = data.session_key ?? null;
+  const columns = ['user_id'];
+  const args: any[] = [data.user_id];
+
+  if (hasRoutineIdColumn) {
+    columns.push('routine_id');
+    args.push(routineIdValue);
+  }
+
+  if (includeSessionKey) {
+    columns.push('session_key');
+    args.push(sessionKeyValue);
+  }
+
+  columns.push('workout_plan_name', 'date_completed', 'total_duration_minutes', 'total_strain');
+  args.push(
+    data.workout_plan_name,
+    data.date_completed,
+    data.total_duration_minutes || null,
+    data.total_strain || null
+  );
+
+  if (hasSessionModeColumn) {
+    columns.push('session_mode');
+    args.push(data.session_mode || null);
+  }
   const result = await db.execute({
     sql: `
-      INSERT INTO workout_sessions (user_id, workout_plan_name, date_completed, total_duration_minutes, total_strain, session_mode)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO workout_sessions (${columns.join(', ')})
+      VALUES (${columns.map(() => '?').join(', ')})
     `,
-    args: [
-      data.user_id,
-      data.workout_plan_name,
-      data.date_completed,
-      data.total_duration_minutes || null,
-      data.total_strain || null,
-      data.session_mode || null
-    ]
+    args
   });
 
   return Number(result.lastInsertRowid);
+}
+
+export async function getWorkoutSessionById(id: number, userId: string): Promise<any | null> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT * FROM workout_sessions WHERE id = ? AND user_id = ?',
+    args: [id, userId]
+  });
+  return result.rows[0] as any || null;
+}
+
+export async function getWorkoutSessionByKey(userId: string, sessionKey: string): Promise<any | null> {
+  const db = getDatabase();
+  const hasKeyColumn = await hasWorkoutSessionKeyColumn();
+  if (!hasKeyColumn) return null;
+  const result = await db.execute({
+    sql: 'SELECT * FROM workout_sessions WHERE user_id = ? AND session_key = ? LIMIT 1',
+    args: [userId, sessionKey]
+  });
+  return result.rows[0] as any || null;
+}
+
+export async function touchWorkoutSession(
+  id: number,
+  userId: string,
+  data: {
+    routine_id?: number | null;
+    workout_plan_name?: string;
+    session_mode?: string | null;
+  }
+): Promise<void> {
+  const db = getDatabase();
+  const updates: string[] = ['date_completed = ?'];
+  const args: any[] = [new Date().toISOString()];
+
+  if (data.routine_id !== undefined) {
+    updates.push('routine_id = ?');
+    args.push(data.routine_id);
+  }
+
+  if (data.workout_plan_name) {
+    updates.push('workout_plan_name = ?');
+    args.push(data.workout_plan_name);
+  }
+
+  if (data.session_mode !== undefined) {
+    const hasSessionModeColumn = await hasWorkoutSessionModeColumn();
+    if (hasSessionModeColumn) {
+      updates.push('session_mode = ?');
+      args.push(data.session_mode);
+    }
+  }
+
+  args.push(id, userId);
+
+  await db.execute({
+    sql: `UPDATE workout_sessions SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`,
+    args
+  });
+}
+
+export async function updateWorkoutSession(
+  id: number,
+  userId: string,
+  data: {
+    routine_id?: number | null;
+    workout_plan_name?: string;
+    date_completed?: string;
+    total_duration_minutes?: number | null;
+    total_strain?: number | null;
+    session_mode?: string | null;
+  }
+): Promise<void> {
+  const db = getDatabase();
+  const updates: string[] = [];
+  const args: any[] = [];
+
+  if (data.routine_id !== undefined) {
+    updates.push('routine_id = ?');
+    args.push(data.routine_id);
+  }
+
+  if (data.workout_plan_name) {
+    updates.push('workout_plan_name = ?');
+    args.push(data.workout_plan_name);
+  }
+
+  if (data.date_completed) {
+    updates.push('date_completed = ?');
+    args.push(data.date_completed);
+  }
+
+  if (data.total_duration_minutes !== undefined) {
+    updates.push('total_duration_minutes = ?');
+    args.push(data.total_duration_minutes);
+  }
+
+  if (data.total_strain !== undefined) {
+    updates.push('total_strain = ?');
+    args.push(data.total_strain);
+  }
+
+  if (data.session_mode !== undefined) {
+    const hasSessionModeColumn = await hasWorkoutSessionModeColumn();
+    if (hasSessionModeColumn) {
+      updates.push('session_mode = ?');
+      args.push(data.session_mode);
+    }
+  }
+
+  if (updates.length === 0) return;
+
+  args.push(id, userId);
+
+  await db.execute({
+    sql: `UPDATE workout_sessions SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`,
+    args
+  });
 }
 
 export async function logExercise(data: {
@@ -159,40 +468,104 @@ export async function logExercise(data: {
   b2b_set4_weight?: number | null;
   b2b_set4_reps?: number | null;
 }): Promise<number> {
+  return upsertWorkoutExerciseLog(data);
+}
+
+type WorkoutExerciseLogUpsert = {
+  session_id: number;
+  exercise_name: string;
+  exercise_type: 'single' | 'b2b' | 'circuit';
+  warmup_weight?: number | null;
+  warmup_reps?: number | null;
+  set1_weight?: number | null;
+  set1_reps?: number | null;
+  set2_weight?: number | null;
+  set2_reps?: number | null;
+  set3_weight?: number | null;
+  set3_reps?: number | null;
+  set4_weight?: number | null;
+  set4_reps?: number | null;
+  b2b_partner_name?: string | null;
+  b2b_warmup_weight?: number | null;
+  b2b_warmup_reps?: number | null;
+  b2b_set1_weight?: number | null;
+  b2b_set1_reps?: number | null;
+  b2b_set2_weight?: number | null;
+  b2b_set2_reps?: number | null;
+  b2b_set3_weight?: number | null;
+  b2b_set3_reps?: number | null;
+  b2b_set4_weight?: number | null;
+  b2b_set4_reps?: number | null;
+};
+
+export async function upsertWorkoutExerciseLog(data: WorkoutExerciseLogUpsert): Promise<number> {
   const db = getDatabase();
+  const partnerName = data.b2b_partner_name ?? null;
+  const existing = await db.execute({
+    sql: `
+      SELECT id FROM workout_exercise_logs
+      WHERE session_id = ? AND exercise_name = ?
+        AND (b2b_partner_name IS ? OR b2b_partner_name = ?)
+      LIMIT 1
+    `,
+    args: [data.session_id, data.exercise_name, partnerName, partnerName]
+  });
+
+  const updateFields: Array<[string, any]> = [];
+  const columns: Array<keyof WorkoutExerciseLogUpsert> = [
+    'exercise_type',
+    'warmup_weight',
+    'warmup_reps',
+    'set1_weight',
+    'set1_reps',
+    'set2_weight',
+    'set2_reps',
+    'set3_weight',
+    'set3_reps',
+    'set4_weight',
+    'set4_reps',
+    'b2b_partner_name',
+    'b2b_warmup_weight',
+    'b2b_warmup_reps',
+    'b2b_set1_weight',
+    'b2b_set1_reps',
+    'b2b_set2_weight',
+    'b2b_set2_reps',
+    'b2b_set3_weight',
+    'b2b_set3_reps',
+    'b2b_set4_weight',
+    'b2b_set4_reps',
+  ];
+
+  for (const column of columns) {
+    if (data[column] !== undefined) {
+      updateFields.push([column, (data as any)[column]]);
+    }
+  }
+
+  if (existing.rows.length > 0) {
+    if (updateFields.length === 0) {
+      return Number((existing.rows[0] as any).id);
+    }
+    const assignments = updateFields.map(([column]) => `${column} = ?`).join(', ');
+    const args = updateFields.map(([, value]) => value);
+    args.push((existing.rows[0] as any).id);
+    await db.execute({
+      sql: `UPDATE workout_exercise_logs SET ${assignments} WHERE id = ?`,
+      args
+    });
+    return Number((existing.rows[0] as any).id);
+  }
+
+  const insertColumns = ['session_id', 'exercise_name', ...updateFields.map(([column]) => column)];
+  const insertArgs = [data.session_id, data.exercise_name, ...updateFields.map(([, value]) => value)];
+
   const result = await db.execute({
     sql: `
-      INSERT INTO workout_exercise_logs (
-        session_id, exercise_name, exercise_type,
-        warmup_weight, warmup_reps,
-        set1_weight, set1_reps,
-        set2_weight, set2_reps,
-        set3_weight, set3_reps,
-        set4_weight, set4_reps,
-        b2b_partner_name,
-        b2b_warmup_weight, b2b_warmup_reps,
-        b2b_set1_weight, b2b_set1_reps,
-        b2b_set2_weight, b2b_set2_reps,
-        b2b_set3_weight, b2b_set3_reps,
-        b2b_set4_weight, b2b_set4_reps
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO workout_exercise_logs (${insertColumns.join(', ')})
+      VALUES (${insertColumns.map(() => '?').join(', ')})
     `,
-    args: [
-      data.session_id,
-      data.exercise_name,
-      data.exercise_type,
-      data.warmup_weight ?? null, data.warmup_reps ?? null,
-      data.set1_weight ?? null, data.set1_reps ?? null,
-      data.set2_weight ?? null, data.set2_reps ?? null,
-      data.set3_weight ?? null, data.set3_reps ?? null,
-      data.set4_weight ?? null, data.set4_reps ?? null,
-      data.b2b_partner_name ?? null,
-      data.b2b_warmup_weight ?? null, data.b2b_warmup_reps ?? null,
-      data.b2b_set1_weight ?? null, data.b2b_set1_reps ?? null,
-      data.b2b_set2_weight ?? null, data.b2b_set2_reps ?? null,
-      data.b2b_set3_weight ?? null, data.b2b_set3_reps ?? null,
-      data.b2b_set4_weight ?? null, data.b2b_set4_reps ?? null
-    ]
+    args: insertArgs
   });
 
   return Number(result.lastInsertRowid);
@@ -357,7 +730,7 @@ export type ExerciseHistoryPoint = {
 };
 
 export type ExerciseHistorySeries = {
-  display_mode?: 'weight' | 'reps';
+  display_mode: 'weight' | 'reps';
   points: ExerciseHistoryPoint[];
 };
 
@@ -507,11 +880,12 @@ export async function getExerciseHistory(
   })) as ExerciseHistoryPoint[];
 
   const equipmentResult = await db.execute({
-    sql: 'SELECT equipment FROM exercises WHERE name = ? LIMIT 1',
+    sql: 'SELECT equipment, is_bodyweight FROM exercises WHERE name = ? LIMIT 1',
     args: [exerciseName]
   });
-  const equipment = (equipmentResult.rows[0] as any)?.equipment || '';
-  const displayMode = equipment.toLowerCase() === 'bodyweight' ? 'reps' : undefined;
+  const row = equipmentResult.rows[0] as any;
+  const isBodyweight = row?.is_bodyweight === 1;
+  const displayMode: ExerciseHistorySeries['display_mode'] = isBodyweight ? 'reps' : 'weight';
 
   return { display_mode: displayMode, points };
 }
@@ -526,21 +900,25 @@ export async function createExercise(data: {
   videoUrl?: string;
   tips?: string;
   muscleGroups?: string[];
+  exerciseTypes?: string[];
   equipment?: string;
+  isBodyweight?: boolean;
   difficulty?: string;
 }): Promise<number> {
   const db = getDatabase();
   const result = await db.execute({
     sql: `
-      INSERT INTO exercises (name, video_url, tips, muscle_groups, equipment, difficulty)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO exercises (name, video_url, tips, muscle_groups, exercise_type, equipment, is_bodyweight, difficulty)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
     args: [
       data.name,
       data.videoUrl || null,
       data.tips || null,
       data.muscleGroups ? JSON.stringify(data.muscleGroups) : null,
+      data.exerciseTypes ? JSON.stringify(data.exerciseTypes) : null,
       data.equipment || null,
+      typeof data.isBodyweight === 'boolean' ? (data.isBodyweight ? 1 : 0) : null,
       data.difficulty || null
     ]
   });
@@ -583,12 +961,13 @@ export async function createRoutine(name: string, userId: string, isPublic: bool
 
 export async function getAllRoutines(userId: string): Promise<any[]> {
   const db = getDatabase();
+  await backfillWorkoutSessionRoutineIds(userId);
   const result = await db.execute({
     sql: `
       SELECT r.*, MAX(ws.date_completed) as last_workout_date
       FROM routines r
       LEFT JOIN workout_sessions ws
-        ON ws.workout_plan_name = r.name AND ws.user_id = ?
+        ON ws.user_id = ? AND ws.routine_id = r.id
       WHERE r.user_id = ?
       GROUP BY r.id
       ORDER BY r.created_at DESC
@@ -642,18 +1021,18 @@ export async function updateRoutineName(id: number, newName: string, userId: str
     throw new Error('Routine not found or you do not have permission');
   }
 
-  const oldName = (oldRoutine.rows[0] as any).name;
-
   // Update the routine name
   await db.execute({
     sql: 'UPDATE routines SET name = ?, updated_at = datetime(\'now\') WHERE id = ? AND user_id = ?',
     args: [newName, id, userId]
   });
 
+  await backfillWorkoutSessionRoutineIds(userId);
+
   // Update workout history to use the new name (only for this user)
   await db.execute({
-    sql: 'UPDATE workout_sessions SET workout_plan_name = ? WHERE workout_plan_name = ? AND user_id = ?',
-    args: [newName, oldName, userId]
+    sql: 'UPDATE workout_sessions SET workout_plan_name = ? WHERE routine_id = ? AND user_id = ?',
+    args: [newName, id, userId]
   });
 }
 
@@ -717,8 +1096,10 @@ export async function getRoutineExercises(routineId: number): Promise<any[]> {
     sql: `
       SELECT re.*, e.name as exercise_name, e.video_url, e.tips,
              e.equipment as exercise_equipment,
+             e.is_bodyweight as exercise_is_bodyweight,
              e2.name as b2b_partner_name, e2.video_url as b2b_video_url, e2.tips as b2b_tips,
-             e2.equipment as b2b_partner_equipment
+             e2.equipment as b2b_partner_equipment,
+             e2.is_bodyweight as b2b_partner_is_bodyweight
       FROM routine_exercises re
       JOIN exercises e ON re.exercise_id = e.id
       LEFT JOIN exercises e2 ON re.b2b_partner_id = e2.id
@@ -742,7 +1123,8 @@ export async function removeExerciseFromRoutine(routineExerciseId: number): Prom
 export async function createStretch(data: {
   name: string;
   duration: string;
-  type: string;
+  timerSeconds?: number;
+  sideCount?: number;
   videoUrl?: string;
   tips?: string;
   muscleGroups?: string[];
@@ -750,13 +1132,14 @@ export async function createStretch(data: {
   const db = getDatabase();
   const result = await db.execute({
     sql: `
-      INSERT INTO stretches (name, duration, type, video_url, tips, muscle_groups)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO stretches (name, duration, timer_seconds, side_count, video_url, tips, muscle_groups)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
     args: [
       data.name,
       data.duration,
-      data.type,
+      typeof data.timerSeconds === 'number' ? data.timerSeconds : 0,
+      typeof data.sideCount === 'number' ? data.sideCount : 1,
       data.videoUrl || null,
       data.tips || null,
       data.muscleGroups ? JSON.stringify(data.muscleGroups) : null
@@ -765,18 +1148,10 @@ export async function createStretch(data: {
   return Number(result.lastInsertRowid);
 }
 
-export async function getAllStretches(type?: 'pre_workout' | 'post_workout'): Promise<any[]> {
+export async function getAllStretches(): Promise<any[]> {
   const db = getDatabase();
-  if (type) {
-    const result = await db.execute({
-      sql: 'SELECT * FROM stretches WHERE type = ? ORDER BY name',
-      args: [type]
-    });
-    return result.rows as any[];
-  } else {
-    const result = await db.execute('SELECT * FROM stretches ORDER BY name');
-    return result.rows as any[];
-  }
+  const result = await db.execute('SELECT * FROM stretches ORDER BY name');
+  return result.rows as any[];
 }
 
 export async function getStretchById(id: number): Promise<any | null> {
@@ -822,7 +1197,7 @@ export async function getRoutineStretches(routineId: number, type: 'pre' | 'post
   const tableName = type === 'pre' ? 'routine_pre_stretches' : 'routine_post_stretches';
   const result = await db.execute({
     sql: `
-      SELECT rs.*, s.name, s.duration, s.video_url, s.tips, s.muscle_groups
+      SELECT rs.*, s.name, s.duration, s.timer_seconds, s.side_count, s.video_url, s.tips, s.muscle_groups
       FROM ${tableName} rs
       JOIN stretches s ON rs.stretch_id = s.id
       WHERE rs.routine_id = ?
@@ -912,6 +1287,9 @@ export async function getUserWithUsername(userId: string): Promise<any | null> {
 // Public routines
 export async function getPublicRoutines(excludeUserId?: string): Promise<any[]> {
   const db = getDatabase();
+  if (excludeUserId) {
+    await backfillWorkoutSessionRoutineIds(excludeUserId);
+  }
 
   const sql = excludeUserId
     ? `SELECT r.*, u.username as creator_username, u.name as creator_name,
@@ -919,7 +1297,7 @@ export async function getPublicRoutines(excludeUserId?: string): Promise<any[]> 
        FROM routines r
        JOIN users u ON r.user_id = u.id
        LEFT JOIN workout_sessions ws
-         ON ws.workout_plan_name = r.name AND ws.user_id = ?
+         ON ws.user_id = ? AND ws.routine_id = r.id
        WHERE r.is_public = 1 AND r.user_id != ?
        GROUP BY r.id
        ORDER BY r.created_at DESC`
@@ -963,6 +1341,7 @@ export async function isFavorited(userId: string, routineId: number): Promise<bo
 
 export async function getFavoritedRoutines(userId: string): Promise<any[]> {
   const db = getDatabase();
+  await backfillWorkoutSessionRoutineIds(userId);
   const result = await db.execute({
     sql: `SELECT r.*, u.username as creator_username, u.name as creator_name, 1 as is_favorited,
             MAX(ws.date_completed) as last_workout_date
@@ -970,7 +1349,7 @@ export async function getFavoritedRoutines(userId: string): Promise<any[]> {
           JOIN routines r ON rf.routine_id = r.id
           JOIN users u ON r.user_id = u.id
           LEFT JOIN workout_sessions ws
-            ON ws.workout_plan_name = r.name AND ws.user_id = ?
+            ON ws.user_id = ? AND ws.routine_id = r.id
           WHERE rf.user_id = ?
           GROUP BY r.id
           ORDER BY rf.created_at DESC`,

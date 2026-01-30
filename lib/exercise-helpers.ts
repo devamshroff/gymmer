@@ -13,6 +13,8 @@ export interface SingleExercise {
   targetReps: number;
   targetWeight: number;
   warmupWeight: number;
+  hasWarmup?: boolean;
+  isBodyweight?: boolean;
   restTime: number;
   tips: string;
   videoUrl: string;
@@ -112,6 +114,9 @@ export type ExerciseDisplayInfo = SingleExerciseDisplayInfo | B2BExerciseDisplay
  */
 export function getExerciseDisplayInfo(exercise: Exercise): ExerciseDisplayInfo {
   if (isSingleExercise(exercise)) {
+    const hasWarmup = typeof exercise.hasWarmup === 'boolean'
+      ? exercise.hasWarmup
+      : !exercise.isBodyweight;
     return {
       type: 'single',
       name: exercise.name,
@@ -122,7 +127,7 @@ export function getExerciseDisplayInfo(exercise: Exercise): ExerciseDisplayInfo 
       restTime: exercise.restTime,
       tips: exercise.tips,
       videoUrl: exercise.videoUrl,
-      hasWarmup: exercise.warmupWeight !== exercise.targetWeight,
+      hasWarmup,
     };
   }
 

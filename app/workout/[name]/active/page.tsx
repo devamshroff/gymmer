@@ -5,13 +5,14 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Exercise, SingleExercise, B2BExercise } from '@/lib/types';
 import { addExerciseToSession } from '@/lib/workout-session';
+import { autosaveWorkout } from '@/lib/workout-autosave';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
 import SupersetSelector from '@/app/components/SupersetSelector';
 import { getFormTips, getVideoUrl } from '@/lib/workout-media';
 import { acknowledgeChangeWarning, hasChangeWarningAck, loadSessionWorkout, saveSessionWorkout } from '@/lib/session-workout';
-import Header from '@/app/components/Header';
 import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 import ExerciseHistoryModal from '@/app/components/ExerciseHistoryModal';
+import AutosaveBadge from '@/app/components/AutosaveBadge';
 
 interface SetData {
   weight: number;
@@ -24,6 +25,7 @@ type ExerciseOption = {
   video_url: string | null;
   tips: string | null;
   equipment?: string | null;
+  is_bodyweight?: number | null;
   is_custom?: number;
 };
 
@@ -48,6 +50,16 @@ function formatLocalDate(value?: string | null): string {
   });
 }
 
+function resolveHasWarmup(exercise: SingleExercise): boolean {
+  if (typeof exercise.hasWarmup === 'boolean') {
+    return exercise.hasWarmup;
+  }
+  if (exercise.isBodyweight) {
+    return false;
+  }
+  return true;
+}
+
 function ActiveWorkoutContent() {
   const params = useParams();
   const router = useRouter();
@@ -59,10 +71,14 @@ function ActiveWorkoutContent() {
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
   const [isResting, setIsResting] = useState(false);
   const [restTimeRemaining, setRestTimeRemaining] = useState(0);
+  const [restTimeSeconds, setRestTimeSeconds] = useState(60);
+  const [supersetRestSeconds, setSupersetRestSeconds] = useState(15);
 
   // Single exercise state
   const [setData, setSetData] = useState<SetData>({ weight: 0, reps: 0 });
   const [completedSets, setCompletedSets] = useState<SetData[]>([]);
+  const [warmupCompleted, setWarmupCompleted] = useState(false);
+  const [warmupDecision, setWarmupDecision] = useState<'pending' | 'include' | 'skip'>('pending');
 
   // B2B/Superset state
   const [currentExerciseInPair, setCurrentExerciseInPair] = useState(0); // 0 or 1
@@ -117,9 +133,30 @@ function ActiveWorkoutContent() {
     type: 'single' | 'b2b';
     completedSets?: SetData[];
     completedPairs?: Array<{ ex1: SetData; ex2: SetData }>;
+    warmupCompleted?: boolean;
   };
   const [completedExercisesCache, setCompletedExercisesCache] = useState<CompletedExerciseCache[]>([]);
   const [viewingExerciseIndex, setViewingExerciseIndex] = useState(0); // Which exercise we're viewing (can be past/current)
+
+  const initSingleExerciseState = (exercise: SingleExercise) => {
+    const hasWarmup = resolveHasWarmup(exercise);
+    setWarmupCompleted(false);
+    if (!hasWarmup) {
+      setWarmupDecision('skip');
+      setCurrentSetIndex(1);
+      setSetData({
+        weight: exercise.targetWeight,
+        reps: exercise.targetReps,
+      });
+      return;
+    }
+    setWarmupDecision('pending');
+    setCurrentSetIndex(1);
+    setSetData({
+      weight: exercise.targetWeight,
+      reps: exercise.targetReps,
+    });
+  };
 
   // Get routineId from URL params (for public/favorited routines)
   const routineIdParam = searchParams.get('routineId');
@@ -162,16 +199,7 @@ function ActiveWorkoutContent() {
         // Initialize exercise at startIndex
         const exercise = resolvedWorkout.exercises[startIndex];
         if (exercise.type === 'single') {
-          // Check if warmup is needed
-          const needsWarmup = exercise.warmupWeight !== exercise.targetWeight;
-          setSetData({
-            weight: needsWarmup ? exercise.warmupWeight : exercise.targetWeight,
-            reps: exercise.targetReps,
-          });
-          // If no warmup needed, start at set 1 instead of set 0
-          if (!needsWarmup) {
-            setCurrentSetIndex(1);
-          }
+          initSingleExerciseState(exercise);
         } else {
           // B2B exercise - no warmups, start at set 1
           const b2bEx = exercise as B2BExercise;
@@ -185,6 +213,8 @@ function ActiveWorkoutContent() {
           });
           setCurrentSetIndex(1);
           setCurrentExerciseInPair(0); // Start with first exercise
+          setWarmupDecision('skip');
+          setWarmupCompleted(false);
         }
       } catch (error) {
         console.error('Error fetching workout:', error);
@@ -196,19 +226,44 @@ function ActiveWorkoutContent() {
     fetchWorkout();
   }, [params.name, searchParams, routineIdParam, initialIndexSet]);
 
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchUserSettings() {
+      try {
+        const response = await fetch('/api/user/settings');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!isMounted) return;
+        const restSeconds = Number(data?.restTimeSeconds);
+        const supersetSeconds = Number(data?.supersetRestSeconds);
+        setRestTimeSeconds(Number.isFinite(restSeconds) ? restSeconds : 60);
+        setSupersetRestSeconds(Number.isFinite(supersetSeconds) ? supersetSeconds : 15);
+      } catch (error) {
+        console.error('Error fetching user settings:', error);
+      }
+    }
+
+    fetchUserSettings();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Rest timer countdown
   useEffect(() => {
-    if (isResting && restTimeRemaining > 0) {
+    if (!isResting) return;
+    if (restTimeRemaining > 0) {
       const timer = setTimeout(() => {
         setRestTimeRemaining(restTimeRemaining - 1);
       }, 1000);
       return () => clearTimeout(timer);
-    } else if (isResting && restTimeRemaining === 0) {
-      // Vibrate when rest is complete
-      if ('vibrate' in navigator) {
-        navigator.vibrate(500);
-      }
     }
+
+    // Rest complete: vibrate and auto-advance to next set
+    if ('vibrate' in navigator) {
+      navigator.vibrate(500);
+    }
+    setIsResting(false);
   }, [isResting, restTimeRemaining]);
 
   // Transition timer countdown
@@ -229,13 +284,7 @@ function ActiveWorkoutContent() {
       // Initialize next exercise
       const nextExercise = workout.exercises[nextExerciseIndex];
       if (nextExercise.type === 'single') {
-        // Check if warmup is needed
-        const needsWarmup = nextExercise.warmupWeight !== nextExercise.targetWeight;
-        setSetData({
-          weight: needsWarmup ? nextExercise.warmupWeight : nextExercise.targetWeight,
-          reps: nextExercise.targetReps,
-        });
-        setCurrentSetIndex(needsWarmup ? 0 : 1);
+        initSingleExerciseState(nextExercise);
       } else {
         // B2B exercise - no warmups, start at set 1
         const b2bEx = nextExercise as B2BExercise;
@@ -250,6 +299,8 @@ function ActiveWorkoutContent() {
         setCurrentSetIndex(1);
         setCurrentExerciseInPair(0);
         setCompletedPairs([]);
+        setWarmupDecision('skip');
+        setWarmupCompleted(false);
       }
     }
   }, [isTransitioning, transitionTimeRemaining, workout, currentExerciseIndex]);
@@ -306,8 +357,8 @@ function ActiveWorkoutContent() {
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="text-white text-2xl mb-4">Workout not found</div>
-          <Link href="/" className="text-blue-400 hover:text-blue-300">
-            Back to home
+          <Link href="/routines" className="text-blue-400 hover:text-blue-300">
+            Back to routines
           </Link>
         </div>
       </div>
@@ -335,6 +386,7 @@ function ActiveWorkoutContent() {
   // B2B Exercise Handlers
   const handleCompleteB2BExercise = () => {
     const b2bExercise = currentExercise as B2BExercise;
+    const b2bRestSeconds = Math.max(0, supersetRestSeconds);
 
     if (currentExerciseInPair === 0) {
       // Just completed first exercise, immediately move to second
@@ -356,12 +408,30 @@ function ActiveWorkoutContent() {
         return;
       }
 
+      void autosaveWorkout({
+        type: 'b2b_set',
+        exerciseName: b2bExercise.exercises[0].name,
+        partnerName: b2bExercise.exercises[1].name,
+        setIndex: currentSetIndex,
+        weight: setData1.weight,
+        reps: setData1.reps,
+        partnerWeight: setData2.weight,
+        partnerReps: setData2.reps,
+      });
+
       setCompletedPairs(newCompletedPairs);
 
       if (newCompletedPairs.length < totalSets) {
-        // More sets to go - no rest, immediately continue to next set
+        // More sets to go - rest briefly before next set
         setCurrentSetIndex(currentSetIndex + 1);
         setCurrentExerciseInPair(0); // Reset to first exercise for next round
+        if (b2bRestSeconds > 0) {
+          setIsResting(true);
+          setRestTimeRemaining(b2bRestSeconds);
+        } else {
+          setIsResting(false);
+          setRestTimeRemaining(0);
+        }
       } else {
         // All sets complete - save to session and show transition to next exercise
         console.log('Finishing B2B exercise');
@@ -401,12 +471,33 @@ function ActiveWorkoutContent() {
     setCompletedSets(newCompletedSets);
 
     const exercise = currentExercise as SingleExercise;
+    const hasWarmup = resolveHasWarmup(exercise);
+    const restSeconds = Math.max(0, restTimeSeconds);
+    const isWarmupSet = hasWarmup && warmupDecision === 'include' && currentSetIndex === 0;
 
-    if (currentSetIndex <= exercise.sets) {
+    void autosaveWorkout({
+      type: 'single_set',
+      exerciseName: exercise.name,
+      setIndex: currentSetIndex,
+      weight: setData.weight,
+      reps: setData.reps,
+      isWarmup: isWarmupSet,
+    });
+
+    if (currentSetIndex === 0 && hasWarmup) {
+      setWarmupCompleted(true);
+    }
+
+    if (currentSetIndex < exercise.sets) {
       // More sets to go - start rest timer
-      setIsResting(true);
-      setRestTimeRemaining(exercise.restTime);
       setCurrentSetIndex(currentSetIndex + 1);
+      if (restSeconds > 0) {
+        setIsResting(true);
+        setRestTimeRemaining(restSeconds);
+      } else {
+        setIsResting(false);
+        setRestTimeRemaining(0);
+      }
 
       // Auto-update weight for next set (if it was warmup, switch to working weight)
       if (currentSetIndex === 0) {
@@ -417,12 +508,11 @@ function ActiveWorkoutContent() {
       }
     } else {
       // Exercise complete - save to session
-      const hasWarmup = exercise.warmupWeight !== exercise.targetWeight;
       addExerciseToSession({
         name: exercise.name,
         type: 'single',
-        warmup: hasWarmup ? newCompletedSets[0] : undefined,
-        sets: hasWarmup ? newCompletedSets.slice(1) : newCompletedSets,
+        warmup: hasWarmup && warmupCompleted ? newCompletedSets[0] : undefined,
+        sets: hasWarmup && warmupCompleted ? newCompletedSets.slice(1) : newCompletedSets,
       });
 
       // Cache completed exercise for review
@@ -431,6 +521,7 @@ function ActiveWorkoutContent() {
         exerciseName: exercise.name,
         type: 'single',
         completedSets: newCompletedSets,
+        warmupCompleted,
       }]);
 
       // Show transition to next exercise
@@ -450,14 +541,28 @@ function ActiveWorkoutContent() {
     setRestTimeRemaining(0);
   };
 
+  const handleStartWarmup = () => {
+    const exercise = currentExercise as SingleExercise;
+    const suggestedWeight = exercise.warmupWeight > 0 ? exercise.warmupWeight : 0;
+    setWarmupDecision('include');
+    setWarmupCompleted(false);
+    setCurrentSetIndex(0);
+    setSetData({
+      weight: suggestedWeight,
+      reps: exercise.targetReps,
+    });
+  };
+
   const handleSkipWarmup = () => {
     const exercise = currentExercise as SingleExercise;
     // Move to set 1 (first working set)
+    setWarmupDecision('skip');
     setCurrentSetIndex(1);
     setSetData({
       weight: exercise.targetWeight,
       reps: exercise.targetReps,
     });
+    setWarmupCompleted(false);
   };
 
   const handleAddTime = () => {
@@ -485,17 +590,21 @@ function ActiveWorkoutContent() {
       totalExercises: workout!.exercises.length
     });
 
+    void autosaveWorkout({
+      type: 'exercise_end',
+    });
+
     // Save completed sets and move to next exercise
     if (currentExercise.type === 'single') {
       const exercise = currentExercise as SingleExercise;
-      const hasWarmup = exercise.warmupWeight !== exercise.targetWeight;
+      const hasWarmup = resolveHasWarmup(exercise);
 
       if (completedSets.length > 0) {
         addExerciseToSession({
           name: exercise.name,
           type: 'single',
-          warmup: hasWarmup ? completedSets[0] : undefined,
-          sets: hasWarmup ? completedSets.slice(1) : completedSets,
+          warmup: hasWarmup && warmupCompleted ? completedSets[0] : undefined,
+          sets: hasWarmup && warmupCompleted ? completedSets.slice(1) : completedSets,
         });
 
         // Cache for review
@@ -504,6 +613,7 @@ function ActiveWorkoutContent() {
           exerciseName: exercise.name,
           type: 'single',
           completedSets: completedSets,
+          warmupCompleted,
         }]);
       }
     } else {
@@ -593,45 +703,61 @@ function ActiveWorkoutContent() {
     }
   };
 
-  const buildSingleExercise = (exercise: ExerciseOption): SingleExercise => ({
-    type: 'single',
-    name: exercise.name,
-    sets: 3,
-    targetReps: 10,
-    targetWeight: 0,
-    warmupWeight: 0,
-    restTime: 60,
-    videoUrl: exercise.video_url || '',
-    tips: exercise.tips || '',
-    isBodyweight: (exercise.equipment || '').toLowerCase() === 'bodyweight'
-  });
+  const buildSingleExercise = (exercise: ExerciseOption): SingleExercise => {
+    const isBodyweight = typeof exercise.is_bodyweight === 'number'
+      ? exercise.is_bodyweight === 1
+      : false;
+    return {
+      type: 'single',
+      name: exercise.name,
+      sets: 3,
+      targetReps: 10,
+      targetWeight: 0,
+      warmupWeight: 0,
+      hasWarmup: !isBodyweight,
+      restTime: 60,
+      videoUrl: exercise.video_url || '',
+      tips: exercise.tips || '',
+      isBodyweight
+    };
+  };
 
-  const buildSupersetExercise = (exercise1: ExerciseOption, exercise2: ExerciseOption): B2BExercise => ({
-    type: 'b2b',
-    restTime: 30,
-    exercises: [
-      {
-        name: exercise1.name,
-        sets: 3,
-        targetReps: 10,
-        targetWeight: 0,
-        warmupWeight: 0,
-        videoUrl: exercise1.video_url || '',
-        tips: exercise1.tips || '',
-        isBodyweight: (exercise1.equipment || '').toLowerCase() === 'bodyweight'
-      },
-      {
-        name: exercise2.name,
-        sets: 3,
-        targetReps: 10,
-        targetWeight: 0,
-        warmupWeight: 0,
-        videoUrl: exercise2.video_url || '',
-        tips: exercise2.tips || '',
-        isBodyweight: (exercise2.equipment || '').toLowerCase() === 'bodyweight'
-      }
-    ]
-  });
+  const buildSupersetExercise = (exercise1: ExerciseOption, exercise2: ExerciseOption): B2BExercise => {
+    const isBodyweight1 = typeof exercise1.is_bodyweight === 'number'
+      ? exercise1.is_bodyweight === 1
+      : false;
+    const isBodyweight2 = typeof exercise2.is_bodyweight === 'number'
+      ? exercise2.is_bodyweight === 1
+      : false;
+    return {
+      type: 'b2b',
+      restTime: 30,
+      exercises: [
+        {
+          name: exercise1.name,
+          sets: 3,
+          targetReps: 10,
+          targetWeight: 0,
+          warmupWeight: 0,
+          hasWarmup: false,
+          videoUrl: exercise1.video_url || '',
+          tips: exercise1.tips || '',
+          isBodyweight: isBodyweight1
+        },
+        {
+          name: exercise2.name,
+          sets: 3,
+          targetReps: 10,
+          targetWeight: 0,
+          warmupWeight: 0,
+          hasWarmup: false,
+          videoUrl: exercise2.video_url || '',
+          tips: exercise2.tips || '',
+          isBodyweight: isBodyweight2
+        }
+      ]
+    };
+  };
 
   const applyWorkoutUpdate = (updatedWorkout: WorkoutPlan) => {
     setWorkout(updatedWorkout);
@@ -650,12 +776,7 @@ function ActiveWorkoutContent() {
     setLastPartnerExerciseLog(null);
 
     if (exercise.type === 'single') {
-      const needsWarmup = exercise.warmupWeight !== exercise.targetWeight;
-      setSetData({
-        weight: needsWarmup ? exercise.warmupWeight : exercise.targetWeight,
-        reps: exercise.targetReps,
-      });
-      setCurrentSetIndex(needsWarmup ? 0 : 1);
+      initSingleExerciseState(exercise);
     } else {
       const b2bExercise = exercise as B2BExercise;
       setSetData1({
@@ -667,6 +788,8 @@ function ActiveWorkoutContent() {
         reps: b2bExercise.exercises[1].targetReps,
       });
       setCurrentSetIndex(1);
+      setWarmupDecision('skip');
+      setWarmupCompleted(false);
     }
 
     setViewingExerciseIndex(currentExerciseIndex);
@@ -710,10 +833,11 @@ function ActiveWorkoutContent() {
     if (!workout || !exerciseActionMode) return;
     const nextExercise = buildSingleExercise(exercise);
     const updatedExercises = [...workout.exercises];
-    const insertIndex = currentExerciseIndex + 1;
+    const insertIndex = currentExerciseIndex;
 
     if (exerciseActionMode === 'add') {
       updatedExercises.splice(insertIndex, 0, nextExercise);
+      resetExerciseStateFor(nextExercise);
     } else {
       updatedExercises[currentExerciseIndex] = nextExercise;
       resetExerciseStateFor(nextExercise);
@@ -728,10 +852,11 @@ function ActiveWorkoutContent() {
     if (!workout || !exerciseActionMode) return;
     const nextExercise = buildSupersetExercise(exercise1, exercise2);
     const updatedExercises = [...workout.exercises];
-    const insertIndex = currentExerciseIndex + 1;
+    const insertIndex = currentExerciseIndex;
 
     if (exerciseActionMode === 'add') {
       updatedExercises.splice(insertIndex, 0, nextExercise);
+      resetExerciseStateFor(nextExercise);
     } else {
       updatedExercises[currentExerciseIndex] = nextExercise;
       resetExerciseStateFor(nextExercise);
@@ -752,7 +877,11 @@ function ActiveWorkoutContent() {
   const modifyAccentClasses = exerciseToDisplay.type === 'b2b'
     ? 'bg-purple-600 hover:bg-purple-500'
     : 'bg-rose-800 hover:bg-rose-700';
-  const exerciseModifyControls = !isReviewMode ? (
+  const hasExerciseStarted = currentExercise.type === 'b2b'
+    ? completedPairs.length > 0 || currentExerciseInPair !== 0
+    : completedSets.length > 0;
+  const canModifyExercise = !isReviewMode && !hasExerciseStarted;
+  const exerciseModifyControls = canModifyExercise ? (
     <div className="flex items-center gap-2">
       <button
         onClick={() => openExerciseTypePicker('add')}
@@ -996,7 +1125,6 @@ function ActiveWorkoutContent() {
     return (
       <div className="min-h-screen bg-zinc-900 p-4 pb-32">
         <div className="max-w-2xl mx-auto">
-          <Header />
           {/* Navigation */}
           <WorkoutNavHeader
             exitUrl={`/workout/${encodeURIComponent(workout.name)}${routineQuery}`}
@@ -1004,6 +1132,9 @@ function ActiveWorkoutContent() {
             onPrevious={handlePreviousSection}
             onNext={isReviewMode ? () => setViewingExerciseIndex(viewingExerciseIndex + 1) : undefined}
           />
+          <div className="flex justify-end mb-2">
+            <AutosaveBadge />
+          </div>
           <div className="text-zinc-400 text-right mb-4 -mt-4">Exercise {viewingExerciseIndex + 1}/{workout.exercises.length}</div>
 
           {/* READ ONLY Banner */}
@@ -1272,14 +1403,6 @@ function ActiveWorkoutContent() {
                   >
                     ✓ Complete Exercise 2
                   </button>
-                  {completedPairs.length > 0 && (
-                    <button
-                      onClick={handleEndExercise}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg text-lg font-semibold transition-colors"
-                    >
-                      End Exercise & Continue
-                    </button>
-                  )}
                 </div>
               </>
             ) : (
@@ -1325,6 +1448,11 @@ function ActiveWorkoutContent() {
           {!isReviewMode && (
             <button
               onClick={() => {
+                if (completedPairs.length > 0) {
+                  handleEndExercise();
+                  return;
+                }
+                void autosaveWorkout({ type: 'exercise_skip' });
                 if (currentExerciseIndex < workout.exercises.length - 1) {
                   const nextExerciseIndex = currentExerciseIndex + 1;
                   setCurrentExerciseIndex(nextExerciseIndex);
@@ -1334,12 +1462,7 @@ function ActiveWorkoutContent() {
                   // Initialize next exercise
                   const nextExercise = workout.exercises[nextExerciseIndex];
                   if (nextExercise.type === 'single') {
-                    const needsWarmup = nextExercise.warmupWeight !== nextExercise.targetWeight;
-                    setSetData({
-                      weight: needsWarmup ? nextExercise.warmupWeight : nextExercise.targetWeight,
-                      reps: nextExercise.targetReps,
-                    });
-                    setCurrentSetIndex(needsWarmup ? 0 : 1);
+                    initSingleExerciseState(nextExercise);
                   } else {
                     const b2bEx = nextExercise as B2BExercise;
                     setSetData1({
@@ -1352,6 +1475,8 @@ function ActiveWorkoutContent() {
                     });
                     setCurrentSetIndex(1);
                     setCurrentExerciseInPair(0);
+                    setWarmupDecision('skip');
+                    setWarmupCompleted(false);
                   }
                 } else {
                   // Always go to cardio (optional)
@@ -1360,7 +1485,7 @@ function ActiveWorkoutContent() {
               }}
               className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-lg font-semibold transition-colors"
             >
-              Skip Exercise
+              {completedPairs.length > 0 ? 'End Exercise' : 'Skip Exercise'}
             </button>
           )}
 
@@ -1371,13 +1496,24 @@ function ActiveWorkoutContent() {
   }
 
   const exercise = exerciseToDisplay as SingleExercise;
-  const isWarmupSet = currentSetIndex === 0;
+  const hasWarmup = resolveHasWarmup(exercise);
+  const isWarmupSet = hasWarmup && warmupDecision === 'include' && currentSetIndex === 0;
   const isRepsOnly = !!exercise.isBodyweight;
 
   // In review mode, show cached completed sets
   const displayCompletedSets = isReviewMode && viewingCachedData
     ? viewingCachedData.completedSets || []
     : completedSets;
+  const displayWarmupCompleted = hasWarmup && (isReviewMode
+    ? !!viewingCachedData?.warmupCompleted
+    : warmupCompleted);
+  const showWarmupPrompt = !isReviewMode && hasWarmup && warmupDecision === 'pending';
+  const warmupSuggestionWeight = hasWarmup && exercise.warmupWeight > 0
+    ? exercise.warmupWeight
+    : null;
+  const weightInputValue = isWarmupSet && warmupSuggestionWeight === null && !isRepsOnly && setData.weight === 0
+    ? ''
+    : setData.weight ?? '';
 
   // Transition Screen (between exercises)
   if (isTransitioning) {
@@ -1445,9 +1581,9 @@ function ActiveWorkoutContent() {
           <div className="text-center mb-8">
             <div className="text-rose-400 text-6xl mb-2">✓</div>
             <div className="text-white text-2xl font-semibold">
-              {exercise.warmupWeight !== exercise.targetWeight && completedSets.length === 1
+              {hasWarmup && warmupCompleted && completedSets.length === 1
                 ? 'WARMUP SET'
-                : `SET ${exercise.warmupWeight !== exercise.targetWeight ? completedSets.length - 1 : completedSets.length}`} COMPLETE
+                : `SET ${hasWarmup && warmupCompleted ? completedSets.length - 1 : completedSets.length}`} COMPLETE
             </div>
           </div>
 
@@ -1508,7 +1644,7 @@ function ActiveWorkoutContent() {
               Continue
             </button>
             <Link
-              href="/"
+              href="/routines"
               className="bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-semibold transition-colors text-center"
             >
               Exit Routine
@@ -1523,7 +1659,6 @@ function ActiveWorkoutContent() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4 pb-32">
       <div className="max-w-2xl mx-auto">
-        <Header />
         {/* Navigation */}
         <WorkoutNavHeader
           exitUrl={`/workout/${encodeURIComponent(workout.name)}${routineQuery}`}
@@ -1531,6 +1666,9 @@ function ActiveWorkoutContent() {
           onPrevious={handlePreviousSection}
           onNext={isReviewMode ? () => setViewingExerciseIndex(viewingExerciseIndex + 1) : undefined}
         />
+        <div className="flex justify-end mb-2">
+          <AutosaveBadge />
+        </div>
         <div className="text-zinc-400 text-right mb-4 -mt-4">Exercise {viewingExerciseIndex + 1}/{workout.exercises.length}</div>
 
         {/* READ ONLY Banner */}
@@ -1598,95 +1736,121 @@ function ActiveWorkoutContent() {
           </div>
         )}
 
-        {/* Current Set - Only show if not in review mode */}
-        {!isReviewMode && (
-        <div className="bg-zinc-800 rounded-lg p-6 mb-6 border-2 border-rose-700">
-          <div className="text-center mb-4">
-            <div className="text-rose-300 text-lg font-semibold mb-2">
-              {isWarmupSet ? 'WARMUP SET' : `SET ${currentSetIndex} (WORKING)`}
+        {/* Warmup Choice */}
+        {!isReviewMode && showWarmupPrompt && (
+          <div className="bg-zinc-800 rounded-lg p-6 mb-6 border-2 border-rose-700">
+            <div className="text-center mb-3">
+              <div className="text-rose-300 text-lg font-semibold mb-2">Warm up?</div>
+              <div className="text-zinc-400 text-sm">Optional warmup set before working sets.</div>
+              {warmupSuggestionWeight !== null && !isRepsOnly && (
+                <div className="text-zinc-300 text-sm mt-2">
+                  Suggested warmup: {warmupSuggestionWeight} lbs
+                </div>
+              )}
             </div>
-          </div>
-
-          {/* Weight and Reps Inputs */}
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div className="bg-zinc-900 rounded-lg p-4">
-              <label className="text-zinc-400 text-sm block mb-2">Weight (lbs)</label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={setData.weight ?? ''}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === '') {
-                    setSetData({ ...setData, weight: 0 });
-                  } else {
-                    const num = parseFloat(val);
-                    if (!isNaN(num)) {
-                      setSetData({ ...setData, weight: num });
-                    }
-                  }
-                }}
-                className="w-full bg-zinc-800 text-white text-3xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-rose-600"
-              />
-            </div>
-            <div className="bg-zinc-900 rounded-lg p-4">
-              <label className="text-zinc-400 text-sm block mb-2">Reps</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={setData.reps ?? ''}
-                onChange={(e) => setSetData({ ...setData, reps: parseInt(e.target.value) || 0 })}
-                className="w-full bg-zinc-800 text-white text-3xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-rose-600"
-              />
-            </div>
-          </div>
-
-          {/* Complete Set Button(s) */}
-          {isWarmupSet ? (
             <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={handleStartWarmup}
+                className="bg-rose-700 hover:bg-rose-600 text-white py-4 rounded-lg text-lg font-semibold transition-colors"
+              >
+                Warm up
+              </button>
               <button
                 onClick={handleSkipWarmup}
                 className="bg-zinc-700 hover:bg-zinc-600 text-white py-4 rounded-lg text-lg font-semibold transition-colors"
               >
-                Skip Warmup
-              </button>
-              <button
-                onClick={handleCompleteSet}
-                className="bg-rose-700 hover:bg-rose-600 text-white py-4 rounded-lg text-lg font-bold transition-colors"
-              >
-                ✓ Complete Warmup
+                Start Set 1
               </button>
             </div>
-          ) : (
-            <div className="space-y-3">
-              <button
-                onClick={handleCompleteSet}
-                className="w-full bg-rose-700 hover:bg-rose-600 text-white py-4 rounded-lg text-xl font-bold transition-colors"
-              >
-                ✓ Complete Set {currentSetIndex}
-              </button>
-              {completedSets.length > 0 && (
+          </div>
+        )}
+
+        {/* Current Set - Only show if not in review mode */}
+        {!isReviewMode && !showWarmupPrompt && (
+          <div className="bg-zinc-800 rounded-lg p-6 mb-6 border-2 border-rose-700">
+            <div className="text-center mb-4">
+              <div className="text-rose-300 text-lg font-semibold mb-2">
+                {isWarmupSet ? 'WARMUP SET' : `SET ${currentSetIndex} (WORKING)`}
+              </div>
+            </div>
+
+            {/* Weight and Reps Inputs */}
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="bg-zinc-900 rounded-lg p-4">
+                <label className="text-zinc-400 text-sm block mb-2">Weight (lbs)</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={weightInputValue}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '') {
+                      setSetData({ ...setData, weight: 0 });
+                    } else {
+                      const num = parseFloat(val);
+                      if (!isNaN(num)) {
+                        setSetData({ ...setData, weight: num });
+                      }
+                    }
+                  }}
+                  className="w-full bg-zinc-800 text-white text-3xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-rose-600"
+                />
+              </div>
+              <div className="bg-zinc-900 rounded-lg p-4">
+                <label className="text-zinc-400 text-sm block mb-2">Reps</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={setData.reps ?? ''}
+                  onChange={(e) => setSetData({ ...setData, reps: parseInt(e.target.value) || 0 })}
+                  className="w-full bg-zinc-800 text-white text-3xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-rose-600"
+                />
+              </div>
+            </div>
+
+            {/* Complete Set Button(s) */}
+            {isWarmupSet ? (
+              <div className="grid grid-cols-2 gap-3">
                 <button
-                  onClick={handleEndExercise}
-                  className="w-full bg-rose-700 hover:bg-rose-600 text-white py-3 rounded-lg text-lg font-semibold transition-colors"
+                  onClick={handleSkipWarmup}
+                  className="bg-zinc-700 hover:bg-zinc-600 text-white py-4 rounded-lg text-lg font-semibold transition-colors"
                 >
-                  End Exercise & Continue
+                  Skip Warmup
                 </button>
-              )}
-            </div>
-          )}
-        </div>
+                <button
+                  onClick={handleCompleteSet}
+                  className="bg-rose-700 hover:bg-rose-600 text-white py-4 rounded-lg text-lg font-bold transition-colors"
+                >
+                  ✓ Complete Warmup
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <button
+                  onClick={handleCompleteSet}
+                  className="w-full bg-rose-700 hover:bg-rose-600 text-white py-4 rounded-lg text-xl font-bold transition-colors"
+                >
+                  ✓ Complete Set {currentSetIndex}
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Completed Sets */}
         {displayCompletedSets.length > 0 && (
           <div className="bg-zinc-800 rounded-lg p-4 mb-6">
             <div className="text-zinc-400 text-sm mb-2">COMPLETED SETS</div>
-            {displayCompletedSets.map((set, index) => (
-              <div key={index} className="text-rose-300 text-sm mb-1">
-                ✓ {index === 0 ? 'Warmup' : `Set ${index}`}: {set.weight} lbs × {set.reps} reps
-              </div>
-            ))}
+            {displayCompletedSets.map((set, index) => {
+              const label = displayWarmupCompleted
+                ? (index === 0 ? 'Warmup' : `Set ${index}`)
+                : `Set ${index + 1}`;
+              return (
+                <div key={index} className="text-rose-300 text-sm mb-1">
+                  ✓ {label}: {set.weight} lbs × {set.reps} reps
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -1709,6 +1873,11 @@ function ActiveWorkoutContent() {
           {!isReviewMode && (
             <button
               onClick={() => {
+                if (completedSets.length > 0) {
+                  handleEndExercise();
+                  return;
+                }
+                void autosaveWorkout({ type: 'exercise_skip' });
                 if (currentExerciseIndex < workout.exercises.length - 1) {
                   const nextExerciseIndex = currentExerciseIndex + 1;
                   setCurrentExerciseIndex(nextExerciseIndex);
@@ -1718,12 +1887,7 @@ function ActiveWorkoutContent() {
                   // Initialize next exercise
                   const nextExercise = workout.exercises[nextExerciseIndex];
                   if (nextExercise.type === 'single') {
-                    const needsWarmup = nextExercise.warmupWeight !== nextExercise.targetWeight;
-                    setSetData({
-                      weight: needsWarmup ? nextExercise.warmupWeight : nextExercise.targetWeight,
-                      reps: nextExercise.targetReps,
-                    });
-                    setCurrentSetIndex(needsWarmup ? 0 : 1);
+                    initSingleExerciseState(nextExercise);
                   } else {
                     const b2bEx = nextExercise as B2BExercise;
                     setSetData1({
@@ -1737,6 +1901,8 @@ function ActiveWorkoutContent() {
                     setCurrentSetIndex(1);
                     setCurrentExerciseInPair(0);
                     setCompletedPairs([]);
+                    setWarmupDecision('skip');
+                    setWarmupCompleted(false);
                   }
                 } else {
                   // Always go to cardio (optional)
@@ -1745,7 +1911,7 @@ function ActiveWorkoutContent() {
               }}
               className="bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-lg font-semibold transition-colors"
             >
-              Skip Exercise
+              {completedSets.length > 0 ? 'End Exercise' : 'Skip Exercise'}
             </button>
           )}
 

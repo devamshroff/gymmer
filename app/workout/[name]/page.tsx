@@ -5,9 +5,8 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Exercise, Stretch, Cardio } from '@/lib/types';
 import { getFormTips, getVideoUrl } from '@/lib/workout-media';
-import { isSessionMode, resolveSessionMode } from '@/lib/workout-session';
+import { initWorkoutSession, isSessionMode, resolveSessionMode } from '@/lib/workout-session';
 import type { SessionMode } from '@/lib/workout-session';
-import Header from '@/app/components/Header';
 import { BottomActionBar, Card, SectionHeader } from '@/app/components/SharedUi';
 import ExerciseHistoryModal from '@/app/components/ExerciseHistoryModal';
 
@@ -16,6 +15,58 @@ type ExerciseTarget = {
   suggestedReps?: number | null;
   rationale?: string | null;
 };
+
+type ExerciseHistoryPoint = {
+  weight_max: number | null;
+  reps_max: number | null;
+};
+
+type ExerciseHistorySeries = {
+  display_mode: 'weight' | 'reps';
+  points: ExerciseHistoryPoint[];
+};
+
+const WEIGHT_INCREMENT = 2.5;
+
+function roundUpToIncrement(value: number, increment: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.ceil(value / increment) * increment;
+}
+
+function roundUpWhole(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.ceil(value);
+}
+
+function getMaxWeightAndReps(points: ExerciseHistoryPoint[]) {
+  let maxWeight: number | null = null;
+  let repsAtMax: number | null = null;
+  let maxReps: number | null = null;
+
+  for (const point of points) {
+    if (point.reps_max !== null) {
+      maxReps = maxReps === null ? point.reps_max : Math.max(maxReps, point.reps_max);
+    }
+
+    if (point.weight_max === null) continue;
+    if (maxWeight === null || point.weight_max > maxWeight) {
+      maxWeight = point.weight_max;
+      repsAtMax = point.reps_max ?? null;
+      continue;
+    }
+    if (point.weight_max === maxWeight && point.reps_max !== null) {
+      repsAtMax = repsAtMax === null ? point.reps_max : Math.max(repsAtMax, point.reps_max);
+    }
+  }
+
+  return { maxWeight, repsAtMax, maxReps };
+}
+
+function getSessionFactors(mode: SessionMode) {
+  if (mode === 'maintenance') return { weight: 0.85, reps: 0.85 };
+  if (mode === 'light') return { weight: 0.6, reps: 0.6 };
+  return { weight: 1.05, reps: 1.05 };
+}
 
 export default function WorkoutDetailPage() {
   const params = useParams();
@@ -33,10 +84,10 @@ export default function WorkoutDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [historyExerciseNames, setHistoryExerciseNames] = useState<string[]>([]);
-  const [goalsText, setGoalsText] = useState<string | null>(null);
   const [targets, setTargets] = useState<Record<string, ExerciseTarget>>({});
   const [targetsLoading, setTargetsLoading] = useState(false);
   const [targetsError, setTargetsError] = useState<string | null>(null);
+  const [loadingDots, setLoadingDots] = useState('...');
 
   const baseHistoryTargets = useMemo(() => {
     if (!workout) return {};
@@ -75,6 +126,20 @@ export default function WorkoutDetailPage() {
     }
     return next;
   }, [baseHistoryTargets, isPreview, targets]);
+
+  const allExerciseNames = useMemo(() => {
+    if (!workout) return [];
+    const names: string[] = [];
+    for (const exercise of workout.exercises) {
+      if (exercise.type === 'single') {
+        names.push(exercise.name);
+      } else {
+        const [ex1, ex2] = exercise.exercises;
+        names.push(ex1.name, ex2.name);
+      }
+    }
+    return names;
+  }, [workout]);
 
   useEffect(() => {
     async function fetchWorkout() {
@@ -116,6 +181,95 @@ export default function WorkoutDetailPage() {
 
     fetchWorkout();
   }, [params.name, searchParams]);
+
+  const computeFallbackTargets = async (
+    signal: AbortSignal
+  ): Promise<Record<string, ExerciseTarget>> => {
+    if (!workout) return {};
+    const params = new URLSearchParams({ range: 'month' });
+    for (const name of allExerciseNames) {
+      params.append('name', name);
+    }
+    const response = await fetch(`/api/exercise-history?${params.toString()}`, { signal });
+    if (!response.ok) {
+      throw new Error('Failed to load exercise history');
+    }
+    const data = await response.json();
+    const history: Record<string, ExerciseHistorySeries> = data.history || {};
+    const fallback: Record<string, ExerciseTarget> = {};
+    const { weight: weightFactor, reps: repsFactor } = getSessionFactors(sessionMode as SessionMode);
+
+    const buildTarget = (exercise: Exercise) => {
+      const series = history[exercise.name];
+      const points = series?.points || [];
+      const { maxWeight, repsAtMax, maxReps } = getMaxWeightAndReps(points);
+      const baseWeight = exercise.targetWeight;
+      const baseReps = exercise.targetReps;
+      const isBodyweight = !!exercise.isBodyweight;
+      const usesHistory = points.length > 0 && (maxWeight !== null || maxReps !== null);
+      let suggestedWeight: number | null = null;
+      let suggestedReps: number | null = null;
+      let rationale: string | null = null;
+
+      if (isBodyweight) {
+        const sourceReps = maxReps ?? baseReps;
+        const scaledReps = roundUpWhole(sourceReps * repsFactor);
+        suggestedReps = Math.max(1, scaledReps);
+        rationale = usesHistory
+          ? `Default target uses ${Math.round(repsFactor * 100)}% of your last 30-day max reps.`
+          : 'Default target uses your routine baseline until more history is logged.';
+      } else {
+        const sourceWeight = maxWeight ?? baseWeight;
+        const sourceReps = repsAtMax ?? maxReps ?? baseReps;
+        const scaledWeight = roundUpToIncrement(sourceWeight * weightFactor, WEIGHT_INCREMENT);
+        const repFactorForMode = sessionMode === 'incremental' ? 1 : repsFactor;
+        const scaledReps = roundUpWhole(sourceReps * repFactorForMode);
+        suggestedWeight = Math.max(0, scaledWeight);
+        suggestedReps = Math.max(1, scaledReps);
+        const repNote = sessionMode === 'incremental'
+          ? 'max reps at your max weight'
+          : `${Math.round(repsFactor * 100)}% of your max reps`;
+        rationale = usesHistory
+          ? `Default target uses ${Math.round(weightFactor * 100)}% of your last 30-day max weight and ${repNote}.`
+          : 'Default target uses your routine baseline until more history is logged.';
+      }
+
+      fallback[exercise.name] = {
+        suggestedWeight,
+        suggestedReps,
+        rationale
+      };
+    };
+
+    for (const entry of workout.exercises) {
+      if (entry.type === 'single') {
+        buildTarget(entry);
+      } else {
+        const [ex1, ex2] = entry.exercises;
+        buildTarget(ex1);
+        buildTarget(ex2);
+      }
+    }
+
+    return fallback;
+  };
+
+  useEffect(() => {
+    if (!targetsLoading) {
+      setLoadingDots('...');
+      return;
+    }
+
+    const frames = ['.', '..', '...'];
+    let index = 0;
+    setLoadingDots(frames[index]);
+    const interval = window.setInterval(() => {
+      index = (index + 1) % frames.length;
+      setLoadingDots(frames[index]);
+    }, 500);
+
+    return () => window.clearInterval(interval);
+  }, [targetsLoading]);
 
   useEffect(() => {
     if (!workout || !isPreview || !sessionMode) return;
@@ -173,29 +327,18 @@ export default function WorkoutDetailPage() {
       }
 
       try {
-        const [goalsResponse, targetsResponse] = await Promise.all([
-          fetch('/api/goals', { signal: controller.signal }),
-          fetch('/api/workout-targets', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              workoutName: workout.name,
-              sessionMode,
-              exercises: exercisePayload,
-            }),
-            signal: controller.signal,
+        const targetsResponse = await fetch('/api/workout-targets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workoutName: workout.name,
+            sessionMode,
+            exercises: exercisePayload,
           }),
-        ]);
-
-        let nextGoalsText: string | null = null;
-        if (goalsResponse.ok) {
-          const goalsData = await goalsResponse.json();
-          nextGoalsText = (goalsData?.goals || '').trim() || null;
-        }
+          signal: controller.signal,
+        });
 
         if (!isActive) return;
-
-        setGoalsText(nextGoalsText);
 
         if (!targetsResponse.ok) {
           throw new Error('Failed to load targets');
@@ -212,12 +355,24 @@ export default function WorkoutDetailPage() {
             };
           }
         }
+        if (Object.keys(nextTargets).length === 0) {
+          throw new Error('No targets returned');
+        }
         setTargets(nextTargets);
         setTargetsLoading(false);
       } catch (error: any) {
         if (!isActive) return;
-        setTargetsError(error.message || 'Failed to load targets');
-        setTargetsLoading(false);
+        try {
+          const fallbackTargets = await computeFallbackTargets(controller.signal);
+          if (!isActive) return;
+          setTargets(fallbackTargets);
+          setTargetsError('Unable to generate AI-trainer targets at this time.');
+        } catch (fallbackError) {
+          if (!isActive) return;
+          setTargetsError('Unable to generate AI-trainer targets at this time.');
+        } finally {
+          setTargetsLoading(false);
+        }
       }
     };
 
@@ -246,8 +401,8 @@ export default function WorkoutDetailPage() {
         throw new Error('Failed to delete routine');
       }
 
-      // Redirect to home
-      router.push('/');
+      // Redirect to routines
+      router.push('/routines');
     } catch (error) {
       console.error('Error deleting routine:', error);
       alert('Failed to delete routine. Please try again.');
@@ -296,8 +451,8 @@ export default function WorkoutDetailPage() {
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="text-white text-2xl mb-4">Workout not found</div>
-          <Link href="/" className="text-blue-400 hover:text-blue-300">
-            Back to home
+          <Link href="/routines" className="text-blue-400 hover:text-blue-300">
+            Back to routines
           </Link>
         </div>
       </div>
@@ -308,12 +463,11 @@ export default function WorkoutDetailPage() {
     return (
       <div className="min-h-screen bg-zinc-900 p-4">
         <div className="max-w-xl mx-auto">
-          <Header />
           <div className="mt-8 bg-zinc-800 border border-zinc-700 rounded-lg p-6">
             <div className="text-zinc-400 text-sm mb-2">Before you preview</div>
             <h1 className="text-3xl font-bold text-white mb-3">How are you feeling today?</h1>
             <p className="text-zinc-400 mb-6">
-              Pick the vibe for this session. Light workouts will not show up in your history graphs.
+              Pick the vibe for this session. Light workouts will be recorded but they will not show up in your progress history graphs.
             </p>
             <div className="space-y-3">
               <button
@@ -321,7 +475,7 @@ export default function WorkoutDetailPage() {
                 className="w-full text-left bg-emerald-700/80 hover:bg-emerald-600 text-white px-4 py-4 rounded-lg font-semibold transition-colors"
               >
                 Incremental progress
-                <div className="text-emerald-200 text-sm font-normal">Push for small wins today.</div>
+                <div className="text-emerald-200 text-sm font-normal">Push for some wins today.</div>
               </button>
               <button
                 onClick={() => handleModeSelect('maintenance')}
@@ -347,12 +501,11 @@ export default function WorkoutDetailPage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4 pb-32">
       <div className="max-w-2xl mx-auto">
-        <Header />
         {/* Navigation */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
-            <Link href="/" className="text-blue-400 hover:text-blue-300">
-              ← Back to workouts
+            <Link href="/routines" className="text-blue-400 hover:text-blue-300">
+              ← Back to routines
             </Link>
             {routineId && !isPublicRoutine && !isPreview && (
               <div className="flex gap-2">
@@ -408,29 +561,42 @@ export default function WorkoutDetailPage() {
             <SectionHeader
               icon="🎯"
               iconClassName="text-amber-400"
-              label="Workout Goals"
+              label="AI-Trainer Targets"
               className="text-2xl"
             />
             <Card paddingClassName="p-5" borderClassName="border-amber-600">
-              {goalsText ? (
-                <p className="text-zinc-200 leading-relaxed">{goalsText}</p>
-              ) : (
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-zinc-400">Set your goals to personalize targets and reports.</p>
-                  <Link
-                    href="/goals"
-                    className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold"
-                  >
-                    Add Goals
-                  </Link>
-                </div>
-              )}
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-zinc-200 font-semibold">
+                  {targetsLoading
+                    ? `Loading AI-trainer targets${loadingDots}`
+                    : targetsError
+                      ? 'Using default targets for this session.'
+                      : 'AI-trainer targets ready.'}
+                </p>
+                {targetsLoading && (
+                  <div className="text-xs text-amber-300 bg-zinc-900 px-3 py-2 rounded">
+                    Building your session plan
+                  </div>
+                )}
+              </div>
             </Card>
-            {targetsLoading && (
-              <div className="text-zinc-500 text-sm mt-3">Loading trainer targets...</div>
-            )}
+            <p className="text-zinc-400 text-sm mt-3">
+              Targets are generated with your{' '}
+              <Link href="/profile" className="text-amber-300 hover:text-amber-200 underline">
+                background and fitness goals
+              </Link>{' '}
+              and your{' '}
+              <button
+                type="button"
+                onClick={() => openHistory(allExerciseNames)}
+                className="text-amber-300 hover:text-amber-200 underline"
+              >
+                exercise history
+              </button>
+              .
+            </p>
             {targetsError && (
-              <div className="text-red-400 text-sm mt-3">Targets unavailable right now.</div>
+              <div className="text-red-400 text-sm mt-3">{targetsError}</div>
             )}
           </section>
         )}
@@ -523,6 +689,7 @@ export default function WorkoutDetailPage() {
               if (routineId) query.set('routineId', String(routineId));
               if (startMode) query.set('mode', startMode);
               const queryString = query.toString();
+              initWorkoutSession(workout.name, startMode, routineId);
               const url = `/stretches/${encodeURIComponent(workout.name)}${queryString ? `?${queryString}` : ''}`;
               router.push(url);
             }}

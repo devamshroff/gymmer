@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Header from '@/app/components/Header';
 import { Card } from '@/app/components/SharedUi';
 
 export default function ImportRoutinePage() {
@@ -47,9 +46,9 @@ export default function ImportRoutinePage() {
       const data = await response.json();
       setSuccess(`Successfully imported "${workoutData.name}"!`);
 
-      // Redirect to home after 2 seconds
+      // Redirect to routines after 2 seconds
       setTimeout(() => {
-        router.push('/');
+        router.push('/routines');
       }, 2000);
     } catch (error: any) {
       console.error('Error importing routine:', error);
@@ -62,7 +61,6 @@ export default function ImportRoutinePage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto py-8">
-        <Header />
         <h1 className="text-3xl font-bold text-white mb-2">Import Routine from JSON</h1>
         <p className="text-zinc-400 mb-6">
           Upload a workout plan JSON file to import it into your routines.
@@ -187,10 +185,10 @@ export default function ImportRoutinePage() {
         </Card>
 
         <button
-          onClick={() => router.push('/')}
+          onClick={() => router.push('/routines')}
           className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-lg font-semibold transition-colors"
         >
-          Back to Home
+          Back to Routines
         </button>
       </div>
     </div>

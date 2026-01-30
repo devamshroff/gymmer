@@ -4,7 +4,6 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
 import SupersetSelector from '@/app/components/SupersetSelector';
-import Header from '@/app/components/Header';
 import { Card } from '@/app/components/SharedUi';
 
 function RoutineBuilderContent() {
@@ -174,7 +173,6 @@ function RoutineBuilderContent() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto">
-        <Header />
         <h1 className="text-3xl font-bold text-white mb-6">
           {routineId ? 'Edit Routine' : 'Create New Routine'}
         </h1>
@@ -288,10 +286,10 @@ function RoutineBuilderContent() {
 
             {/* Back button */}
             <button
-              onClick={() => router.push('/')}
+              onClick={() => router.push('/routines')}
               className="w-full mt-4 bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-lg font-semibold transition-colors"
             >
-              Back to Home
+              Back to Routines
             </button>
           </div>
         )}

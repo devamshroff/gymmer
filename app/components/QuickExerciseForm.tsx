@@ -7,7 +7,6 @@ interface QuickExerciseFormProps {
     name: string;
     videoUrl?: string;
     tips?: string;
-    muscleGroups?: string[];
     equipment?: string;
     difficulty?: string;
   }) => Promise<void>;

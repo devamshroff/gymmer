@@ -63,7 +63,7 @@ export default function UsernameSetup({ onComplete }: UsernameSetupProps) {
     <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
       <div className="bg-zinc-800 rounded-xl p-8 max-w-md w-full border border-zinc-700">
         <h2 className="text-2xl font-bold text-white mb-2 text-center">
-          Welcome to GYMMER
+          Set your username
         </h2>
         <p className="text-zinc-400 text-center mb-6">
           Choose a username to identify yourself when sharing routines with others.

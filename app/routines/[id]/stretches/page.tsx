@@ -2,13 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import Header from '@/app/components/Header';
+import { parseTagJson } from '@/lib/muscle-tags';
 
 interface Stretch {
   id: number;
   name: string;
   duration: string;
-  type: string;
   muscle_groups: string | null;
   tips: string | null;
   video_url: string | null;
@@ -82,18 +81,13 @@ export default function RoutineStretchesPage() {
     }
   };
 
-  const preWorkoutStretches = allStretches.filter(s => s.type === 'pre_workout');
-  const postWorkoutStretches = allStretches.filter(s => s.type === 'post_workout');
-
-  const filteredStretches = (activeTab === 'pre' ? preWorkoutStretches : postWorkoutStretches)
-    .filter(stretch => {
-      if (!searchQuery) return true;
-      const query = searchQuery.toLowerCase();
-      const name = stretch.name.toLowerCase();
-      const muscleGroups = stretch.muscle_groups ?
-        JSON.parse(stretch.muscle_groups).join(' ').toLowerCase() : '';
-      return name.includes(query) || muscleGroups.includes(query);
-    });
+  const filteredStretches = allStretches.filter((stretch) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    const name = stretch.name.toLowerCase();
+    const muscleGroups = getMuscleGroups(stretch).join(' ').toLowerCase();
+    return name.includes(query) || muscleGroups.includes(query);
+  });
   const recommendedIds = activeTab === 'pre' ? recommendedPreIds : recommendedPostIds;
   const recommendedSet = new Set(recommendedIds);
   const orderedStretches = [
@@ -152,8 +146,8 @@ export default function RoutineStretchesPage() {
         });
       }
 
-      // Redirect to home
-      router.push('/');
+      // Redirect to routines
+      router.push('/routines');
     } catch (error) {
       console.error('Error saving stretches:', error);
       alert('Failed to save stretches. Please try again.');
@@ -162,32 +156,27 @@ export default function RoutineStretchesPage() {
     }
   };
 
-  const getMuscleGroupTags = (muscleGroupsJson: string | null): string[] => {
-    if (!muscleGroupsJson) return [];
-    try {
-      return JSON.parse(muscleGroupsJson);
-    } catch {
-      return [];
-    }
-  };
+function getMuscleGroups(stretch: Stretch): string[] {
+  return parseTagJson(stretch.muscle_groups);
+}
 
-  // Get all muscles covered by selected stretches for the current tab
-  const getCoveredMuscles = (): string[] => {
+  // Get all types covered by selected stretches for the current tab
+  const getCoveredGroups = (): string[] => {
     const selectedIds = activeTab === 'pre' ? selectedPreStretches : selectedPostStretches;
-    const muscleSet = new Set<string>();
+    const groupSet = new Set<string>();
 
     selectedIds.forEach(stretchId => {
       const stretch = allStretches.find(s => s.id === stretchId);
       if (stretch) {
-        const muscles = getMuscleGroupTags(stretch.muscle_groups);
-        muscles.forEach(muscle => muscleSet.add(muscle));
+        const muscleGroups = getMuscleGroups(stretch);
+        muscleGroups.forEach((tag) => groupSet.add(tag));
       }
     });
 
-    return Array.from(muscleSet).sort();
+    return Array.from(groupSet).sort();
   };
 
-  const coveredMuscles = getCoveredMuscles();
+  const coveredGroups = getCoveredGroups();
 
   if (loading) {
     return (
@@ -200,7 +189,6 @@ export default function RoutineStretchesPage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-4xl mx-auto">
-        <Header />
         <h1 className="text-3xl font-bold text-white mb-2">Select Stretches</h1>
         <p className="text-zinc-400 mb-6">
           Choose stretches for your routine. You can select multiple.
@@ -235,13 +223,13 @@ export default function RoutineStretchesPage() {
           activeTab === 'pre' ? 'bg-blue-900/20 border-blue-700' : 'bg-purple-900/20 border-purple-700'
         }`}>
           <div className="text-sm font-semibold text-zinc-300 mb-2">
-            Muscles Covered ({coveredMuscles.length})
+            Muscle Groups Covered ({coveredGroups.length})
           </div>
-          {coveredMuscles.length === 0 ? (
+          {coveredGroups.length === 0 ? (
             <div className="text-zinc-500 text-sm">Select stretches to see muscle coverage</div>
           ) : (
             <div className="flex flex-wrap gap-2">
-              {coveredMuscles.map((muscle, idx) => (
+              {coveredGroups.map((muscle, idx) => (
                 <span
                   key={idx}
                   className={`text-sm px-3 py-1 rounded-full ${
@@ -289,7 +277,7 @@ export default function RoutineStretchesPage() {
             </div>
           ) : (
             orderedStretches.map((stretch) => {
-              const muscleGroups = getMuscleGroupTags(stretch.muscle_groups);
+              const muscleGroups = getMuscleGroups(stretch);
               const selected = isSelected(stretch.id);
               const isRecommended = recommendedSet.has(stretch.id);
 

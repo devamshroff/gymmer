@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Header from '@/app/components/Header';
 import { Card } from '@/app/components/SharedUi';
 
 type Message = {
@@ -122,11 +121,10 @@ export default function AiRoutinePage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-3xl mx-auto py-8">
-        <Header />
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold text-white">AI-Assisted Routine</h1>
           <button
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/routines')}
             className="text-zinc-400 hover:text-zinc-200 text-sm font-semibold"
           >
             Exit

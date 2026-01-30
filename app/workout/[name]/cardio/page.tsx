@@ -5,10 +5,10 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
 import { addCardioToSession } from '@/lib/workout-session';
-import Header from '@/app/components/Header';
 import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 import { Card } from '@/app/components/SharedUi';
 import { loadSessionWorkout } from '@/lib/session-workout';
+import AutosaveBadge from '@/app/components/AutosaveBadge';
 
 const CARDIO_TYPES = [
   { value: 'Treadmill', label: 'Treadmill', icon: '🏃' },
@@ -85,8 +85,8 @@ export default function CardioPage() {
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="text-white text-2xl mb-4">Workout not found</div>
-          <Link href="/" className="text-blue-400 hover:text-blue-300">
-            Back to home
+          <Link href="/routines" className="text-blue-400 hover:text-blue-300">
+            Back to routines
           </Link>
         </div>
       </div>
@@ -135,7 +135,6 @@ export default function CardioPage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto">
-        <Header />
         {/* Navigation */}
         <WorkoutNavHeader
           exitUrl={`/workout/${encodeURIComponent(workout.name)}${routineQuery}`}
@@ -144,6 +143,9 @@ export default function CardioPage() {
           skipLabel="Skip Cardio"
           onSkip={handleSkip}
         />
+        <div className="flex justify-end mb-4">
+          <AutosaveBadge />
+        </div>
 
         {/* Progress Bar */}
         <div className="mb-8">

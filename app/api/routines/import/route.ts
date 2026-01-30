@@ -2,6 +2,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase, getUserGoals } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
+import { generateExerciseInsights, generateStretchInsights } from '@/lib/form-tips';
+import {
+  EXERCISE_MUSCLE_TAGS,
+  EXERCISE_TYPE_TAGS,
+  STRETCH_MUSCLE_TAGS,
+  normalizeTypeList,
+} from '@/lib/muscle-tags';
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth();
@@ -205,9 +212,22 @@ async function getOrCreateExercise(
   const fuzzyMatch = await resolveFuzzyMatch(name, index, goalsText);
   if (fuzzyMatch) return fuzzyMatch;
 
+  const insights = await generateExerciseInsights({
+    kind: 'exercise',
+    name,
+    goalsText,
+  });
+  const exerciseTypes = normalizeTypeList(insights?.exerciseTypes, EXERCISE_TYPE_TAGS);
+  const muscleGroups = normalizeTypeList(exerciseTypes, EXERCISE_MUSCLE_TAGS);
+  const resolvedMuscleGroups = muscleGroups.length ? muscleGroups : ['unknown'];
+
   const result = await db.execute({
-    sql: 'INSERT INTO exercises (name) VALUES (?)',
-    args: [name]
+    sql: 'INSERT INTO exercises (name, muscle_groups, exercise_type) VALUES (?, ?, ?)',
+    args: [
+      name,
+      JSON.stringify(resolvedMuscleGroups),
+      exerciseTypes.length ? JSON.stringify(exerciseTypes) : null,
+    ]
   });
 
   const newId = Number(result.lastInsertRowid);
@@ -235,15 +255,61 @@ async function getOrCreateStretch(
   const fuzzyMatch = await resolveFuzzyMatch(String(stretch.name || ''), index, goalsText);
   if (fuzzyMatch) return fuzzyMatch;
 
+  const duration = stretch.duration || (type === 'pre_workout' ? '30 seconds' : '45 seconds');
+  const providedTimer = Number.isFinite(Number(stretch.timerSeconds)) && Number(stretch.timerSeconds) > 0
+    ? Math.round(Number(stretch.timerSeconds))
+    : null;
+  const providedSideCount = Number(stretch.sideCount) === 1 || Number(stretch.sideCount) === 2
+    ? Number(stretch.sideCount)
+    : null;
+  const muscleGroupsInput = normalizeTypeList(
+    stretch.muscleGroups || stretch.stretchTypes,
+    STRETCH_MUSCLE_TAGS
+  );
+  let resolvedTips = typeof stretch.tips === 'string' ? stretch.tips : null;
+  let resolvedTimerSeconds = providedTimer;
+  let resolvedSideCount = providedSideCount ?? 1;
+  let muscleGroups = muscleGroupsInput;
+
+  if (!resolvedTimerSeconds || providedSideCount === null || !resolvedTips) {
+    const insights = await generateStretchInsights({
+      kind: 'stretch',
+      name: stretch.name,
+      duration,
+      stretchType: type,
+      muscleGroups: muscleGroupsInput.length ? muscleGroupsInput : undefined,
+      goalsText,
+    });
+    if (!resolvedTips) {
+      resolvedTips = insights?.tips ?? null;
+    }
+    if (!resolvedTimerSeconds) {
+      resolvedTimerSeconds = insights?.timerSeconds ?? null;
+    }
+    if (providedSideCount === null && insights?.sideCount) {
+      resolvedSideCount = insights.sideCount;
+    }
+    if (muscleGroups.length === 0) {
+      muscleGroups = normalizeTypeList(insights?.muscleGroups, STRETCH_MUSCLE_TAGS);
+    }
+  }
+
+  if (!resolvedTimerSeconds) {
+    throw new Error(`Missing timerSeconds for stretch "${stretch.name}"`);
+  }
+
+  const resolvedMuscleGroups = muscleGroups.length ? muscleGroups : ['unknown'];
   const result = await db.execute({
-    sql: `INSERT INTO stretches (name, duration, type, video_url, tips)
-          VALUES (?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO stretches (name, duration, timer_seconds, side_count, video_url, tips, muscle_groups)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
     args: [
       stretch.name,
-      stretch.duration,
-      type,
+      duration,
+      resolvedTimerSeconds,
+      resolvedSideCount,
       stretch.videoUrl || null,
-      stretch.tips || null
+      resolvedTips || null,
+      JSON.stringify(resolvedMuscleGroups),
     ]
   });
 

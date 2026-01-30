@@ -3,19 +3,22 @@
 import { useEffect, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { WorkoutPlan, Stretch } from '@/lib/types';
-import { initWorkoutSession, resolveSessionMode } from '@/lib/workout-session';
-import Header from '@/app/components/Header';
+import { ensureWorkoutSession, resolveSessionMode } from '@/lib/workout-session';
+import { autosaveWorkout } from '@/lib/workout-autosave';
 import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 import StretchCard from '@/app/components/StretchCard';
 import StretchSelector from '@/app/components/StretchSelector';
 import LoadingScreen from '@/app/components/LoadingScreen';
 import ErrorScreen from '@/app/components/ErrorScreen';
+import AutosaveBadge from '@/app/components/AutosaveBadge';
 import { acknowledgeChangeWarning, hasChangeWarningAck, loadSessionWorkout, saveSessionWorkout } from '@/lib/session-workout';
 
 type StretchOption = {
   id: number;
   name: string;
   duration: string;
+  timer_seconds?: number | null;
+  side_count?: number | null;
   type: string;
   muscle_groups: string | null;
   video_url: string | null;
@@ -43,6 +46,8 @@ function StretchesContent() {
   useEffect(() => {
     async function fetchWorkout() {
       try {
+        const routineIdValue = routineIdParam ? Number(routineIdParam) : null;
+        const routineId = Number.isNaN(routineIdValue) ? null : routineIdValue;
         let apiUrl = `/api/workout/${params.workoutName}`;
         if (routineIdParam) {
           apiUrl += `?routineId=${routineIdParam}`;
@@ -56,8 +61,8 @@ function StretchesContent() {
         const sessionWorkout = loadSessionWorkout(baseWorkout.name, routineIdParam);
         const resolvedWorkout = sessionWorkout || baseWorkout;
         setWorkout(resolvedWorkout);
-        // Initialize workout session when workout is loaded
-        initWorkoutSession(resolvedWorkout.name, sessionMode);
+        // Ensure workout session exists when workout is loaded
+        ensureWorkoutSession(resolvedWorkout.name, sessionMode, routineId);
 
         // Check for index in URL (for navigation from other sections)
         const indexParam = searchParams.get('index');
@@ -133,7 +138,8 @@ function StretchesContent() {
     const updatedStretch: Stretch = {
       name: stretch.name,
       duration: stretch.duration,
-      timerSeconds: 0,
+      timerSeconds: stretch.timer_seconds ?? 0,
+      sideCount: stretch.side_count ?? 1,
       videoUrl: stretch.video_url || '',
       tips: stretch.tips || ''
     };
@@ -227,6 +233,7 @@ function StretchesContent() {
   const progressPercentage = (currentProgress / totalItems) * 100;
 
   const handleNext = () => {
+    void autosaveWorkout({ type: 'stretch', phase: 'pre', index: currentIndex });
     if (currentIndex < stretches.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
@@ -249,7 +256,6 @@ function StretchesContent() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto">
-        <Header />
         {/* Navigation */}
         <WorkoutNavHeader
           exitUrl={`/workout/${workoutName}${routineQuery}`}
@@ -258,6 +264,9 @@ function StretchesContent() {
           skipLabel="Skip All"
           onSkip={handleSkipAll}
         />
+        <div className="flex justify-end mb-4">
+          <AutosaveBadge />
+        </div>
 
         {/* Title */}
         <div className="text-center mb-4">

@@ -17,6 +17,8 @@ export type SessionMode = 'incremental' | 'maintenance' | 'light';
 
 export interface WorkoutSessionData {
   workoutName: string;
+  routineId?: number | null;
+  sessionId?: number | null;
   startTime: string;
   sessionMode: SessionMode;
   exercises: SessionExerciseData[];
@@ -38,9 +40,15 @@ export function resolveSessionMode(value: string | null | undefined, fallback: S
   return isSessionMode(value) ? value : fallback;
 }
 
-export function initWorkoutSession(workoutName: string, sessionMode: SessionMode = 'incremental'): void {
+export function initWorkoutSession(
+  workoutName: string,
+  sessionMode: SessionMode = 'incremental',
+  routineId?: number | null
+): void {
   const session: WorkoutSessionData = {
     workoutName,
+    routineId: routineId ?? null,
+    sessionId: null,
     startTime: new Date().toISOString(),
     sessionMode,
     exercises: [],
@@ -50,13 +58,48 @@ export function initWorkoutSession(workoutName: string, sessionMode: SessionMode
   }
 }
 
+export function ensureWorkoutSession(
+  workoutName: string,
+  sessionMode: SessionMode = 'incremental',
+  routineId?: number | null
+): void {
+  const existing = getWorkoutSession();
+  const normalizedRoutineId = routineId ?? null;
+  if (!existing) {
+    initWorkoutSession(workoutName, sessionMode, normalizedRoutineId);
+    return;
+  }
+  if (existing.workoutName !== workoutName || (existing.routineId ?? null) !== normalizedRoutineId) {
+    initWorkoutSession(workoutName, sessionMode, normalizedRoutineId);
+    return;
+  }
+  if (existing.sessionMode !== sessionMode) {
+    setWorkoutSessionMode(sessionMode);
+  }
+}
+
 export function getWorkoutSession(): WorkoutSessionData | null {
   if (typeof window === 'undefined') return null;
   const data = localStorage.getItem(STORAGE_KEY);
   if (!data) return null;
   const parsed = JSON.parse(data) as WorkoutSessionData;
   parsed.sessionMode = resolveSessionMode(parsed.sessionMode, 'incremental');
+  const rawRoutineId = (parsed as { routineId?: unknown }).routineId;
+  const nextRoutineId = typeof rawRoutineId === 'number' ? rawRoutineId : Number(rawRoutineId);
+  parsed.routineId = Number.isFinite(nextRoutineId) ? nextRoutineId : null;
+  const rawSessionId = (parsed as { sessionId?: unknown }).sessionId;
+  const nextSessionId = typeof rawSessionId === 'number' ? rawSessionId : Number(rawSessionId);
+  parsed.sessionId = Number.isFinite(nextSessionId) ? nextSessionId : null;
   return parsed;
+}
+
+export function setWorkoutSessionId(sessionId: number): void {
+  if (typeof window === 'undefined') return;
+  const session = getWorkoutSession();
+  if (!session) return;
+  if (session.sessionId === sessionId) return;
+  session.sessionId = sessionId;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
 }
 
 export function addExerciseToSession(exercise: SessionExerciseData): void {

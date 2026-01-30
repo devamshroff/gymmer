@@ -3,7 +3,7 @@ import Link from 'next/link';
 interface ErrorScreenProps {
   /** The error message to display */
   message?: string;
-  /** URL to navigate back to (defaults to home) */
+  /** URL to navigate back to (defaults to routines) */
   backUrl?: string;
   /** Text for the back link */
   backText?: string;
@@ -15,8 +15,8 @@ interface ErrorScreenProps {
  */
 export default function ErrorScreen({
   message = 'Something went wrong',
-  backUrl = '/',
-  backText = 'Back to home',
+  backUrl = '/routines',
+  backText = 'Back to routines',
 }: ErrorScreenProps) {
   return (
     <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">

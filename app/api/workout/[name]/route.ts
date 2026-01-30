@@ -6,6 +6,25 @@ import { WorkoutPlan } from '@/lib/types';
 import { getRoutineByName, getRoutineExercises, getRoutineStretches, getDatabase, getRoutineById, isFavorited } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 
+function withWarmupFlags(workout: WorkoutPlan): WorkoutPlan {
+  const exercises = workout.exercises.map((exercise) => {
+    if (exercise.type === 'single') {
+      const isBodyweight = exercise.isBodyweight ?? false;
+      const hasWarmup = exercise.hasWarmup ?? !isBodyweight;
+      return { ...exercise, isBodyweight, hasWarmup };
+    }
+    const exercisesWithFlags = exercise.exercises.map((item) => {
+      const isBodyweight = item.isBodyweight ?? false;
+      return { ...item, isBodyweight, hasWarmup: false };
+    }) as typeof exercise.exercises;
+    return {
+      ...exercise,
+      exercises: exercisesWithFlags,
+    };
+  });
+  return { ...workout, exercises };
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ name: string }> }
@@ -74,7 +93,7 @@ export async function GET(
       const workout = JSON.parse(fileContent) as WorkoutPlan;
 
       if (workout.name === workoutName) {
-        return NextResponse.json({ workout });
+        return NextResponse.json({ workout: withWarmupFlags(workout) });
       }
     }
 
@@ -92,17 +111,23 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
   const routineExercises = await getRoutineExercises(routineId);
   const exercises = routineExercises.map((re: any) => {
     if (re.exercise_type === 'single') {
+      const targetWeight = re.target_weight || 0;
+      const warmupWeight = re.warmup_weight || 0;
+      const isBodyweight = typeof re.exercise_is_bodyweight === 'number'
+        ? re.exercise_is_bodyweight === 1
+        : false;
       return {
         type: 'single' as const,
         name: re.exercise_name,
         sets: re.sets || 3,
         targetReps: re.target_reps || 10,
-        targetWeight: re.target_weight || 0,
-        warmupWeight: re.warmup_weight || 0,
+        targetWeight,
+        warmupWeight,
+        hasWarmup: !isBodyweight,
         restTime: re.rest_time || 60,
         videoUrl: re.video_url || '',
         tips: re.tips || '',
-        isBodyweight: (re.exercise_equipment || '').toLowerCase() === 'bodyweight'
+        isBodyweight
       };
     } else {
       // B2B exercise
@@ -116,9 +141,12 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
             targetReps: re.target_reps || 10,
             targetWeight: re.target_weight || 0,
             warmupWeight: re.warmup_weight || 0,
+            hasWarmup: false,
             videoUrl: re.video_url || '',
             tips: re.tips || '',
-            isBodyweight: (re.exercise_equipment || '').toLowerCase() === 'bodyweight'
+            isBodyweight: typeof re.exercise_is_bodyweight === 'number'
+              ? re.exercise_is_bodyweight === 1
+              : false
           },
           {
             name: re.b2b_partner_name,
@@ -126,9 +154,12 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
             targetReps: re.b2b_target_reps || 10,
             targetWeight: re.b2b_target_weight || 0,
             warmupWeight: re.b2b_warmup_weight || 0,
+            hasWarmup: false,
             videoUrl: re.b2b_video_url || '',
             tips: re.b2b_tips || '',
-            isBodyweight: (re.b2b_partner_equipment || '').toLowerCase() === 'bodyweight'
+            isBodyweight: typeof re.b2b_partner_is_bodyweight === 'number'
+              ? re.b2b_partner_is_bodyweight === 1
+              : false
           }
         ] as [{
           name: string;
@@ -136,6 +167,7 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
           targetReps: number;
           targetWeight: number;
           warmupWeight: number;
+          hasWarmup?: boolean;
           videoUrl: string;
           tips: string;
           isBodyweight?: boolean;
@@ -145,6 +177,7 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
           targetReps: number;
           targetWeight: number;
           warmupWeight: number;
+          hasWarmup?: boolean;
           videoUrl: string;
           tips: string;
           isBodyweight?: boolean;
@@ -158,7 +191,8 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
   const preWorkoutStretches = preStretches.map((s: any) => ({
     name: s.name,
     duration: s.duration,
-    timerSeconds: s.timer_seconds || 0,
+    timerSeconds: s.timer_seconds ?? 0,
+    sideCount: s.side_count ?? 1,
     videoUrl: s.video_url || '',
     tips: s.tips || ''
   }));
@@ -168,7 +202,8 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
   const postWorkoutStretches = postStretches.map((s: any) => ({
     name: s.name,
     duration: s.duration,
-    timerSeconds: s.timer_seconds || 0,
+    timerSeconds: s.timer_seconds ?? 0,
+    sideCount: s.side_count ?? 1,
     videoUrl: s.video_url || '',
     tips: s.tips || ''
   }));
@@ -187,10 +222,12 @@ async function loadRoutineFromDatabase(routineId: number, name: string): Promise
   } : undefined;
 
   return {
-    name,
-    exercises,
-    preWorkoutStretches,
-    postWorkoutStretches,
-    ...(cardio && { cardio })
+    ...withWarmupFlags({
+      name,
+      exercises,
+      preWorkoutStretches,
+      postWorkoutStretches,
+      ...(cardio && { cardio })
+    })
   };
 }

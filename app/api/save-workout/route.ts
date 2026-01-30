@@ -1,6 +1,6 @@
 // app/api/save-workout/route.ts
 import { NextResponse } from 'next/server';
-import { createWorkoutSession, logExercise, logCardio } from '@/lib/database';
+import { createWorkoutSession, logCardio, getRoutineById, getWorkoutSessionById, updateWorkoutSession, upsertWorkoutExerciseLog } from '@/lib/database';
 import { WorkoutSessionData, resolveSessionMode } from '@/lib/workout-session';
 import { requireAuth } from '@/lib/auth-utils';
 
@@ -11,6 +11,22 @@ export async function POST(request: Request) {
 
   try {
     const sessionData: WorkoutSessionData = await request.json();
+    const routineIdCandidate = typeof sessionData.routineId === 'number'
+      ? sessionData.routineId
+      : Number(sessionData.routineId);
+    const routineId = Number.isFinite(routineIdCandidate) ? routineIdCandidate : null;
+    const sessionIdCandidate = typeof sessionData.sessionId === 'number'
+      ? sessionData.sessionId
+      : Number(sessionData.sessionId);
+    const sessionId = Number.isFinite(sessionIdCandidate) ? sessionIdCandidate : null;
+    let workoutName = sessionData.workoutName;
+
+    if (routineId !== null) {
+      const routine = await getRoutineById(routineId);
+      if (routine?.name) {
+        workoutName = routine.name;
+      }
+    }
 
     // Calculate total duration in minutes
     const startTime = new Date(sessionData.startTime);
@@ -37,19 +53,40 @@ export async function POST(request: Request) {
     }
 
     // Create workout session
-    const sessionId = await createWorkoutSession({
-      user_id: user.id,
-      workout_plan_name: sessionData.workoutName,
-      date_completed: endTime.toISOString(),
-      total_duration_minutes: totalDurationMinutes,
-      total_strain: Math.round(totalStrain),
-      session_mode: resolveSessionMode(sessionData.sessionMode, 'incremental'),
-    });
+    let activeSessionId = sessionId;
+    if (activeSessionId !== null) {
+      const existing = await getWorkoutSessionById(activeSessionId, user.id);
+      if (!existing) {
+        activeSessionId = null;
+      }
+    }
+
+    if (activeSessionId === null) {
+      activeSessionId = await createWorkoutSession({
+        user_id: user.id,
+        routine_id: routineId,
+        session_key: sessionData.startTime,
+        workout_plan_name: workoutName,
+        date_completed: endTime.toISOString(),
+        total_duration_minutes: totalDurationMinutes,
+        total_strain: Math.round(totalStrain),
+        session_mode: resolveSessionMode(sessionData.sessionMode, 'incremental'),
+      });
+    } else {
+      await updateWorkoutSession(activeSessionId, user.id, {
+        routine_id: routineId,
+        workout_plan_name: workoutName,
+        date_completed: endTime.toISOString(),
+        total_duration_minutes: totalDurationMinutes,
+        total_strain: Math.round(totalStrain),
+        session_mode: resolveSessionMode(sessionData.sessionMode, 'incremental'),
+      });
+    }
 
     // Log all exercises
     for (const exercise of sessionData.exercises) {
       const exerciseLog: any = {
-        session_id: sessionId,
+        session_id: activeSessionId,
         exercise_name: exercise.name,
         exercise_type: exercise.type,
       };
@@ -85,13 +122,13 @@ export async function POST(request: Request) {
         });
       }
 
-      await logExercise(exerciseLog);
+      await upsertWorkoutExerciseLog(exerciseLog);
     }
 
     // Log cardio if present
     if (sessionData.cardio) {
       await logCardio({
-        session_id: sessionId,
+        session_id: activeSessionId,
         cardio_type: sessionData.cardio.type,
         time: sessionData.cardio.time,
         speed: sessionData.cardio.speed,
@@ -101,7 +138,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      sessionId,
+      sessionId: activeSessionId,
       totalDurationMinutes,
       totalStrain: Math.round(totalStrain),
     });

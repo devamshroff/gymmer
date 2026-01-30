@@ -5,7 +5,6 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
 import { getWorkoutSession, WorkoutSessionData } from '@/lib/workout-session';
-import Header from '@/app/components/Header';
 
 export default function SummaryPage() {
   const params = useParams();
@@ -182,10 +181,10 @@ export default function SummaryPage() {
   }, [sessionData, routineIdParam]);
 
   // ---------------------------
-  // Complete workout = just go home
+  // Complete workout = just go to routines
   // ---------------------------
   const handleCompleteWorkout = () => {
-    router.push('/');
+    router.push('/routines');
   };
 
   // ---------------------------
@@ -204,8 +203,8 @@ export default function SummaryPage() {
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="text-white text-2xl mb-4">Workout not found</div>
-          <Link href="/" className="text-blue-400 hover:text-blue-300">
-            Back to home
+          <Link href="/routines" className="text-blue-400 hover:text-blue-300">
+            Back to routines
           </Link>
         </div>
       </div>
@@ -215,8 +214,6 @@ export default function SummaryPage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto">
-        <Header />
-
         {/* Celebration Header */}
         <div className="text-center mb-8">
           <div className="text-8xl mb-4">🎉</div>

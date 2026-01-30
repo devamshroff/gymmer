@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface TimerProps {
   timerSeconds: number; // Explicit timer value in seconds, 0 means no timer
@@ -21,45 +21,77 @@ function TimerContent({ timerSeconds, onComplete }: { timerSeconds: number; onCo
   const [secondsLeft, setSecondsLeft] = useState(totalSeconds);
   const [isRunning, setIsRunning] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
+  const endTimeRef = useRef<number | null>(null);
+  const didCompleteRef = useRef(false);
 
   useEffect(() => {
     // Reset timer when timerSeconds changes
     setSecondsLeft(timerSeconds);
     setIsRunning(false);
     setHasStarted(false);
+    endTimeRef.current = null;
+    didCompleteRef.current = false;
   }, [timerSeconds]);
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-
-    if (isRunning && secondsLeft > 0) {
-      interval = setInterval(() => {
-        setSecondsLeft((prev) => {
-          if (prev <= 1) {
-            setIsRunning(false);
-            onComplete?.();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+  const updateRemaining = useCallback(() => {
+    if (!endTimeRef.current) return;
+    const remainingMs = endTimeRef.current - Date.now();
+    const nextSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+    setSecondsLeft(nextSeconds);
+    if (nextSeconds === 0) {
+      setIsRunning(false);
+      if (!didCompleteRef.current) {
+        didCompleteRef.current = true;
+        onComplete?.();
+      }
     }
+  }, [onComplete]);
+
+  useEffect(() => {
+    if (!isRunning) return;
+    updateRemaining();
+    const interval = setInterval(updateRemaining, 250);
+    return () => clearInterval(interval);
+  }, [isRunning, updateRemaining]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        updateRemaining();
+      }
+    };
+    const handleFocus = () => {
+      updateRemaining();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
-      if (interval) clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
     };
-  }, [isRunning, secondsLeft, onComplete]);
+  }, [updateRemaining]);
 
   const handleStart = useCallback(() => {
+    const baseSeconds = secondsLeft === 0 ? totalSeconds : secondsLeft;
+    if (baseSeconds <= 0) return;
     if (secondsLeft === 0) {
-      // Reset if timer completed
-      setSecondsLeft(totalSeconds);
+      setSecondsLeft(baseSeconds);
     }
+    didCompleteRef.current = false;
+    endTimeRef.current = Date.now() + baseSeconds * 1000;
     setIsRunning(true);
     setHasStarted(true);
   }, [secondsLeft, totalSeconds]);
 
   const handlePause = useCallback(() => {
+    if (endTimeRef.current) {
+      const remainingMs = endTimeRef.current - Date.now();
+      const nextSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+      setSecondsLeft(nextSeconds);
+    }
+    endTimeRef.current = null;
     setIsRunning(false);
   }, []);
 
@@ -67,6 +99,8 @@ function TimerContent({ timerSeconds, onComplete }: { timerSeconds: number; onCo
     setIsRunning(false);
     setSecondsLeft(totalSeconds);
     setHasStarted(false);
+    endTimeRef.current = null;
+    didCompleteRef.current = false;
   }, [totalSeconds]);
 
   // Format seconds as MM:SS
@@ -75,9 +109,6 @@ function TimerContent({ timerSeconds, onComplete }: { timerSeconds: number; onCo
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
-
-  // Calculate progress percentage
-  const progressPercentage = ((totalSeconds - secondsLeft) / totalSeconds) * 100;
 
   return (
     <div className="bg-zinc-900 rounded-lg p-4 mb-4">
@@ -94,18 +125,6 @@ function TimerContent({ timerSeconds, onComplete }: { timerSeconds: number; onCo
           </div>
         )}
       </div>
-
-      {/* Progress Bar */}
-      {hasStarted && (
-        <div className="h-2 bg-zinc-700 rounded-full overflow-hidden mb-4">
-          <div
-            className={`h-full transition-all duration-1000 ${
-              secondsLeft === 0 ? 'bg-blue-700' : 'bg-blue-500'
-            }`}
-            style={{ width: `${progressPercentage}%` }}
-          />
-        </div>
-      )}
 
       {/* Control Buttons */}
       <div className="flex gap-3 justify-center">

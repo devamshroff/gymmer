@@ -16,7 +16,7 @@ type HistoryPoint = {
 };
 
 type ExerciseHistorySeries = {
-  display_mode?: 'weight' | 'reps';
+  display_mode: 'weight' | 'reps';
   points: HistoryPoint[];
 };
 
@@ -440,14 +440,7 @@ export default function ExerciseHistoryModal({
             const series = history[name];
             const points = series?.points || [];
             const explicitMode = series?.display_mode;
-            const hasWeight = points.some((point) =>
-              (point.weight_max ?? 0) > 0 || (point.weight_avg ?? 0) > 0 || (point.volume ?? 0) > 0
-            );
-            const hasReps = points.some((point) =>
-              (point.reps_max ?? 0) > 0 || (point.reps_avg ?? 0) > 0 || (point.reps_total ?? 0) > 0
-            );
-            const inferredMode = !explicitMode && !hasWeight && hasReps ? 'reps' : 'weight';
-            const mode = explicitMode || inferredMode;
+            const mode = explicitMode === 'reps' ? 'reps' : 'weight';
             const targetEntry = targets?.[name];
             const rawTargetValue = mode === 'reps' ? targetEntry?.reps : targetEntry?.weight;
             const targetValue = Number.isFinite(rawTargetValue as number) && (rawTargetValue as number) > 0

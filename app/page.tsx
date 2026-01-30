@@ -1,364 +1,83 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import UsernameSetup from './components/UsernameSetup';
+import type { CSSProperties } from 'react';
 
-interface Routine {
-  id: number;
-  name: string;
-  description: string | null;
-  is_public: number;
-  user_id: string;
-  creator_username?: string;
-  creator_name?: string;
-  is_favorited?: number;
-  last_workout_date?: string | null;
-  created_at: string;
-  updated_at: string;
-}
+const homeStyles = {
+  '--home-ink': '#f8fafc',
+  '--home-muted': '#a1a1aa',
+  '--home-accent': '#34d399',
+  '--home-accent-strong': '#059669',
+  '--home-surface': 'rgba(24, 24, 27, 0.75)',
+  '--home-border': 'rgba(148, 163, 184, 0.2)',
+} as CSSProperties;
 
-interface UserInfo {
-  id: string;
-  username: string | null;
-  hasUsername: boolean;
-}
-
-function normalizeDateString(value: string): string {
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(value)) {
-    return `${value.replace(' ', 'T')}Z`;
-  }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return `${value}T00:00:00Z`;
-  }
-  return value;
-}
-
-function formatLocalDate(value?: string | null): string {
-  if (!value) return 'Never';
-  const date = new Date(normalizeDateString(value));
-  if (Number.isNaN(date.getTime())) return 'Unknown';
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-export default function Home() {
-  const router = useRouter();
-  const [myRoutines, setMyRoutines] = useState<Routine[]>([]);
-  const [favoritedRoutines, setFavoritedRoutines] = useState<Routine[]>([]);
-  const [publicRoutinesPreview, setPublicRoutinesPreview] = useState<Routine[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
-  const [showUsernameSetup, setShowUsernameSetup] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-
-  useEffect(() => {
-    fetchUserInfo();
-  }, []);
-
-  async function fetchUserInfo() {
-    try {
-      const response = await fetch('/api/user');
-      if (response.ok) {
-        const data = await response.json();
-        setUserInfo(data);
-        if (!data.hasUsername) {
-          setShowUsernameSetup(true);
-        } else {
-          fetchRoutines();
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching user info:', error);
-      fetchRoutines();
-    }
-  }
-
-  async function fetchRoutines() {
-    try {
-      // Fetch user's own routines
-      const routinesResponse = await fetch('/api/routines');
-      const routinesData = await routinesResponse.json();
-      setMyRoutines(routinesData.routines || []);
-
-      // Fetch favorited routines
-      const favoritesResponse = await fetch('/api/routines/favorites');
-      const favoritesData = await favoritesResponse.json();
-      setFavoritedRoutines(favoritesData.routines || []);
-
-      // Fetch public routines preview (first 3)
-      const publicResponse = await fetch('/api/routines/public');
-      const publicData = await publicResponse.json();
-      setPublicRoutinesPreview((publicData.routines || []).slice(0, 3));
-    } catch (error) {
-      console.error('Error fetching routines:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleUsernameComplete(username: string) {
-    setUserInfo(prev => prev ? { ...prev, username, hasUsername: true } : null);
-    setShowUsernameSetup(false);
-    fetchRoutines();
-  }
-
-  async function removeFavorite(routineId: number) {
-    try {
-      const response = await fetch(`/api/routines/${routineId}/favorite`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        setFavoritedRoutines(favoritedRoutines.filter(r => r.id !== routineId));
-      }
-    } catch (error) {
-      console.error('Error removing favorite:', error);
-    }
-  }
-
-  if (showUsernameSetup) {
-    return <UsernameSetup onComplete={handleUsernameComplete} />;
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
-        <div className="text-white text-2xl">Loading...</div>
-      </div>
-    );
-  }
-
-  const renderRoutineCard = (routine: Routine, isOwned: boolean) => {
-    const lastDate = routine.last_workout_date || null;
-    const formattedDate = formatLocalDate(lastDate);
-    const encodedName = encodeURIComponent(routine.name);
-    const previewHref = `/workout/${encodedName}?routineId=${routine.id}&preview=1`;
-    const startHref = `/stretches/${encodedName}?routineId=${routine.id}`;
-
-    return (
-      <div
-        key={`routine-${routine.id}`}
-        className="bg-zinc-800 hover:bg-zinc-700 transition-colors rounded-lg p-6 border-2 border-zinc-700"
-      >
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div>
-            <h3 className="text-2xl font-semibold text-white">{routine.name}</h3>
-            <div className="text-zinc-400 text-sm">
-              {!isOwned && routine.creator_username && (
-                <span>by @{routine.creator_username}</span>
-              )}
-              {!isOwned && !routine.creator_username && routine.creator_name && (
-                <span>by {routine.creator_name}</span>
-              )}
-              {isOwned && routine.description && routine.description}
-              {isOwned && !routine.description && '\u00A0'}
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="text-sm text-zinc-500">
-              Last:{' '}
-              <span className={lastDate ? "text-blue-300" : "text-zinc-600"}>
-                {formattedDate}
-              </span>
-            </div>
-            {!isOwned && (
-              <button
-                onClick={() => removeFavorite(routine.id)}
-                className="text-red-400 hover:text-red-300 p-1"
-                title="Remove from favorites"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={previewHref}
-            className="px-4 py-2 rounded-lg font-medium bg-amber-700 hover:bg-amber-600 text-white transition-colors inline-flex items-center gap-2"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path d="M12 5c5.5 0 9.5 4.2 11 6.6a1.2 1.2 0 0 1 0 1C21.5 15.8 17.5 20 12 20S2.5 15.8 1 12.6a1.2 1.2 0 0 1 0-1C2.5 9.2 6.5 5 12 5zm0 3.5A3.5 3.5 0 1 0 12 15a3.5 3.5 0 0 0 0-7z" />
-            </svg>
-            Preview
-          </Link>
-          <Link
-            href={startHref}
-            className="px-4 py-2 rounded-lg font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors inline-flex items-center gap-2"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path d="M6.5 4.8a1 1 0 0 1 1 0l10 6a1 1 0 0 1 0 1.8l-10 6A1 1 0 0 1 6 17.8V6.2a1 1 0 0 1 .5-1.4z" />
-            </svg>
-            Start
-          </Link>
-          {isOwned && (
-            <Link
-              href={`/routines/${routine.id}/edit`}
-              className="px-4 py-2 rounded-lg font-medium bg-blue-900 hover:bg-blue-800 text-white transition-colors inline-flex items-center gap-2"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M4 17.3V20h2.7l8-8-2.7-2.7-8 8zm15.7-9.6a1 1 0 0 0 0-1.4l-2-2a1 1 0 0 0-1.4 0l-1.6 1.6L18.1 9l1.6-1.3z" />
-              </svg>
-              Edit
-            </Link>
-          )}
-        </div>
-      </div>
-    );
-  };
-
+export default function HomePage() {
   return (
-    <div className="min-h-screen bg-zinc-900 p-4">
-      <main className="max-w-2xl mx-auto py-8">
-        <h1 className="text-4xl font-bold text-white mb-8 text-center">
-          <span className="block text-gray-200">welcome to</span>
-          <span className="text-emerald-600 font-bold">GYMMER</span>
-        </h1>
-        <p className="text-center text-zinc-400 mb-4">AI Powered Workouts</p>
+    <div
+      className="relative min-h-screen overflow-hidden bg-zinc-950 text-[var(--home-ink)]"
+      style={homeStyles}
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-32 right-[-10%] h-96 w-96 rounded-full bg-emerald-500/20 blur-[120px]"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute bottom-[-20%] left-[-5%] h-[28rem] w-[28rem] rounded-full bg-orange-500/20 blur-[140px]"
+      />
 
-        {userInfo?.username && (
-          <p className="text-center text-zinc-400 mb-6">
-            Logged in as <span className="text-emerald-300">@{userInfo.username}</span>
-          </p>
-        )}
-
-        {/* Create New Routine Button */}
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="mb-3 block w-full bg-purple-900 hover:bg-purple-800 text-white text-center py-4 rounded-lg text-lg font-bold transition-colors"
+      <main className="relative mx-auto flex min-h-[calc(100vh-96px)] max-w-4xl flex-col items-center justify-center gap-8 px-6 py-16 text-center">
+        <p
+          className="text-2xl uppercase tracking-[0.5em] text-[var(--home-muted)] home-fade-in sm:text-3xl"
+          style={{ animationDelay: '80ms' }}
         >
-          + Create New Routine
-        </button>
+          Training hub
+        </p>
+        <h1
+          className="text-4xl font-semibold leading-tight sm:text-5xl lg:text-6xl home-fade-up"
+          style={{ animationDelay: '140ms' }}
+        >
+          <span className="block text-2xl text-zinc-200 sm:text-3xl">welcome to</span>
+          <span className="mt-4 block text-6xl text-[var(--home-accent)] sm:text-7xl lg:text-8xl">
+            GYMMER
+          </span>
+          <span className="mt-4 block text-center text-base uppercase tracking-[0.5em] text-[var(--home-muted)] sm:text-lg">
+            flow and progress
+          </span>
+        </h1>
 
-        <div className="mb-8">
-          <Link
-            href="/routines/import"
-            className="block w-full rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-3 text-center text-sm font-semibold transition-colors"
-          >
-            Import Routine from JSON
-          </Link>
-          <Link
-            href="/goals"
-            className="mt-3 block w-full rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-4 py-3 text-center text-sm font-semibold transition-colors"
-          >
-            Workout Goals
-          </Link>
-        </div>
-
-        {/* My Routines Section */}
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-zinc-300 mb-4">My Routines</h2>
-          <div className="space-y-4">
-            {myRoutines.length === 0 ? (
-              <div className="text-center text-zinc-500 text-lg py-4">
-                No routines yet. Create one above or browse public routines.
-              </div>
-            ) : (
-              myRoutines.map((routine) => renderRoutineCard(routine, true))
-            )}
-          </div>
-        </div>
-
-        {/* Favorited Routines Section */}
-        {favoritedRoutines.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-xl font-semibold text-zinc-300 mb-4 flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-300" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-              </svg>
-              Favorited Routines
-            </h2>
-            <div className="space-y-4">
-              {favoritedRoutines.map((routine) => renderRoutineCard(routine, false))}
-            </div>
-          </div>
-        )}
-
-        {/* Public Routines Preview Section */}
-        {publicRoutinesPreview.length > 0 && (
-          <div className="mt-8 pt-8 border-t border-zinc-700">
-            <h2 className="text-xl font-semibold text-zinc-300 mb-4">Discover Public Routines</h2>
+        <div
+          className="flex flex-col items-center gap-3 home-fade-up"
+          style={{ animationDelay: '220ms' }}
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
             <Link
-              href="/routines/browse"
-              className="mb-4 block w-full bg-purple-900 hover:bg-purple-800 text-white text-center py-3 rounded-lg font-semibold transition-colors"
+              href="/profile"
+              className="inline-flex items-center justify-center rounded-full border border-[var(--home-border)] bg-zinc-900/60 px-5 py-2.5 text-sm font-semibold text-[var(--home-ink)] transition hover:-translate-y-0.5 hover:border-emerald-400/60"
             >
-              Browse All Public Routines
+              My Profile
             </Link>
-            <div className="space-y-3">
-              {publicRoutinesPreview.map((routine) => (
-                <div
-                  key={`public-${routine.id}`}
-                  className="bg-zinc-800 rounded-lg p-4 border border-zinc-700"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-lg font-semibold text-white">{routine.name}</h3>
-                      <p className="text-sm text-zinc-400">
-                        by <span className="text-purple-300">@{routine.creator_username || routine.creator_name || 'Anonymous'}</span>
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <Link
+              href="/routines"
+              className="inline-flex items-center justify-center rounded-full bg-[var(--home-accent-strong)] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:-translate-y-0.5 hover:bg-emerald-500"
+            >
+              My Routines
+            </Link>
           </div>
-        )}
+          <Link
+            href="/routines/browse"
+            className="inline-flex items-center justify-center rounded-full border border-[var(--home-border)] bg-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:-translate-y-0.5 hover:border-emerald-400/60"
+          >
+            Browse Public Routines
+          </Link>
+        </div>
 
-        {showCreateModal && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-            <div className="w-full max-w-md bg-zinc-900 border border-zinc-700 rounded-xl p-6">
-              <h2 className="text-2xl font-bold text-white mb-2">Create a new routine</h2>
-              <p className="text-zinc-400 text-sm mb-6">
-                Choose how you want to build your next workout.
-              </p>
-              <div className="space-y-3">
-                <button
-                  onClick={() => router.push('/routines/builder')}
-                  className="w-full bg-green-700 hover:bg-green-600 text-white py-3 rounded-lg text-lg font-semibold"
-                >
-                  Manual Builder
-                </button>
-                <button
-                  onClick={() => router.push('/routines/ai')}
-                  className="w-full bg-emerald-800 hover:bg-emerald-700 text-white py-3 rounded-lg text-lg font-semibold"
-                >
-                  AI-Assisted
-                </button>
-                <button
-                  onClick={() => setShowCreateModal(false)}
-                  className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-3 rounded-lg text-sm font-semibold"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <Link
+          href="/what-is-gymmer"
+          className="mt-12 inline-flex items-center justify-center rounded-full border border-transparent bg-white/10 px-5 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-white transition hover:-translate-y-0.5 hover:bg-white/20 home-fade-up sm:mt-16 lg:mt-20"
+          style={{ animationDelay: '300ms' }}
+        >
+          What is Gymmer?
+        </Link>
       </main>
     </div>
   );

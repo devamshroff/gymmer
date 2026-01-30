@@ -7,20 +7,24 @@ import {
   getRoutineExercises,
   getUserGoals,
 } from '@/lib/database';
+import { generateStretchInsights } from '@/lib/form-tips';
+import { STRETCH_MUSCLE_TAGS, normalizeTypeList } from '@/lib/muscle-tags';
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 type RecommendedStretch = {
   name: string;
   duration?: string;
+  timerSeconds?: number;
+  sideCount?: number;
   tips?: string;
   muscleGroups?: string[];
+  stretchTypes?: string[];
 };
 
 type NameIndex = {
   exactLower: Map<string, number>;
   normalized: Map<string, number>;
-  typeById: Map<number, string>;
 };
 
 function normalizeName(value: string): string {
@@ -45,8 +49,7 @@ function buildSystemPrompt(
   routineName?: string,
   routineDescription?: string | null,
   exerciseCount?: number,
-  preStretchNames?: string[],
-  postStretchNames?: string[],
+  availableStretchNames?: string[],
   goalsText?: string | null
 ): string {
   const goalsLine = goalsText ? `User goals: ${goalsText}` : 'User goals: (not provided)';
@@ -57,8 +60,8 @@ function buildSystemPrompt(
     'Ensure every primary muscle used in the exercises has at least one stretch in pre-workout and one in post-workout.',
     'Return ONLY valid JSON with this exact shape:',
     '{',
-    '  "preWorkoutStretches": [ { "name": string, "duration": string, "tips": string (optional), "muscleGroups": string[] (optional) } ],',
-    '  "postWorkoutStretches": [ { "name": string, "duration": string, "tips": string (optional), "muscleGroups": string[] (optional) } ]',
+    '  "preWorkoutStretches": [ { "name": string, "duration": string, "timerSeconds": number, "sideCount": 1|2, "tips": string (optional), "muscleGroups": string[] (optional) } ],',
+    '  "postWorkoutStretches": [ { "name": string, "duration": string, "timerSeconds": number, "sideCount": 1|2, "tips": string (optional), "muscleGroups": string[] (optional) } ]',
     '}',
     'Return at least 4 stretches per list.',
     'Increase stretch count with more exercises: 4-5 for <=4 exercises, 5-7 for 5-8, 7-9 for 9+.',
@@ -66,12 +69,9 @@ function buildSystemPrompt(
     `Routine: ${routineName || 'Workout routine'}`,
     routineDescription ? `Description: ${routineDescription}` : 'Description: (none)',
     `Exercise count: ${exerciseCount ?? exercises.length}`,
-    preStretchNames?.length
-      ? `Available pre-workout stretches: ${preStretchNames.join(', ')}`
-      : 'Available pre-workout stretches: (none)',
-    postStretchNames?.length
-      ? `Available post-workout stretches: ${postStretchNames.join(', ')}`
-      : 'Available post-workout stretches: (none)',
+    availableStretchNames?.length
+      ? `Available stretches: ${availableStretchNames.join(', ')}`
+      : 'Available stretches: (none)',
     'Prefer existing stretches from the lists above when possible. If a needed stretch is missing, suggest a new one.',
     goalsLine,
     `Exercises: ${exercises.join(', ')}`
@@ -81,7 +81,6 @@ function buildSystemPrompt(
 async function buildNameIndex(stretches: any[]): Promise<NameIndex> {
   const exactLower = new Map<string, number>();
   const normalized = new Map<string, number>();
-  const typeById = new Map<number, string>();
 
   for (const stretch of stretches) {
     const lower = String(stretch.name || '').toLowerCase();
@@ -90,16 +89,16 @@ async function buildNameIndex(stretches: any[]): Promise<NameIndex> {
     if (!normalized.has(normalizedName)) {
       normalized.set(normalizedName, stretch.id);
     }
-    typeById.set(stretch.id, stretch.type);
   }
 
-  return { exactLower, normalized, typeById };
+  return { exactLower, normalized };
 }
 
 async function findOrCreateStretchId(
   index: NameIndex,
   stretch: RecommendedStretch,
-  type: 'pre_workout' | 'post_workout'
+  type: 'pre_workout' | 'post_workout',
+  goalsText?: string | null
 ): Promise<{ id: number; created: boolean }> {
   const name = String(stretch.name || '').trim();
   const lower = name.toLowerCase();
@@ -112,17 +111,59 @@ async function findOrCreateStretchId(
   if (normalizedMatch) return { id: normalizedMatch, created: false };
 
   const duration = stretch.duration || (type === 'pre_workout' ? '30 seconds' : '45 seconds');
+  const providedTimer = Number.isFinite(Number(stretch.timerSeconds)) && Number(stretch.timerSeconds) > 0
+    ? Math.round(Number(stretch.timerSeconds))
+    : null;
+  const providedSideCount = Number(stretch.sideCount) === 1 || Number(stretch.sideCount) === 2
+    ? Number(stretch.sideCount)
+    : null;
+  const muscleGroupsInput = normalizeTypeList(
+    stretch.muscleGroups || stretch.stretchTypes,
+    STRETCH_MUSCLE_TAGS
+  );
+  let resolvedTips = stretch.tips || null;
+  let resolvedTimerSeconds = providedTimer;
+  let resolvedSideCount = providedSideCount ?? 1;
+  let muscleGroups = muscleGroupsInput;
+
+  if (!resolvedTimerSeconds || providedSideCount === null || !resolvedTips) {
+    const insights = await generateStretchInsights({
+      kind: 'stretch',
+      name,
+      duration,
+      stretchType: type,
+      muscleGroups: muscleGroupsInput.length ? muscleGroupsInput : undefined,
+      goalsText,
+    });
+    if (!resolvedTips) {
+      resolvedTips = insights?.tips ?? null;
+    }
+    if (!resolvedTimerSeconds) {
+      resolvedTimerSeconds = insights?.timerSeconds ?? null;
+    }
+    if (providedSideCount === null && insights?.sideCount) {
+      resolvedSideCount = insights.sideCount;
+    }
+    if (muscleGroups.length === 0) {
+      muscleGroups = normalizeTypeList(insights?.muscleGroups, STRETCH_MUSCLE_TAGS);
+    }
+  }
+
+  if (!resolvedTimerSeconds) {
+    throw new Error(`Missing timerSeconds for stretch "${name}"`);
+  }
+  const resolvedMuscleGroups = muscleGroups.length ? muscleGroups : ['unknown'];
   const id = await createStretch({
     name,
     duration,
-    type,
-    tips: stretch.tips,
-    muscleGroups: stretch.muscleGroups,
+    timerSeconds: resolvedTimerSeconds,
+    sideCount: resolvedSideCount,
+    tips: resolvedTips || undefined,
+    muscleGroups: resolvedMuscleGroups,
   });
 
   index.exactLower.set(lower, id);
   index.normalized.set(normalized, id);
-  index.typeById.set(id, type);
   return { id, created: true };
 }
 
@@ -173,12 +214,7 @@ export async function POST(
     }
 
     const allStretches = await getAllStretches();
-    const preStretchNames = allStretches
-      .filter((stretch) => stretch.type === 'pre_workout')
-      .map((stretch) => stretch.name);
-    const postStretchNames = allStretches
-      .filter((stretch) => stretch.type === 'post_workout')
-      .map((stretch) => stretch.name);
+    const availableStretchNames = allStretches.map((stretch) => stretch.name);
     const goalsText = await getUserGoals(user.id);
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -197,8 +233,7 @@ export async function POST(
               routine.name,
               routine.description,
               exercises.length,
-              preStretchNames,
-              postStretchNames,
+              availableStretchNames,
               goalsText
             )
           },
@@ -255,30 +290,30 @@ export async function POST(
 
     for (const stretch of preList) {
       if (!stretch?.name) continue;
-      const result = await findOrCreateStretchId(index, stretch, 'pre_workout');
+      const result = await findOrCreateStretchId(index, stretch, 'pre_workout', goalsText);
       if (result.created) createdIds.push(result.id);
       recommendedPreIds.push(result.id);
     }
 
     for (const stretch of postList) {
       if (!stretch?.name) continue;
-      const result = await findOrCreateStretchId(index, stretch, 'post_workout');
+      const result = await findOrCreateStretchId(index, stretch, 'post_workout', goalsText);
       if (result.created) createdIds.push(result.id);
       recommendedPostIds.push(result.id);
     }
 
-    const fillMissing = (ids: number[], type: 'pre_workout' | 'post_workout') => {
+    const fillMissing = (ids: number[]) => {
       if (ids.length >= minCount) return ids;
       const existingIds = new Set(ids);
       const candidates = allStretches
-        .filter((stretch) => stretch.type === type && !existingIds.has(stretch.id))
+        .filter((stretch) => !existingIds.has(stretch.id))
         .map((stretch) => stretch.id);
       const needed = minCount - ids.length;
       return [...ids, ...candidates.slice(0, needed)];
     };
 
-    const finalPreIds = fillMissing(recommendedPreIds, 'pre_workout');
-    const finalPostIds = fillMissing(recommendedPostIds, 'post_workout');
+    const finalPreIds = fillMissing(recommendedPreIds);
+    const finalPostIds = fillMissing(recommendedPostIds);
 
     const updatedStretches = await getAllStretches();
     const createdStretches = updatedStretches.filter((s) => createdIds.includes(s.id));
