@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { WorkoutPlan, Stretch } from '@/lib/types';
-import { ensureWorkoutSession, resolveSessionMode } from '@/lib/workout-session';
+import { ensureWorkoutSession } from '@/lib/workout-session';
 import { autosaveWorkout } from '@/lib/workout-autosave';
 import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 import StretchCard from '@/app/components/StretchCard';
@@ -26,8 +26,6 @@ function StretchesContent() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const sessionModeParam = searchParams.get('mode');
-  const sessionMode = resolveSessionMode(sessionModeParam, 'incremental');
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -58,7 +56,7 @@ function StretchesContent() {
         const resolvedWorkout = sessionWorkout || baseWorkout;
         setWorkout(resolvedWorkout);
         // Ensure workout session exists when workout is loaded
-        ensureWorkoutSession(resolvedWorkout.name, sessionMode, routineId);
+        ensureWorkoutSession(resolvedWorkout.name, routineId);
 
         // Check for index in URL (for navigation from other sections)
         const indexParam = searchParams.get('index');
@@ -93,11 +91,6 @@ function StretchesContent() {
   // Build query string for passing routineId
   const routineQueryParams = new URLSearchParams();
   if (routineIdParam) routineQueryParams.set('routineId', routineIdParam);
-  if (sessionModeParam) {
-    routineQueryParams.set('mode', sessionModeParam);
-  } else {
-    routineQueryParams.set('mode', sessionMode);
-  }
   const routineQuery = routineQueryParams.toString() ? `?${routineQueryParams.toString()}` : '';
 
   const runWithChangeWarning = (action: () => void) => {

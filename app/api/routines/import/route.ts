@@ -304,7 +304,7 @@ async function resolveFuzzyMatch(
       {
         role: 'system',
         content: [
-          'You are a gym trainer helping users make consistent, incremental progress.',
+          'You are a gym trainer helping users make consistent progress.',
           'You match exercise/stretch names to existing options.',
           'Return ONLY a JSON object: {"matchId": number|null}.',
           'Return null if there is no close match.',

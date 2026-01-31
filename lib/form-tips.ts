@@ -103,7 +103,7 @@ export async function generateExerciseInsights(data: TipRequest): Promise<Exerci
           {
             role: 'system',
             content: [
-              'You are a gym trainer helping users make consistent, incremental progress.',
+              'You are a gym trainer helping users make consistent progress.',
               'Return JSON only: {"tips":"...","isBodyweight":true|false,"muscleGroups":["chest","upper body compound"],"difficulty":"Intermediate"}.',
               `muscleGroups must be 1-2 items from: ${MUSCLE_GROUP_TAGS.join(', ')}.`,
               'difficulty must be one of: Beginner, Intermediate, Advanced.',
@@ -170,7 +170,7 @@ export async function generateStretchInsights(data: TipRequest): Promise<Stretch
           {
             role: 'system',
             content: [
-              'You are a gym trainer helping users make consistent, incremental progress.',
+              'You are a gym trainer helping users make consistent progress.',
               'Return JSON only: {"tips":"...","timerSeconds":30,"muscleGroups":["hamstrings","glutes"]}.',
               `muscleGroups must be 1-2 items from: ${STRETCH_MUSCLE_TAGS.join(', ')}.`,
               'Use "unknown" if the muscle group is unclear.',
@@ -233,7 +233,7 @@ export async function generateFormTips(data: TipRequest): Promise<string | null>
         messages: [
           {
             role: 'system',
-            content: 'You are a gym trainer helping users make consistent, incremental progress. Return 1-2 short sentences. No markdown or bullet points.'
+            content: 'You are a gym trainer helping users make consistent progress. Return 1-2 short sentences. No markdown or bullet points.'
           },
           { role: 'user', content: buildUserPrompt(data) }
         ],

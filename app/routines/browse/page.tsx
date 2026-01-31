@@ -255,7 +255,7 @@ export default function BrowseRoutinesPage() {
                     {/* Use Routine Button */}
                     <Link
                       href={`/stretches/${encodeURIComponent(routine.name)}?routineId=${routine.id}`}
-                      onClick={() => initWorkoutSession(routine.name, 'incremental', routine.id)}
+                      onClick={() => initWorkoutSession(routine.name, routine.id)}
                       className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium bg-green-600 hover:bg-green-700 text-white transition-colors"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

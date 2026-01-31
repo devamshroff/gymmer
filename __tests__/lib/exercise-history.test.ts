@@ -20,14 +20,13 @@ describe('getExerciseHistory', () => {
 
   it('skips session_mode filter when column is missing', async () => {
     mockExecute
-      .mockResolvedValueOnce({ rows: [{ name: 'id' }, { name: 'user_id' }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
     await getExerciseHistory('user-123', 'Box Jumps', 'month');
 
-    expect(mockExecute).toHaveBeenCalledTimes(3);
-    const historyCall = mockExecute.mock.calls[1][0];
+    expect(mockExecute).toHaveBeenCalledTimes(2);
+    const historyCall = mockExecute.mock.calls[0][0];
     expect(historyCall.sql).not.toContain('session_mode');
     expect(historyCall.args).not.toContain('light');
   });

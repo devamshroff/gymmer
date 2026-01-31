@@ -93,7 +93,7 @@ export interface WorkoutSession {
   date_completed: string; // ISO 8601
   total_duration_minutes: number | null;
   total_strain: number | null;
-  session_mode?: string | null;
+  workout_report?: string | null;
   created_at: string;
 }
 

@@ -4,8 +4,46 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
+import { loadSessionTargetsMeta, loadSessionWorkout } from '@/lib/session-workout';
 import { getWorkoutSession, WorkoutSessionData } from '@/lib/workout-session';
 import { EXERCISE_TYPES } from '@/lib/constants';
+
+type ReportTarget = {
+  name: string;
+  targetWeight: number | null;
+  targetReps: number | null;
+  isBodyweight?: boolean;
+};
+
+function extractReportTargets(plan: WorkoutPlan | null): ReportTarget[] {
+  if (!plan) return [];
+  const targets: ReportTarget[] = [];
+  for (const exercise of plan.exercises) {
+    if (exercise.type === EXERCISE_TYPES.single) {
+      targets.push({
+        name: exercise.name,
+        targetWeight: Number.isFinite(exercise.targetWeight) ? exercise.targetWeight : null,
+        targetReps: Number.isFinite(exercise.targetReps) ? exercise.targetReps : null,
+        isBodyweight: exercise.isBodyweight ?? false
+      });
+    } else {
+      const [ex1, ex2] = exercise.exercises;
+      targets.push({
+        name: ex1.name,
+        targetWeight: Number.isFinite(ex1.targetWeight) ? ex1.targetWeight : null,
+        targetReps: Number.isFinite(ex1.targetReps) ? ex1.targetReps : null,
+        isBodyweight: ex1.isBodyweight ?? false
+      });
+      targets.push({
+        name: ex2.name,
+        targetWeight: Number.isFinite(ex2.targetWeight) ? ex2.targetWeight : null,
+        targetReps: Number.isFinite(ex2.targetReps) ? ex2.targetReps : null,
+        isBodyweight: ex2.isBodyweight ?? false
+      });
+    }
+  }
+  return targets;
+}
 
 export default function SummaryPage() {
   const params = useParams();
@@ -148,21 +186,48 @@ export default function SummaryPage() {
     if (!sessionData) return;
     if (hasReportedRef.current) return;
 
-    const routineId = routineIdParam ? Number(routineIdParam) : null;
-    if (routineIdParam && Number.isNaN(routineId)) {
-      return;
-    }
-
     const generateReport = async () => {
       setReportLoading(true);
       hasReportedRef.current = true;
       try {
+        const sessionRoutineId = routineIdParam ?? (typeof sessionData.routineId === 'number'
+          ? String(sessionData.routineId)
+          : null);
+        const sessionTargetsPlan = loadSessionWorkout(sessionData.workoutName, sessionRoutineId);
+        const reportTargets = extractReportTargets(sessionTargetsPlan);
+        const targetsMeta = loadSessionTargetsMeta(sessionData.workoutName, sessionRoutineId);
+        const preWorkoutTargets = (targetsMeta || reportTargets.length > 0)
+          ? {
+            sessionMode: targetsMeta?.sessionMode ?? null,
+            source: targetsMeta?.source ?? null,
+            encouragement: targetsMeta?.encouragement ?? null,
+            goalSummary: targetsMeta?.goalSummary ?? null,
+            trendSummary: targetsMeta?.trendSummary ?? null,
+            targets: reportTargets
+          }
+          : null;
+        const query = new URLSearchParams();
+        if (typeof sessionData.sessionId === 'number') {
+          query.set('sessionId', String(sessionData.sessionId));
+        }
+        if (sessionData.startTime) {
+          query.set('sessionKey', sessionData.startTime);
+        }
+        const checkResponse = await fetch(`/api/workout-report?${query.toString()}`);
+        if (checkResponse.ok) {
+          const existing = await checkResponse.json();
+          if (existing?.report) {
+            setReport(existing.report);
+            return;
+          }
+        }
+
         const response = await fetch('/api/workout-report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             sessionData,
-            routineId: routineId || null
+            preWorkoutTargets
           }),
         });
         if (!response.ok) {

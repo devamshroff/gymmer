@@ -160,10 +160,8 @@ function ActiveWorkoutContent() {
 
   // Get routineId from URL params (for public/favorited routines)
   const routineIdParam = searchParams.get('routineId');
-  const sessionModeParam = searchParams.get('mode');
   const routineQueryParams = new URLSearchParams();
   if (routineIdParam) routineQueryParams.set('routineId', routineIdParam);
-  if (sessionModeParam) routineQueryParams.set('mode', sessionModeParam);
   const routineQuery = routineQueryParams.toString() ? `?${routineQueryParams.toString()}` : '';
 
   useEffect(() => {
@@ -1265,6 +1263,26 @@ function ActiveWorkoutContent() {
               </a>
             </div>
 
+            <div className="bg-zinc-900 rounded p-3 mb-3 border border-purple-700/50">
+              <div className="text-purple-300 text-xs mb-2">Today&apos;s target</div>
+              <div className={`grid ${ex1RepsOnly ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
+                {!ex1RepsOnly && (
+                  <div className="text-center">
+                    <div className="text-zinc-500 text-xs mb-1">Weight</div>
+                    <div className="text-white text-lg font-semibold">
+                      {ex1.targetWeight} lbs
+                    </div>
+                  </div>
+                )}
+                <div className="text-center">
+                  <div className="text-zinc-500 text-xs mb-1">Reps</div>
+                  <div className="text-white text-lg font-semibold">
+                    {ex1.targetReps}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {!isReviewMode && currentExerciseInPair === 0 ? (
               <>
                 {/* Active: Show inputs */}
@@ -1353,6 +1371,26 @@ function ActiveWorkoutContent() {
               >
                 📺 Video
               </a>
+            </div>
+
+            <div className="bg-zinc-900 rounded p-3 mb-3 border border-purple-700/50">
+              <div className="text-purple-300 text-xs mb-2">Today&apos;s target</div>
+              <div className={`grid ${ex2RepsOnly ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
+                {!ex2RepsOnly && (
+                  <div className="text-center">
+                    <div className="text-zinc-500 text-xs mb-1">Weight</div>
+                    <div className="text-white text-lg font-semibold">
+                      {ex2.targetWeight} lbs
+                    </div>
+                  </div>
+                )}
+                <div className="text-center">
+                  <div className="text-zinc-500 text-xs mb-1">Reps</div>
+                  <div className="text-white text-lg font-semibold">
+                    {ex2.targetReps}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {!isReviewMode && currentExerciseInPair === 1 ? (
@@ -1735,6 +1773,26 @@ function ActiveWorkoutContent() {
             </div>
           </div>
         )}
+
+        <div className="bg-zinc-800 rounded-lg p-4 mb-6 border border-emerald-700">
+          <div className="text-emerald-400 text-xs mb-2">TODAY&apos;S TARGET</div>
+          <div className={`grid ${isRepsOnly ? 'grid-cols-1' : 'grid-cols-2'} gap-4`}>
+            {!isRepsOnly && (
+              <div className="bg-zinc-900 rounded p-3 text-center">
+                <div className="text-zinc-500 text-xs mb-1">Weight</div>
+                <div className="text-white text-xl font-semibold">
+                  {exercise.targetWeight} lbs
+                </div>
+              </div>
+            )}
+            <div className="bg-zinc-900 rounded p-3 text-center">
+              <div className="text-zinc-500 text-xs mb-1">Reps</div>
+              <div className="text-white text-xl font-semibold">
+                {exercise.targetReps}
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Warmup Choice */}
         {!isReviewMode && showWarmupPrompt && (

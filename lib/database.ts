@@ -9,9 +9,9 @@ import {
 
 // Initialize database connection
 let db: Client | null = null;
-let workoutSessionModeColumnReady: boolean | null = null;
 let workoutSessionRoutineIdColumnReady: boolean | null = null;
 let workoutSessionKeyColumnReady: boolean | null = null;
+let workoutSessionReportColumnReady: boolean | null = null;
 let routineStretchTablesReady: boolean | null = null;
 const DEFAULT_REST_TIME_SECONDS = 60;
 const DEFAULT_SUPERSET_REST_TIME_SECONDS = 15;
@@ -79,21 +79,6 @@ export async function getUserByEmail(email: string): Promise<any | null> {
 }
 
 
-async function hasWorkoutSessionModeColumn(): Promise<boolean> {
-  if (workoutSessionModeColumnReady !== null) return workoutSessionModeColumnReady;
-  const db = getDatabase();
-  try {
-    const result = await db.execute({
-      sql: 'PRAGMA table_info(workout_sessions)'
-    });
-    workoutSessionModeColumnReady = result.rows.some((row: any) => row.name === 'session_mode');
-  } catch (error) {
-    console.warn('Failed to inspect workout_sessions schema:', error);
-    workoutSessionModeColumnReady = false;
-  }
-  return workoutSessionModeColumnReady;
-}
-
 async function hasWorkoutSessionRoutineIdColumn(): Promise<boolean> {
   if (workoutSessionRoutineIdColumnReady !== null) return workoutSessionRoutineIdColumnReady;
   const db = getDatabase();
@@ -122,6 +107,21 @@ async function hasWorkoutSessionKeyColumn(): Promise<boolean> {
     workoutSessionKeyColumnReady = false;
   }
   return workoutSessionKeyColumnReady;
+}
+
+async function hasWorkoutSessionReportColumn(): Promise<boolean> {
+  if (workoutSessionReportColumnReady !== null) return workoutSessionReportColumnReady;
+  const db = getDatabase();
+  try {
+    const result = await db.execute({
+      sql: 'PRAGMA table_info(workout_sessions)'
+    });
+    workoutSessionReportColumnReady = result.rows.some((row: any) => row.name === 'workout_report');
+  } catch (error) {
+    console.warn('Failed to inspect workout_sessions workout_report schema:', error);
+    workoutSessionReportColumnReady = false;
+  }
+  return workoutSessionReportColumnReady;
 }
 
 async function ensureWorkoutSessionKeyColumn(): Promise<boolean> {
@@ -153,6 +153,28 @@ async function ensureWorkoutSessionKeyColumn(): Promise<boolean> {
   }
 
   return workoutSessionKeyColumnReady === true;
+}
+
+async function ensureWorkoutSessionReportColumn(): Promise<boolean> {
+  const hasColumn = await hasWorkoutSessionReportColumn();
+  if (hasColumn) return true;
+  const db = getDatabase();
+  try {
+    await db.execute({
+      sql: 'ALTER TABLE workout_sessions ADD COLUMN workout_report TEXT'
+    });
+    workoutSessionReportColumnReady = true;
+    return true;
+  } catch (error: any) {
+    const message = String(error?.message || error);
+    if (message.toLowerCase().includes('duplicate') || message.toLowerCase().includes('already exists')) {
+      workoutSessionReportColumnReady = true;
+      return true;
+    }
+    console.warn('Failed to add workout_report column to workout_sessions:', error);
+    workoutSessionReportColumnReady = false;
+    return false;
+  }
 }
 
 async function ensureWorkoutSessionRoutineIdColumn(): Promise<boolean> {
@@ -342,11 +364,9 @@ export async function createWorkoutSession(data: {
   date_completed: string;
   total_duration_minutes?: number;
   total_strain?: number;
-  session_mode?: string | null;
 }): Promise<number> {
   const db = getDatabase();
   const hasRoutineIdColumn = await ensureWorkoutSessionRoutineIdColumn();
-  const hasSessionModeColumn = await hasWorkoutSessionModeColumn();
   const includeSessionKey = data.session_key !== undefined
     ? await ensureWorkoutSessionKeyColumn()
     : await hasWorkoutSessionKeyColumn();
@@ -372,11 +392,6 @@ export async function createWorkoutSession(data: {
     data.total_duration_minutes || null,
     data.total_strain || null
   );
-
-  if (hasSessionModeColumn) {
-    columns.push('session_mode');
-    args.push(data.session_mode || null);
-  }
   const result = await db.execute({
     sql: `
       INSERT INTO workout_sessions (${columns.join(', ')})
@@ -414,7 +429,6 @@ export async function touchWorkoutSession(
   data: {
     routine_id?: number | null;
     workout_plan_name?: string;
-    session_mode?: string | null;
   }
 ): Promise<void> {
   const db = getDatabase();
@@ -429,14 +443,6 @@ export async function touchWorkoutSession(
   if (data.workout_plan_name) {
     updates.push('workout_plan_name = ?');
     args.push(data.workout_plan_name);
-  }
-
-  if (data.session_mode !== undefined) {
-    const hasSessionModeColumn = await hasWorkoutSessionModeColumn();
-    if (hasSessionModeColumn) {
-      updates.push('session_mode = ?');
-      args.push(data.session_mode);
-    }
   }
 
   args.push(id, userId);
@@ -456,7 +462,6 @@ export async function updateWorkoutSession(
     date_completed?: string;
     total_duration_minutes?: number | null;
     total_strain?: number | null;
-    session_mode?: string | null;
   }
 ): Promise<void> {
   const db = getDatabase();
@@ -488,14 +493,6 @@ export async function updateWorkoutSession(
     args.push(data.total_strain);
   }
 
-  if (data.session_mode !== undefined) {
-    const hasSessionModeColumn = await hasWorkoutSessionModeColumn();
-    if (hasSessionModeColumn) {
-      updates.push('session_mode = ?');
-      args.push(data.session_mode);
-    }
-  }
-
   if (updates.length === 0) return;
 
   args.push(id, userId);
@@ -504,6 +501,93 @@ export async function updateWorkoutSession(
     sql: `UPDATE workout_sessions SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`,
     args
   });
+}
+
+export async function updateWorkoutSessionReport(data: {
+  userId: string;
+  sessionId?: number | null;
+  sessionKey?: string | null;
+  report: string | null;
+}): Promise<void> {
+  const hasReportColumn = await ensureWorkoutSessionReportColumn();
+  if (!hasReportColumn) return;
+  const db = getDatabase();
+
+  if (typeof data.sessionId === 'number') {
+    await db.execute({
+      sql: 'UPDATE workout_sessions SET workout_report = ? WHERE id = ? AND user_id = ?',
+      args: [data.report, data.sessionId, data.userId]
+    });
+    return;
+  }
+
+  if (data.sessionKey) {
+    const hasKeyColumn = await hasWorkoutSessionKeyColumn();
+    if (!hasKeyColumn) {
+      console.warn('Missing session_key column; cannot save workout report by key.');
+      return;
+    }
+    await db.execute({
+      sql: 'UPDATE workout_sessions SET workout_report = ? WHERE session_key = ? AND user_id = ?',
+      args: [data.report, data.sessionKey, data.userId]
+    });
+    return;
+  }
+
+  console.warn('Missing session id/key; workout report not saved.');
+}
+
+export async function getWorkoutSessionReportById(
+  userId: string,
+  sessionId: number
+): Promise<string | null> {
+  const hasReportColumn = await ensureWorkoutSessionReportColumn();
+  if (!hasReportColumn) return null;
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT workout_report FROM workout_sessions WHERE id = ? AND user_id = ? LIMIT 1',
+    args: [sessionId, userId]
+  });
+  const row = result.rows[0] as any;
+  return row?.workout_report ?? null;
+}
+
+export async function getWorkoutSessionReportByKey(
+  userId: string,
+  sessionKey: string
+): Promise<string | null> {
+  const hasReportColumn = await ensureWorkoutSessionReportColumn();
+  if (!hasReportColumn) return null;
+  const hasKeyColumn = await hasWorkoutSessionKeyColumn();
+  if (!hasKeyColumn) return null;
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT workout_report FROM workout_sessions WHERE session_key = ? AND user_id = ? LIMIT 1',
+    args: [sessionKey, userId]
+  });
+  const row = result.rows[0] as any;
+  return row?.workout_report ?? null;
+}
+
+export async function getLatestWorkoutReportForWorkoutName(
+  userId: string,
+  workoutName: string
+): Promise<string | null> {
+  const hasReportColumn = await ensureWorkoutSessionReportColumn();
+  if (!hasReportColumn) return null;
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      SELECT workout_report
+      FROM workout_sessions
+      WHERE user_id = ? AND workout_plan_name = ? AND workout_report IS NOT NULL
+      ORDER BY date_completed DESC
+      LIMIT 1
+    `,
+    args: [userId, workoutName]
+  });
+  const row = result.rows[0] as any;
+  return row?.workout_report ?? null;
 }
 
 export async function logExercise(data: {
@@ -750,15 +834,9 @@ export async function getLastExerciseLog(
 export async function getRecentExerciseLogs(
   exerciseName: string,
   userId: string,
-  limit: number = 5,
-  options?: { excludeSessionMode?: 'light' }
+  limit: number = 5
 ): Promise<Array<WorkoutExerciseLog & { completed_at?: string; matched_role?: string }>> {
   const db = getDatabase();
-  const excludeMode = options?.excludeSessionMode;
-  const hasSessionMode = excludeMode ? await hasWorkoutSessionModeColumn() : false;
-  const modeClause = excludeMode && hasSessionMode
-    ? 'AND (ws.session_mode IS NULL OR ws.session_mode != ?)'
-    : '';
 
   const result = await db.execute({
     sql: `
@@ -771,13 +849,10 @@ export async function getRecentExerciseLogs(
       FROM workout_exercise_logs el
       JOIN workout_sessions ws ON el.session_id = ws.id
       WHERE ws.user_id = ? AND (el.exercise_name = ? OR el.b2b_partner_name = ?)
-      ${modeClause}
       ORDER BY ws.date_completed DESC
       LIMIT ?
     `,
-    args: excludeMode && hasSessionMode
-      ? [exerciseName, exerciseName, userId, exerciseName, exerciseName, excludeMode, limit]
-      : [exerciseName, exerciseName, userId, exerciseName, exerciseName, limit]
+    args: [exerciseName, exerciseName, userId, exerciseName, exerciseName, limit]
   });
 
   return result.rows as unknown as Array<WorkoutExerciseLog & { completed_at?: string; matched_role?: string }>;
@@ -807,8 +882,6 @@ export async function getExerciseHistory(
   const daysBack = range === 'week' ? 7 : range === 'month' ? 30 : null;
   const cutoff = daysBack ? new Date(Date.now() - (daysBack - 1) * 86400000).toISOString() : null;
   const rangeClause = cutoff ? 'AND ws.date_completed >= ?' : '';
-  const hasSessionMode = await hasWorkoutSessionModeColumn();
-  const modeClause = hasSessionMode ? 'AND (ws.session_mode IS NULL OR ws.session_mode != ?)' : '';
 
   const sql = `
     WITH matched AS (
@@ -850,7 +923,6 @@ export async function getExerciseHistory(
       FROM workout_exercise_logs el
       JOIN workout_sessions ws ON el.session_id = ws.id
       WHERE ws.user_id = ? AND (el.exercise_name = ? OR el.b2b_partner_name = ?)
-      ${modeClause}
       ${rangeClause}
     ),
     scored AS (
@@ -925,9 +997,6 @@ export async function getExerciseHistory(
     exerciseName,
     exerciseName,
   ];
-  if (hasSessionMode) {
-    args.push('light');
-  }
   if (cutoff) {
     args.push(cutoff);
   }

@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS workout_sessions (
   date_completed TEXT NOT NULL, -- ISO 8601 format
   total_duration_minutes INTEGER,
   total_strain INTEGER,
+  workout_report TEXT, -- LLM workout summary for this session
   created_at TEXT DEFAULT (datetime('now')),
   user_id TEXT,  -- Owner of this workout session
   routine_id INTEGER, -- Optional routine reference

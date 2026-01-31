@@ -35,10 +35,8 @@ function PostStretchesContent() {
 
   // Get routineId from URL params (for public/favorited routines)
   const routineIdParam = searchParams.get('routineId');
-  const sessionModeParam = searchParams.get('mode');
   const routineQueryParams = new URLSearchParams();
   if (routineIdParam) routineQueryParams.set('routineId', routineIdParam);
-  if (sessionModeParam) routineQueryParams.set('mode', sessionModeParam);
   const routineQuery = routineQueryParams.toString() ? `?${routineQueryParams.toString()}` : '';
 
   useEffect(() => {

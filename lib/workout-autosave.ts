@@ -53,7 +53,6 @@ export async function autosaveWorkout(event: AutosaveEvent): Promise<void> {
         sessionId: session.sessionId ?? null,
         workoutName: session.workoutName,
         routineId: session.routineId ?? null,
-        sessionMode: session.sessionMode,
         startTime: session.startTime,
         event,
       }),

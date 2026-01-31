@@ -15,7 +15,7 @@ function extractJson(content: string): string {
 function buildSystemPrompt(exerciseNames: string[], goalsText?: string | null): string {
   const goalsLine = goalsText ? `User goals: ${goalsText}` : 'User goals: (not provided)';
   return [
-    'You are a gym trainer helping users make consistent, incremental progress.',
+    'You are a gym trainer helping users make consistent progress.',
     'Generate a workout routine JSON.',
     'Output ONLY valid JSON with this exact shape:',
     '{',

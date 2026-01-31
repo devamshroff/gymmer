@@ -1,16 +1,23 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Exercise, Stretch, Cardio, SingleExercise } from '@/lib/types';
 import { getFormTips, getVideoUrl } from '@/lib/workout-media';
 import { formatStretchTimer } from '@/lib/stretch-utils';
 import { initWorkoutSession, isSessionMode, resolveSessionMode } from '@/lib/workout-session';
-import type { SessionMode } from '@/lib/workout-session';
 import { BottomActionBar, Card, SectionHeader } from '@/app/components/SharedUi';
 import ExerciseHistoryModal from '@/app/components/ExerciseHistoryModal';
-import { EXERCISE_TYPES, ExerciseHistoryDisplayMode } from '@/lib/constants';
+import { saveSessionTargetsMeta, saveSessionWorkout } from '@/lib/session-workout';
+import {
+  EXERCISE_TYPES,
+  ExerciseHistoryDisplayMode,
+  SESSION_MODE_DESCRIPTIONS,
+  SESSION_MODE_LABELS,
+  SESSION_MODES,
+} from '@/lib/constants';
+import type { SessionMode } from '@/lib/constants';
 
 type ExerciseTarget = {
   suggestedWeight?: number | null;
@@ -26,6 +33,31 @@ type ExerciseHistoryPoint = {
 type ExerciseHistorySeries = {
   display_mode: ExerciseHistoryDisplayMode;
   points: ExerciseHistoryPoint[];
+};
+
+type TargetsNarrative = {
+  encouragement: string | null;
+  goalSummary: string | null;
+  trendSummary: string | null;
+};
+
+type TargetsSource = 'ai' | 'fallback' | null;
+
+type FallbackTargetsResult = {
+  targets: Record<string, ExerciseTarget>;
+  narrative: TargetsNarrative;
+};
+
+type LastSessionMax = {
+  weight: number | null;
+  reps: number | null;
+};
+
+type TrendCounts = {
+  up: number;
+  down: number;
+  flat: number;
+  newData: number;
 };
 
 const WEIGHT_INCREMENT = 2.5;
@@ -66,9 +98,113 @@ function getMaxWeightAndReps(points: ExerciseHistoryPoint[]) {
 }
 
 function getSessionFactors(mode: SessionMode) {
-  if (mode === 'maintenance') return { weight: 0.85, reps: 0.85 };
-  if (mode === 'light') return { weight: 0.6, reps: 0.6 };
+  if (mode === SESSION_MODES.maintenance) return { weight: 0.85, reps: 0.85 };
+  if (mode === SESSION_MODES.light) return { weight: 0.6, reps: 0.6 };
   return { weight: 1.05, reps: 1.05 };
+}
+
+function normalizeNarrativeField(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function computeLastSessionMaxes(history: Record<string, ExerciseHistorySeries>) {
+  const lastMaxes: Record<string, LastSessionMax> = {};
+  for (const [name, series] of Object.entries(history)) {
+    const points = series?.points || [];
+    let lastWeight: number | null = null;
+    let lastReps: number | null = null;
+    for (let i = points.length - 1; i >= 0; i -= 1) {
+      const point = points[i];
+      if (lastWeight === null && point.weight_max !== null) {
+        lastWeight = point.weight_max;
+      }
+      if (lastReps === null && point.reps_max !== null) {
+        lastReps = point.reps_max;
+      }
+      if (lastWeight !== null && lastReps !== null) break;
+    }
+    lastMaxes[name] = { weight: lastWeight, reps: lastReps };
+  }
+  return lastMaxes;
+}
+
+function buildFallbackNarrative(
+  sessionMode: SessionMode,
+  workoutName: string,
+  exerciseNames: string[],
+  trendCounts: TrendCounts
+): TargetsNarrative {
+  const encouragement = sessionMode === SESSION_MODES.progress
+    ? 'Targets are set. Push for a clean win today.'
+    : sessionMode === SESSION_MODES.maintenance
+      ? 'Targets are set. Keep it steady and controlled today.'
+      : 'Targets are set. Keep it light and focus on smooth reps today.';
+
+  const focusNames = exerciseNames.slice(0, 3);
+  const focusText = focusNames.length > 0 ? ` Focus lifts: ${focusNames.join(', ')}.` : '';
+  const sessionLabel = SESSION_MODE_LABELS[sessionMode] ?? 'Training';
+  const workoutLabel = workoutName || 'today';
+  const goalSummary = `Goal today: ${sessionLabel} session for ${workoutLabel}.${focusText}`.trim();
+
+  const trendParts: string[] = [];
+  if (trendCounts.up) trendParts.push(`${trendCounts.up} trending up`);
+  if (trendCounts.flat) trendParts.push(`${trendCounts.flat} steady`);
+  if (trendCounts.down) trendParts.push(`${trendCounts.down} trending down`);
+  if (trendCounts.newData) trendParts.push(`${trendCounts.newData} without recent data`);
+  const trendSummary = trendParts.length > 0
+    ? `Last 30 days: ${trendParts.join(', ')}.`
+    : 'Last 30 days: not enough history yet.';
+
+  return { encouragement, goalSummary, trendSummary };
+}
+
+function resolveTargetNumber(value: number | null | undefined, fallback: number) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function applyTargetsToWorkout(
+  plan: WorkoutPlan,
+  targets: Record<string, ExerciseTarget>
+): WorkoutPlan {
+  return {
+    ...plan,
+    exercises: plan.exercises.map((exercise) => {
+      if (exercise.type === EXERCISE_TYPES.single) {
+        const suggestion = targets[exercise.name];
+        if (!suggestion) return exercise;
+        return {
+          ...exercise,
+          targetWeight: resolveTargetNumber(suggestion.suggestedWeight, exercise.targetWeight),
+          targetReps: resolveTargetNumber(suggestion.suggestedReps, exercise.targetReps),
+        };
+      }
+      const [ex1, ex2] = exercise.exercises;
+      const nextEx1 = (() => {
+        const suggestion = targets[ex1.name];
+        if (!suggestion) return ex1;
+        return {
+          ...ex1,
+          targetWeight: resolveTargetNumber(suggestion.suggestedWeight, ex1.targetWeight),
+          targetReps: resolveTargetNumber(suggestion.suggestedReps, ex1.targetReps),
+        };
+      })();
+      const nextEx2 = (() => {
+        const suggestion = targets[ex2.name];
+        if (!suggestion) return ex2;
+        return {
+          ...ex2,
+          targetWeight: resolveTargetNumber(suggestion.suggestedWeight, ex2.targetWeight),
+          targetReps: resolveTargetNumber(suggestion.suggestedReps, ex2.targetReps),
+        };
+      })();
+      return {
+        ...exercise,
+        exercises: [nextEx1, nextEx2],
+      };
+    }),
+  };
 }
 
 export default function WorkoutDetailPage() {
@@ -77,8 +213,9 @@ export default function WorkoutDetailPage() {
   const searchParams = useSearchParams();
   const isPreview = searchParams.get('preview') === '1';
   const sessionModeParam = searchParams.get('mode');
+  const routineIdParam = searchParams.get('routineId');
   const sessionMode = isSessionMode(sessionModeParam) ? sessionModeParam : null;
-  const startMode = resolveSessionMode(sessionModeParam, 'incremental');
+  const startMode = resolveSessionMode(sessionModeParam);
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [routineId, setRoutineId] = useState<number | null>(null);
@@ -90,7 +227,27 @@ export default function WorkoutDetailPage() {
   const [targets, setTargets] = useState<Record<string, ExerciseTarget>>({});
   const [targetsLoading, setTargetsLoading] = useState(false);
   const [targetsError, setTargetsError] = useState<string | null>(null);
+  const [targetsNarrative, setTargetsNarrative] = useState<TargetsNarrative>({
+    encouragement: null,
+    goalSummary: null,
+    trendSummary: null,
+  });
+  const [targetsSource, setTargetsSource] = useState<TargetsSource>(null);
+  const [lastSessionMaxes, setLastSessionMaxes] = useState<Record<string, LastSessionMax>>({});
+  const [lastWorkoutReport, setLastWorkoutReport] = useState<string | null>(null);
+  const [lastWorkoutReportLoading, setLastWorkoutReportLoading] = useState(false);
+  const [showLastWorkoutReport, setShowLastWorkoutReport] = useState(false);
   const [loadingDots, setLoadingDots] = useState('...');
+
+  const cacheTargetsForSession = useCallback(
+    (nextTargets: Record<string, ExerciseTarget>) => {
+      if (!workout) return;
+      const updatedWorkout = applyTargetsToWorkout(workout, nextTargets);
+      const sessionRoutineId = routineIdParam ?? (routineId !== null ? String(routineId) : null);
+      saveSessionWorkout(updatedWorkout, sessionRoutineId);
+    },
+    [routineId, routineIdParam, workout]
+  );
 
   const baseHistoryTargets = useMemo(() => {
     if (!workout) return {};
@@ -185,9 +342,9 @@ export default function WorkoutDetailPage() {
     fetchWorkout();
   }, [params.name, searchParams]);
 
-  const computeFallbackTargets = async (
+  const fetchExerciseHistory = async (
     signal: AbortSignal
-  ): Promise<Record<string, ExerciseTarget>> => {
+  ): Promise<Record<string, ExerciseHistorySeries>> => {
     if (!workout) return {};
     const params = new URLSearchParams({ range: 'month' });
     for (const name of allExerciseNames) {
@@ -198,9 +355,74 @@ export default function WorkoutDetailPage() {
       throw new Error('Failed to load exercise history');
     }
     const data = await response.json();
-    const history: Record<string, ExerciseHistorySeries> = data.history || {};
+    return data.history || {};
+  };
+
+  const computeFallbackTargets = async (
+    signal: AbortSignal,
+    historyOverride?: Record<string, ExerciseHistorySeries>
+  ): Promise<FallbackTargetsResult> => {
+    if (!workout) {
+      return {
+        targets: {},
+        narrative: { encouragement: null, goalSummary: null, trendSummary: null }
+      };
+    }
+    const history: Record<string, ExerciseHistorySeries> = historyOverride
+      ? historyOverride
+      : await fetchExerciseHistory(signal);
     const fallback: Record<string, ExerciseTarget> = {};
     const { weight: weightFactor, reps: repsFactor } = getSessionFactors(sessionMode as SessionMode);
+    const trendCounts: TrendCounts = { up: 0, down: 0, flat: 0, newData: 0 };
+
+    const getLatestValues = (
+      points: ExerciseHistoryPoint[],
+      primaryKey: 'weight_max' | 'reps_max',
+      fallbackKey?: 'reps_max'
+    ) => {
+      const values: number[] = [];
+      for (let i = points.length - 1; i >= 0 && values.length < 2; i -= 1) {
+        const primary = points[i][primaryKey];
+        if (primary !== null && primary !== undefined) {
+          values.push(primary);
+          continue;
+        }
+        if (fallbackKey) {
+          const fallbackValue = points[i][fallbackKey];
+          if (fallbackValue !== null && fallbackValue !== undefined) {
+            values.push(fallbackValue);
+          }
+        }
+      }
+      return {
+        latest: values[0] ?? null,
+        previous: values[1] ?? null,
+      };
+    };
+
+    const updateTrendCounts = (exercise: TargetExercise) => {
+      const series = history[exercise.name];
+      const points = series?.points || [];
+      if (points.length === 0) {
+        trendCounts.newData += 1;
+        return;
+      }
+      const metricKey: 'weight_max' | 'reps_max' = exercise.isBodyweight ? 'reps_max' : 'weight_max';
+      const fallbackKey = exercise.isBodyweight ? undefined : 'reps_max';
+      const { latest, previous } = getLatestValues(points, metricKey, fallbackKey);
+      if (latest === null || previous === null) {
+        trendCounts.newData += 1;
+        return;
+      }
+      const delta = latest - previous;
+      if (Math.abs(delta) < 0.1) {
+        trendCounts.flat += 1;
+      } else if (delta > 0) {
+        trendCounts.up += 1;
+      } else {
+        trendCounts.down += 1;
+      }
+    };
 
     const buildTarget = (exercise: TargetExercise) => {
       const series = history[exercise.name];
@@ -225,11 +447,11 @@ export default function WorkoutDetailPage() {
         const sourceWeight = maxWeight ?? baseWeight;
         const sourceReps = repsAtMax ?? maxReps ?? baseReps;
         const scaledWeight = roundUpToIncrement(sourceWeight * weightFactor, WEIGHT_INCREMENT);
-        const repFactorForMode = sessionMode === 'incremental' ? 1 : repsFactor;
+        const repFactorForMode = sessionMode === SESSION_MODES.progress ? 1 : repsFactor;
         const scaledReps = roundUpWhole(sourceReps * repFactorForMode);
         suggestedWeight = Math.max(0, scaledWeight);
         suggestedReps = Math.max(1, scaledReps);
-        const repNote = sessionMode === 'incremental'
+        const repNote = sessionMode === SESSION_MODES.progress
           ? 'max reps at your max weight'
           : `${Math.round(repsFactor * 100)}% of your max reps`;
         rationale = usesHistory
@@ -247,14 +469,24 @@ export default function WorkoutDetailPage() {
     for (const entry of workout.exercises) {
       if (entry.type === EXERCISE_TYPES.single) {
         buildTarget(entry);
+        updateTrendCounts(entry);
       } else {
         const [ex1, ex2] = entry.exercises;
         buildTarget(ex1);
         buildTarget(ex2);
+        updateTrendCounts(ex1);
+        updateTrendCounts(ex2);
       }
     }
 
-    return fallback;
+    const narrative = buildFallbackNarrative(
+      sessionMode as SessionMode,
+      workout.name,
+      allExerciseNames,
+      trendCounts
+    );
+
+    return { targets: fallback, narrative };
   };
 
   useEffect(() => {
@@ -275,6 +507,55 @@ export default function WorkoutDetailPage() {
   }, [targetsLoading]);
 
   useEffect(() => {
+    setShowLastWorkoutReport(false);
+  }, [workout?.name]);
+
+  useEffect(() => {
+    if (!isPreview || !workout) return;
+    let isActive = true;
+    const controller = new AbortController();
+
+    const fetchLastReport = async () => {
+      setLastWorkoutReportLoading(true);
+      try {
+        const params = new URLSearchParams({ workoutName: workout.name });
+        const response = await fetch(`/api/workout-report?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          if (!isActive) return;
+          setLastWorkoutReport(null);
+          return;
+        }
+        const data = await response.json();
+        if (!isActive) return;
+        const reportText = typeof data?.report === 'string' ? data.report.trim() : '';
+        setLastWorkoutReport(reportText.length > 0 ? reportText : null);
+      } catch (error) {
+        if (!isActive) return;
+        setLastWorkoutReport(null);
+      } finally {
+        if (isActive) {
+          setLastWorkoutReportLoading(false);
+        }
+      }
+    };
+
+    fetchLastReport();
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [isPreview, workout?.name]);
+
+  useEffect(() => {
+    if (!isPreview || !workout) return;
+    if (Object.keys(targets).length === 0) return;
+    cacheTargetsForSession(targets);
+  }, [cacheTargetsForSession, isPreview, targets, workout]);
+
+  useEffect(() => {
     if (!workout || !isPreview || !sessionMode) return;
 
     let isActive = true;
@@ -284,6 +565,11 @@ export default function WorkoutDetailPage() {
       setTargetsLoading(true);
       setTargetsError(null);
       setTargets({});
+      setTargetsNarrative({ encouragement: null, goalSummary: null, trendSummary: null });
+      setTargetsSource(null);
+      setLastSessionMaxes({});
+      const sessionRoutineId = routineIdParam ?? (routineId !== null ? String(routineId) : null);
+      saveSessionTargetsMeta(workout.name, sessionRoutineId, null);
 
       const exercisePayload: Array<{
         name: string;
@@ -329,6 +615,14 @@ export default function WorkoutDetailPage() {
         }
       }
 
+      const historyPromise = fetchExerciseHistory(controller.signal)
+        .then((historyData) => {
+          if (!isActive) return null;
+          setLastSessionMaxes(computeLastSessionMaxes(historyData));
+          return historyData;
+        })
+        .catch(() => null);
+
       try {
         const targetsResponse = await fetch('/api/workout-targets', {
           method: 'POST',
@@ -344,7 +638,8 @@ export default function WorkoutDetailPage() {
         if (!isActive) return;
 
         if (!targetsResponse.ok) {
-          throw new Error('Failed to load targets');
+          const errorText = await targetsResponse.text();
+          throw new Error(errorText || 'Failed to load targets');
         }
 
         const targetsData = await targetsResponse.json();
@@ -362,17 +657,57 @@ export default function WorkoutDetailPage() {
           throw new Error('No targets returned');
         }
         setTargets(nextTargets);
+        const narrative: TargetsNarrative = {
+          encouragement: normalizeNarrativeField(targetsData?.encouragement),
+          goalSummary: normalizeNarrativeField(targetsData?.goalSummary),
+          trendSummary: normalizeNarrativeField(targetsData?.trendSummary),
+        };
+        const finalNarrative = (!narrative.encouragement && !narrative.goalSummary && !narrative.trendSummary)
+          ? buildFallbackNarrative(
+            sessionMode as SessionMode,
+            workout.name,
+            allExerciseNames,
+            { up: 0, down: 0, flat: 0, newData: allExerciseNames.length }
+          )
+          : narrative;
+        setTargetsNarrative(finalNarrative);
+        setTargetsSource('ai');
+        saveSessionTargetsMeta(workout.name, sessionRoutineId, {
+          encouragement: finalNarrative.encouragement,
+          goalSummary: finalNarrative.goalSummary,
+          trendSummary: finalNarrative.trendSummary,
+          source: 'ai',
+          sessionMode
+        });
         setTargetsLoading(false);
+        await historyPromise;
       } catch (error: any) {
         if (!isActive) return;
+        console.error('AI-trainer targets failed:', error);
+        const aiErrorMessage = error instanceof Error ? error.message : 'AI-trainer request failed.';
         try {
-          const fallbackTargets = await computeFallbackTargets(controller.signal);
+          const historyData = await historyPromise;
+          const fallbackResult = await computeFallbackTargets(controller.signal, historyData || undefined);
           if (!isActive) return;
-          setTargets(fallbackTargets);
-          setTargetsError('Unable to generate AI-trainer targets at this time.');
+          setTargets(fallbackResult.targets);
+          setTargetsNarrative(fallbackResult.narrative);
+          setTargetsSource('fallback');
+          saveSessionTargetsMeta(workout.name, sessionRoutineId, {
+            encouragement: fallbackResult.narrative.encouragement,
+            goalSummary: fallbackResult.narrative.goalSummary,
+            trendSummary: fallbackResult.narrative.trendSummary,
+            source: 'fallback',
+            sessionMode
+          });
+          setTargetsError(
+            `AI-trainer error: ${aiErrorMessage}. Using default targets for now; we should root-cause this.`
+          );
         } catch (fallbackError) {
           if (!isActive) return;
-          setTargetsError('Unable to generate AI-trainer targets at this time.');
+          setTargetsSource('fallback');
+          setTargetsError(
+            `AI-trainer error: ${aiErrorMessage}. Fallback targets also failed; we should root-cause this.`
+          );
         } finally {
           setTargetsLoading(false);
         }
@@ -470,28 +805,28 @@ export default function WorkoutDetailPage() {
             <div className="text-zinc-400 text-sm mb-2">Before you preview</div>
             <h1 className="text-3xl font-bold text-white mb-3">How are you feeling today?</h1>
             <p className="text-zinc-400 mb-6">
-              Pick the vibe for this session. Light workouts will be recorded but they will not show up in your progress history graphs.
+              Pick the vibe for this session so we can set targets for today.
             </p>
             <div className="space-y-3">
               <button
-                onClick={() => handleModeSelect('incremental')}
+                onClick={() => handleModeSelect(SESSION_MODES.progress)}
                 className="w-full text-left bg-emerald-700/80 hover:bg-emerald-600 text-white px-4 py-4 rounded-lg font-semibold transition-colors"
               >
-                Incremental progress
+                Progress
                 <div className="text-emerald-200 text-sm font-normal">Push for some wins today.</div>
               </button>
               <button
-                onClick={() => handleModeSelect('maintenance')}
+                onClick={() => handleModeSelect(SESSION_MODES.maintenance)}
                 className="w-full text-left bg-blue-700/70 hover:bg-blue-600 text-white px-4 py-4 rounded-lg font-semibold transition-colors"
               >
                 Maintenance
                 <div className="text-blue-200 text-sm font-normal">Hold steady and keep the groove.</div>
               </button>
               <button
-                onClick={() => handleModeSelect('light')}
+                onClick={() => handleModeSelect(SESSION_MODES.light)}
                 className="w-full text-left bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-4 rounded-lg font-semibold transition-colors"
               >
-                Light session
+                Light
                 <div className="text-zinc-300 text-sm font-normal">Deload or just move a bit.</div>
               </button>
             </div>
@@ -535,17 +870,12 @@ export default function WorkoutDetailPage() {
             <Card paddingClassName="p-5" borderClassName="border-emerald-600">
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="text-emerald-400 text-xs mb-1">Session Mode</div>
+                  <div className="text-emerald-400 text-xs mb-1">Session Type</div>
                   <div className="text-white text-lg font-semibold">
-                    {startMode === 'incremental' && 'Incremental progress'}
-                    {startMode === 'maintenance' && 'Maintenance'}
-                    {startMode === 'light' && 'Light session'}
+                    {SESSION_MODE_LABELS[startMode]}
                   </div>
                   <div className="text-zinc-400 text-sm mt-1">
-                    {startMode === 'incremental' && 'Push for small, steady improvements.'}
-                    {startMode === 'maintenance' && 'Hold steady and focus on form.'}
-                    {startMode === 'light' &&
-                      'Easy effort today. This session will not appear in history graphs.'}
+                    {SESSION_MODE_DESCRIPTIONS[startMode]}
                   </div>
                 </div>
                 <button
@@ -572,8 +902,8 @@ export default function WorkoutDetailPage() {
                 <p className="text-zinc-200 font-semibold">
                   {targetsLoading
                     ? `Loading AI-trainer targets${loadingDots}`
-                    : targetsError
-                      ? 'Using default targets for this session.'
+                    : targetsSource === 'fallback'
+                      ? 'AI-trainer unavailable. Using formula-based targets for this session.'
                       : 'AI-trainer targets ready.'}
                 </p>
                 {targetsLoading && (
@@ -582,7 +912,32 @@ export default function WorkoutDetailPage() {
                   </div>
                 )}
               </div>
+              {!targetsLoading && (
+                (targetsNarrative.encouragement || targetsNarrative.goalSummary || targetsNarrative.trendSummary) && (
+                  <div className="mt-3 space-y-2 text-sm text-zinc-300 leading-relaxed">
+                    {targetsNarrative.encouragement && <p>{targetsNarrative.encouragement}</p>}
+                    {targetsNarrative.goalSummary && <p>{targetsNarrative.goalSummary}</p>}
+                    {targetsNarrative.trendSummary && <p>{targetsNarrative.trendSummary}</p>}
+                  </div>
+                )
+              )}
             </Card>
+            {!targetsLoading && !lastWorkoutReportLoading && lastWorkoutReport && (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowLastWorkoutReport((prev) => !prev)}
+                  className="text-xs text-amber-300 hover:text-amber-200 bg-zinc-900 px-3 py-2 rounded"
+                >
+                  {showLastWorkoutReport ? 'Hide last session report' : 'View last session report'}
+                </button>
+                {showLastWorkoutReport && (
+                  <div className="mt-3 bg-zinc-900 rounded p-3 text-zinc-300 text-sm whitespace-pre-line border border-amber-700/40">
+                    {lastWorkoutReport}
+                  </div>
+                )}
+              </div>
+            )}
             <p className="text-zinc-400 text-sm mt-3">
               Targets are generated with your{' '}
               <Link href="/profile" className="text-amber-300 hover:text-amber-200 underline">
@@ -638,6 +993,7 @@ export default function WorkoutDetailPage() {
                 onShowHistory={openHistory}
                 targets={targets}
                 showTargets={isPreview}
+                lastSessionMaxes={lastSessionMaxes}
               />
             ))}
           </div>
@@ -690,9 +1046,8 @@ export default function WorkoutDetailPage() {
             onClick={() => {
               const query = new URLSearchParams();
               if (routineId) query.set('routineId', String(routineId));
-              if (startMode) query.set('mode', startMode);
               const queryString = query.toString();
-              initWorkoutSession(workout.name, startMode, routineId);
+              initWorkoutSession(workout.name, routineId);
               const url = `/stretches/${encodeURIComponent(workout.name)}${queryString ? `?${queryString}` : ''}`;
               router.push(url);
             }}
@@ -772,17 +1127,30 @@ function TargetCard({
   baseReps,
   suggestion,
   isBodyweight,
+  lastSession,
 }: {
   baseWeight: number;
   baseReps: number;
   suggestion?: ExerciseTarget;
   isBodyweight?: boolean;
+  lastSession?: LastSessionMax;
 }) {
   const targetWeight = suggestion?.suggestedWeight ?? baseWeight;
   const targetReps = suggestion?.suggestedReps ?? baseReps;
-  const weightDelta = suggestion?.suggestedWeight != null ? suggestion.suggestedWeight - baseWeight : null;
-  const repsDelta = suggestion?.suggestedReps != null ? suggestion.suggestedReps - baseReps : null;
+  const lastWeight = lastSession?.weight ?? null;
+  const lastReps = lastSession?.reps ?? null;
+  const weightDelta = lastWeight !== null ? targetWeight - lastWeight : null;
+  const repsDelta = lastReps !== null ? targetReps - lastReps : null;
   const showWeight = !isBodyweight;
+  const lastSummaryParts: string[] = [];
+  if (showWeight) {
+    if (lastWeight !== null) lastSummaryParts.push(`${lastWeight} lbs`);
+    if (lastReps !== null) lastSummaryParts.push(`${lastReps} reps`);
+  } else {
+    if (lastReps !== null) lastSummaryParts.push(`${lastReps} reps`);
+    else if (lastWeight !== null) lastSummaryParts.push(`${lastWeight} lbs`);
+  }
+  const lastSummary = lastSummaryParts.join(' · ');
 
   const formatDelta = (delta: number) => `${delta > 0 ? '+' : ''}${delta}`;
   const deltaClass = (delta: number) => (delta > 0 ? 'text-emerald-300' : 'text-amber-300');
@@ -812,6 +1180,11 @@ function TargetCard({
           </div>
         </div>
       </div>
+      {lastSummary && (
+        <div className="text-zinc-500 text-xs mt-2">
+          Last time max: {lastSummary}
+        </div>
+      )}
       {suggestion?.rationale && (
         <div className="text-zinc-400 text-xs mt-2">{suggestion.rationale}</div>
       )}
@@ -825,12 +1198,14 @@ function ExerciseCard({
   onShowHistory,
   targets,
   showTargets,
+  lastSessionMaxes,
 }: {
   exercise: Exercise;
   index: number;
   onShowHistory: (names: string[]) => void;
   targets: Record<string, ExerciseTarget>;
   showTargets: boolean;
+  lastSessionMaxes: Record<string, LastSessionMax>;
 }) {
   if (exercise.type === EXERCISE_TYPES.single) {
     const tips = getFormTips(exercise.tips);
@@ -895,6 +1270,7 @@ function ExerciseCard({
             baseReps={exercise.targetReps}
             suggestion={targets[exercise.name]}
             isBodyweight={exercise.isBodyweight}
+            lastSession={lastSessionMaxes[exercise.name]}
           />
         )}
 
@@ -979,6 +1355,7 @@ function ExerciseCard({
               baseReps={ex1.targetReps}
               suggestion={targets[ex1.name]}
               isBodyweight={ex1.isBodyweight}
+              lastSession={lastSessionMaxes[ex1.name]}
             />
           </div>
         )}
@@ -1046,6 +1423,7 @@ function ExerciseCard({
               baseReps={ex2.targetReps}
               suggestion={targets[ex2.name]}
               isBodyweight={ex2.isBodyweight}
+              lastSession={lastSessionMaxes[ex2.name]}
             />
           </div>
         )}

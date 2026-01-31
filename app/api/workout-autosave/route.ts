@@ -8,7 +8,6 @@ import {
   touchWorkoutSession,
   upsertWorkoutExerciseLog
 } from '@/lib/database';
-import { resolveSessionMode } from '@/lib/workout-session';
 import { EXERCISE_TYPES } from '@/lib/constants';
 
 type AutosaveEvent =
@@ -40,7 +39,6 @@ type AutosavePayload = {
   sessionId?: number | null;
   workoutName?: string;
   routineId?: number | null;
-  sessionMode?: string | null;
   startTime?: string | null;
   event?: AutosaveEvent;
 };
@@ -53,7 +51,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as AutosavePayload;
     const routineId = typeof body.routineId === 'number' ? body.routineId : null;
-    const sessionMode = resolveSessionMode(body.sessionMode, 'incremental');
     const workoutName = typeof body.workoutName === 'string' ? body.workoutName : '';
     const event = body.event;
     const sessionKey = typeof body.startTime === 'string' ? body.startTime : null;
@@ -89,7 +86,6 @@ export async function POST(request: NextRequest) {
           session_key: sessionKey,
           workout_plan_name: finalWorkoutName,
           date_completed: sessionKey || new Date().toISOString(),
-          session_mode: sessionMode,
         });
       } catch (error: any) {
         const message = String(error?.message || error);
@@ -115,7 +111,6 @@ export async function POST(request: NextRequest) {
     await touchWorkoutSession(sessionId, user.id, {
       routine_id: routineId,
       workout_plan_name: workoutName,
-      session_mode: sessionMode,
     });
 
     if (event?.type === 'single_set') {

@@ -1,7 +1,7 @@
 // lib/workout-session.ts
 // Client-side storage for current workout session
 
-import { EXERCISE_TYPES } from '@/lib/constants';
+import { EXERCISE_TYPES, SESSION_MODES, type SessionMode } from '@/lib/constants';
 
 export interface SessionExerciseData {
   name: string;
@@ -15,14 +15,11 @@ export interface SessionExerciseData {
   };
 }
 
-export type SessionMode = 'incremental' | 'maintenance' | 'light';
-
 export interface WorkoutSessionData {
   workoutName: string;
   routineId?: number | null;
   sessionId?: number | null;
   startTime: string;
-  sessionMode: SessionMode;
   exercises: SessionExerciseData[];
   cardio?: {
     type: string;
@@ -35,16 +32,20 @@ export interface WorkoutSessionData {
 const STORAGE_KEY = 'current_workout_session';
 
 export function isSessionMode(value: string | null | undefined): value is SessionMode {
-  return value === 'incremental' || value === 'maintenance' || value === 'light';
+  return value === SESSION_MODES.progress
+    || value === SESSION_MODES.maintenance
+    || value === SESSION_MODES.light;
 }
 
-export function resolveSessionMode(value: string | null | undefined, fallback: SessionMode = 'incremental'): SessionMode {
+export function resolveSessionMode(
+  value: string | null | undefined,
+  fallback: SessionMode = SESSION_MODES.progress
+): SessionMode {
   return isSessionMode(value) ? value : fallback;
 }
 
 export function initWorkoutSession(
   workoutName: string,
-  sessionMode: SessionMode = 'incremental',
   routineId?: number | null
 ): void {
   const session: WorkoutSessionData = {
@@ -52,7 +53,6 @@ export function initWorkoutSession(
     routineId: routineId ?? null,
     sessionId: null,
     startTime: new Date().toISOString(),
-    sessionMode,
     exercises: [],
   };
   if (typeof window !== 'undefined') {
@@ -62,21 +62,16 @@ export function initWorkoutSession(
 
 export function ensureWorkoutSession(
   workoutName: string,
-  sessionMode: SessionMode = 'incremental',
   routineId?: number | null
 ): void {
   const existing = getWorkoutSession();
   const normalizedRoutineId = routineId ?? null;
   if (!existing) {
-    initWorkoutSession(workoutName, sessionMode, normalizedRoutineId);
+    initWorkoutSession(workoutName, normalizedRoutineId);
     return;
   }
   if (existing.workoutName !== workoutName || (existing.routineId ?? null) !== normalizedRoutineId) {
-    initWorkoutSession(workoutName, sessionMode, normalizedRoutineId);
-    return;
-  }
-  if (existing.sessionMode !== sessionMode) {
-    setWorkoutSessionMode(sessionMode);
+    initWorkoutSession(workoutName, normalizedRoutineId);
   }
 }
 
@@ -85,7 +80,6 @@ export function getWorkoutSession(): WorkoutSessionData | null {
   const data = localStorage.getItem(STORAGE_KEY);
   if (!data) return null;
   const parsed = JSON.parse(data) as WorkoutSessionData;
-  parsed.sessionMode = resolveSessionMode(parsed.sessionMode, 'incremental');
   const rawRoutineId = (parsed as { routineId?: unknown }).routineId;
   const nextRoutineId = typeof rawRoutineId === 'number' ? rawRoutineId : Number(rawRoutineId);
   parsed.routineId = Number.isFinite(nextRoutineId) ? nextRoutineId : null;
@@ -119,15 +113,6 @@ export function addCardioToSession(cardio: { type: string; time: string; speed?:
   if (!session) return;
 
   session.cardio = cardio;
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-  }
-}
-
-export function setWorkoutSessionMode(mode: SessionMode): void {
-  const session = getWorkoutSession();
-  if (!session) return;
-  session.sessionMode = mode;
   if (typeof window !== 'undefined') {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   }
