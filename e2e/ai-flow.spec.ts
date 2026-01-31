@@ -113,6 +113,26 @@ test('AI routine flow: generate, edit, save, and complete workout', async ({ pag
     });
   });
 
+  await page.route('**/api/workout-targets', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        encouragement: 'Targets ready.',
+        goalSummary: 'Build strength.',
+        trendSummary: 'Trending steady.',
+        targets: [
+          {
+            name: 'Bench Press',
+            suggestedWeight: 135,
+            suggestedReps: 8,
+            rationale: 'Baseline target for today.'
+          }
+        ]
+      }),
+    });
+  });
+
   await page.goto('/routines/ai');
 
   await page.getByPlaceholder('Example: 45-minute pull day focused on hypertrophy. Target lats and biceps. No deadlifts. Mild shoulder impingement. Home gym with dumbbells and pull-up bar.')
@@ -139,7 +159,7 @@ test('AI routine flow: generate, edit, save, and complete workout', async ({ pag
   const modeGate = page.getByRole('heading', { name: 'How are you feeling today?' });
   try {
     await modeGate.waitFor({ timeout: 2000 });
-    await page.getByRole('button', { name: /Incremental progress/ }).click();
+    await page.getByRole('button', { name: /Progress/ }).click();
   } catch {
     // Mode already selected; continue.
   }
