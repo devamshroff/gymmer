@@ -1,16 +1,21 @@
+import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-utils';
 import {
   createStretch,
   getAllStretches,
+  getRoutineStretchRecommendationCache,
   getRoutineById,
   getRoutineExercises,
+  getStretchVersion,
   getUserGoals,
+  upsertRoutineStretchRecommendationCache,
 } from '@/lib/database';
 import { generateStretchInsights } from '@/lib/form-tips';
 import { STRETCH_MUSCLE_TAGS, normalizeTypeList } from '@/lib/muscle-tags';
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const RECOMMENDATION_CACHE_VERSION = 1;
 
 type RecommendedStretch = {
   name: string;
@@ -18,6 +23,17 @@ type RecommendedStretch = {
   tips?: string;
   muscleGroups?: string[];
   stretchTypes?: string[];
+};
+
+type RecommendationCacheSignatureInput = {
+  routineId: number;
+  routineName: string;
+  routineDescription: string | null;
+  exercisePairs: Array<{ exerciseId1: number; exerciseId2: number | null }>;
+  goalsText: string | null;
+  model: string;
+  stretchVersion: number;
+  signatureVersion: number;
 };
 
 type NameIndex = {
@@ -40,6 +56,10 @@ function extractJson(content: string): string {
     return fencedMatch[1];
   }
   return content;
+}
+
+function buildRecommendationSignature(payload: RecommendationCacheSignatureInput): string {
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
 
 function buildSystemPrompt(
@@ -199,9 +219,37 @@ export async function POST(
       );
     }
 
+    const goalsText = await getUserGoals(user.id);
+    const exercisePairs = exercises.map((ex) => ({
+      exerciseId1: ex.exercise_id1,
+      exerciseId2: ex.exercise_id2 ?? null,
+    }));
+    const stretchVersion = await getStretchVersion();
+    const signature = buildRecommendationSignature({
+      routineId,
+      routineName: routine.name || '',
+      routineDescription: routine.description ?? null,
+      exercisePairs,
+      goalsText: goalsText ?? null,
+      model: DEFAULT_MODEL,
+      stretchVersion,
+      signatureVersion: RECOMMENDATION_CACHE_VERSION,
+    });
+    const cached = await getRoutineStretchRecommendationCache({
+      routineId,
+      userId: user.id,
+      signature,
+    });
+    if (cached) {
+      return NextResponse.json({
+        recommendedPreIds: cached.recommendedPreIds,
+        recommendedPostIds: cached.recommendedPostIds,
+        createdStretches: [],
+      });
+    }
+
     const allStretches = await getAllStretches();
     const availableStretchNames = allStretches.map((stretch) => stretch.name);
-    const goalsText = await getUserGoals(user.id);
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -303,6 +351,24 @@ export async function POST(
 
     const updatedStretches = await getAllStretches();
     const createdStretches = updatedStretches.filter((s) => createdIds.includes(s.id));
+    const finalStretchVersion = createdIds.length > 0 ? await getStretchVersion() : stretchVersion;
+    const finalSignature = buildRecommendationSignature({
+      routineId,
+      routineName: routine.name || '',
+      routineDescription: routine.description ?? null,
+      exercisePairs,
+      goalsText: goalsText ?? null,
+      model: DEFAULT_MODEL,
+      stretchVersion: finalStretchVersion,
+      signatureVersion: RECOMMENDATION_CACHE_VERSION,
+    });
+    await upsertRoutineStretchRecommendationCache({
+      routineId,
+      userId: user.id,
+      signature: finalSignature,
+      recommendedPreIds: finalPreIds,
+      recommendedPostIds: finalPostIds,
+    });
 
     return NextResponse.json({
       recommendedPreIds: finalPreIds,

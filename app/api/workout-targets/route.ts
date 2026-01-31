@@ -199,7 +199,7 @@ export async function POST(request: NextRequest) {
               'Use the workout goals, sessionMode, and recent history to suggest today\'s targets.',
               'If provided, use lastWorkoutReport from the prior session for this workout to guide targets.',
               'Provide an encouragement and recap trend changes using historySummary.',
-              'Always emphasize importance of stretching and form. And encourage going till failure on the working weight in progress mode especially. Maybe not for light.',
+              'Avoid form tips or stretching reminders; those are handled per exercise.',
               'User is able to pick between 3 modes based on how they are feeling today - Progress, Maintenance, and Light.',
               'Obviously if its the first time user is doing a particular exercise create a reasonable target based on the information you have.',
               'For progress, keep targets go up in targets a little unless slight adjustment helps recovery. Be mindful of their goals and push them for things that are more their goals.',
@@ -215,7 +215,7 @@ export async function POST(request: NextRequest) {
           }
         ],
         temperature: 0.3,
-        max_tokens: 500,
+        max_tokens: 1000,
       }),
     });
 
@@ -228,6 +228,9 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
+    if (data?.usage) {
+      console.info('Workout targets token usage:', data.usage);
+    }
     const content = data.choices?.[0]?.message?.content;
     if (!content) {
       return NextResponse.json(

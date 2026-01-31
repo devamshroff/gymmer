@@ -29,6 +29,27 @@ function RoutineBuilderContent() {
     }
   }, [existingId]);
 
+  useEffect(() => {
+    if (!routineId || exercises.length === 0) return;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      fetch(`/api/routines/${routineId}/stretch-recommendations`, {
+        method: 'POST',
+        signal: controller.signal,
+      }).catch((error) => {
+        if (error?.name !== 'AbortError') {
+          console.warn('Failed to prefetch stretch recommendations:', error);
+        }
+      });
+    }, 1000);
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [routineId, exercises]);
+
   const loadExistingRoutine = async (id: string) => {
     setLoadingExisting(true);
     try {

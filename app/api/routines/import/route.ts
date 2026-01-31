@@ -196,15 +196,21 @@ async function getOrCreateExercise(
     name,
     goalsText,
   });
+  const resolvedTips = insights?.tips ?? null;
+  const inferredBodyweight = typeof insights?.isBodyweight === 'boolean'
+    ? (insights.isBodyweight ? 1 : 0)
+    : null;
   const muscleGroups = normalizeTypeList(insights?.muscleGroups, MUSCLE_GROUP_TAGS);
   const resolvedMuscleGroups = muscleGroups.length ? muscleGroups : ['unknown'];
   const resolvedDifficulty = insights?.difficulty || 'Intermediate';
 
   const result = await db.execute({
-    sql: 'INSERT INTO exercises (name, muscle_groups, difficulty) VALUES (?, ?, ?)',
+    sql: 'INSERT INTO exercises (name, tips, muscle_groups, is_bodyweight, difficulty) VALUES (?, ?, ?, ?, ?)',
     args: [
       name,
+      resolvedTips,
       JSON.stringify(resolvedMuscleGroups),
+      inferredBodyweight,
       resolvedDifficulty,
     ]
   });

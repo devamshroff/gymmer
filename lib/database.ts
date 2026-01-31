@@ -13,6 +13,8 @@ let workoutSessionRoutineIdColumnReady: boolean | null = null;
 let workoutSessionKeyColumnReady: boolean | null = null;
 let workoutSessionReportColumnReady: boolean | null = null;
 let routineStretchTablesReady: boolean | null = null;
+let stretchRecommendationCacheReady: boolean | null = null;
+let stretchVersionTableReady: boolean | null = null;
 const DEFAULT_REST_TIME_SECONDS = 60;
 const DEFAULT_SUPERSET_REST_TIME_SECONDS = 15;
 
@@ -309,6 +311,41 @@ async function ensureRoutineStretchTables(): Promise<void> {
   }
 
   routineStretchTablesReady = true;
+}
+
+async function ensureStretchVersionTable(): Promise<void> {
+  if (stretchVersionTableReady) return;
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      CREATE TABLE IF NOT EXISTS stretch_version (
+        id INTEGER PRIMARY KEY,
+        version INTEGER NOT NULL,
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `
+  });
+  stretchVersionTableReady = true;
+}
+
+async function ensureStretchRecommendationCacheTable(): Promise<void> {
+  if (stretchRecommendationCacheReady) return;
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      CREATE TABLE IF NOT EXISTS routine_stretch_recommendation_cache (
+        routine_id INTEGER NOT NULL,
+        user_id TEXT NOT NULL,
+        signature TEXT NOT NULL,
+        recommended_pre_ids TEXT NOT NULL,
+        recommended_post_ids TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (routine_id, user_id, signature)
+      )
+    `
+  });
+  stretchRecommendationCacheReady = true;
 }
 
 export async function getUserSettings(userId: string): Promise<{
@@ -1253,7 +1290,13 @@ export async function createStretch(data: {
       data.muscleGroups ? JSON.stringify(data.muscleGroups) : null
     ]
   });
-  return Number(result.lastInsertRowid);
+  const id = Number(result.lastInsertRowid);
+  try {
+    await bumpStretchVersion();
+  } catch (error) {
+    console.warn('Failed to bump stretch version:', error);
+  }
+  return id;
 }
 
 export async function getAllStretches(): Promise<any[]> {
@@ -1269,6 +1312,101 @@ export async function getStretchById(id: number): Promise<any | null> {
     args: [id]
   });
   return result.rows[0] as any || null;
+}
+
+function parseIdList(value: unknown): number[] {
+  if (typeof value !== 'string' || !value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item) => Number(item)).filter((item) => Number.isFinite(item));
+  } catch {
+    return [];
+  }
+}
+
+export async function getStretchVersion(): Promise<number> {
+  await ensureStretchVersionTable();
+  const db = getDatabase();
+  await db.execute({
+    sql: 'INSERT OR IGNORE INTO stretch_version (id, version) VALUES (1, 0)'
+  });
+  const result = await db.execute({
+    sql: 'SELECT version FROM stretch_version WHERE id = 1'
+  });
+  return Number(result.rows[0]?.version ?? 0);
+}
+
+export async function bumpStretchVersion(): Promise<void> {
+  await ensureStretchVersionTable();
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      INSERT INTO stretch_version (id, version, updated_at)
+      VALUES (1, 1, datetime('now'))
+      ON CONFLICT(id) DO UPDATE SET
+        version = version + 1,
+        updated_at = datetime('now')
+    `
+  });
+}
+
+export async function getRoutineStretchRecommendationCache(params: {
+  routineId: number;
+  userId: string;
+  signature: string;
+}): Promise<{ recommendedPreIds: number[]; recommendedPostIds: number[] } | null> {
+  await ensureStretchRecommendationCacheTable();
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      SELECT recommended_pre_ids, recommended_post_ids
+      FROM routine_stretch_recommendation_cache
+      WHERE routine_id = ? AND user_id = ? AND signature = ?
+    `,
+    args: [params.routineId, params.userId, params.signature]
+  });
+  const row = result.rows[0] as any;
+  if (!row) return null;
+  return {
+    recommendedPreIds: parseIdList(row.recommended_pre_ids),
+    recommendedPostIds: parseIdList(row.recommended_post_ids),
+  };
+}
+
+export async function upsertRoutineStretchRecommendationCache(params: {
+  routineId: number;
+  userId: string;
+  signature: string;
+  recommendedPreIds: number[];
+  recommendedPostIds: number[];
+}): Promise<void> {
+  await ensureStretchRecommendationCacheTable();
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      INSERT INTO routine_stretch_recommendation_cache (
+        routine_id,
+        user_id,
+        signature,
+        recommended_pre_ids,
+        recommended_post_ids,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      ON CONFLICT(routine_id, user_id, signature) DO UPDATE SET
+        recommended_pre_ids = excluded.recommended_pre_ids,
+        recommended_post_ids = excluded.recommended_post_ids,
+        updated_at = datetime('now')
+    `,
+    args: [
+      params.routineId,
+      params.userId,
+      params.signature,
+      JSON.stringify(params.recommendedPreIds),
+      JSON.stringify(params.recommendedPostIds)
+    ]
+  });
 }
 
 // Routine stretch management
