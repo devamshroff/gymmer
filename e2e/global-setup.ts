@@ -70,17 +70,17 @@ async function setupDatabase() {
   }
 
   const stretches = [
-    { name: 'Arm Circles', duration: '30 seconds', type: 'pre_workout' },
-    { name: 'Chest Opener', duration: '30 seconds', type: 'pre_workout' },
-    { name: 'Shoulder Stretch', duration: '45 seconds', type: 'post_workout' },
-    { name: 'Lat Stretch', duration: '45 seconds', type: 'post_workout' },
+    { name: 'Arm Circles', timerSeconds: 30 },
+    { name: 'Chest Opener', timerSeconds: 30 },
+    { name: 'Shoulder Stretch', timerSeconds: 45 },
+    { name: 'Lat Stretch', timerSeconds: 45 },
   ];
 
   for (const stretch of stretches) {
     await db.execute({
-      sql: `INSERT OR IGNORE INTO stretches (name, duration, type, timer_seconds, created_at)
-            VALUES (?, ?, ?, 30, datetime('now'))`,
-      args: [stretch.name, stretch.duration, stretch.type],
+      sql: `INSERT OR IGNORE INTO stretches (name, timer_seconds, created_at)
+            VALUES (?, ?, datetime('now'))`,
+      args: [stretch.name, stretch.timerSeconds],
     });
   }
 
@@ -109,18 +109,13 @@ async function setupDatabase() {
 
   await db.execute({
     sql: `INSERT INTO routine_exercises (
-            routine_id, exercise_id, order_index, exercise_type,
-            sets, target_reps, target_weight, warmup_weight, rest_time
-          ) VALUES (?, ?, ?, 'single', ?, ?, ?, ?, ?)`,
+            routine_id, exercise_id1, exercise_id2, order_index
+          ) VALUES (?, ?, ?, ?)`,
     args: [
       e2eRoutineId,
       requireExerciseId('Bench Press'),
+      null,
       0,
-      1,
-      8,
-      135,
-      0,
-      1,
     ],
   });
 
@@ -133,18 +128,13 @@ async function setupDatabase() {
 
   await db.execute({
     sql: `INSERT INTO routine_exercises (
-            routine_id, exercise_id, order_index, exercise_type,
-            sets, target_reps, target_weight, warmup_weight, rest_time
-          ) VALUES (?, ?, ?, 'single', ?, ?, ?, ?, ?)`,
+            routine_id, exercise_id1, exercise_id2, order_index
+          ) VALUES (?, ?, ?, ?)`,
     args: [
       publicRoutineId,
       requireExerciseId('Pull-up'),
+      null,
       0,
-      2,
-      6,
-      0,
-      0,
-      1,
     ],
   });
 

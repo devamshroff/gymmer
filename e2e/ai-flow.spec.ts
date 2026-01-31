@@ -129,11 +129,11 @@ test('AI routine flow: generate, edit, save, and complete workout', async ({ pag
   await page.getByRole('button', { name: 'Arm Circles' }).click();
 
   await page.getByRole('button', { name: 'Save & Exit' }).click();
-  await page.waitForURL('/', { timeout: 20000 });
+  await page.waitForURL('/routines', { timeout: 20000 });
 
   const routineCard = page.getByRole('heading', { name: routineName }).locator('..').locator('..').locator('..');
   await expect(routineCard).toBeVisible();
-  await routineCard.getByRole('link', { name: 'Preview' }).click();
+  await routineCard.getByRole('link', { name: 'Start' }).click();
   await expect(page.getByRole('heading', { name: routineName })).toBeVisible();
 
   const modeGate = page.getByRole('heading', { name: 'How are you feeling today?' });

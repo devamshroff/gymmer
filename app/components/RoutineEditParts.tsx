@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { EXERCISE_TYPES } from '@/lib/constants';
 import { formatStretchTimer } from '@/lib/stretch-utils';
 
 export function AddButton({
@@ -86,10 +85,10 @@ export function ExerciseItem({
   exercise,
   onDelete
 }: {
-  exercise: { exercise_name: string; exercise_type: string; b2b_partner_name: string | null };
+  exercise: { exercise_name: string; exercise_id2: number | null; exercise2_name: string | null };
   onDelete: () => void;
 }) {
-  const isSuperset = exercise.exercise_type === EXERCISE_TYPES.b2b;
+  const isSuperset = Boolean(exercise.exercise_id2);
 
   return (
     <div className={`bg-zinc-800 rounded-lg p-4 border-2 ${isSuperset ? 'border-purple-700' : 'border-zinc-700'} mb-2`}>
@@ -99,10 +98,10 @@ export function ExerciseItem({
             <div className="text-purple-400 text-xs font-bold mb-2">SUPERSET</div>
           )}
           <div className="text-white font-semibold">{exercise.exercise_name}</div>
-          {isSuperset && exercise.b2b_partner_name && (
+          {isSuperset && exercise.exercise2_name && (
             <>
               <div className="text-purple-400 text-sm my-1">+</div>
-              <div className="text-white font-semibold">{exercise.b2b_partner_name}</div>
+              <div className="text-white font-semibold">{exercise.exercise2_name}</div>
             </>
           )}
         </div>

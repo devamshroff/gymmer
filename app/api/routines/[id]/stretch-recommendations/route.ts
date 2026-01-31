@@ -9,8 +9,6 @@ import {
 } from '@/lib/database';
 import { generateStretchInsights } from '@/lib/form-tips';
 import { STRETCH_MUSCLE_TAGS, normalizeTypeList } from '@/lib/muscle-tags';
-import { EXERCISE_TYPES } from '@/lib/constants';
-import { parseTimerSecondsFromText } from '@/lib/stretch-utils';
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
@@ -111,7 +109,7 @@ async function findOrCreateStretchId(
 
   const providedTimer = Number.isFinite(Number(stretch.timerSeconds)) && Number(stretch.timerSeconds) > 0
     ? Math.round(Number(stretch.timerSeconds))
-    : parseTimerSecondsFromText(stretch.duration);
+    : null;
   const muscleGroupsInput = normalizeTypeList(
     stretch.muscleGroups || stretch.stretchTypes,
     STRETCH_MUSCLE_TAGS
@@ -184,13 +182,13 @@ export async function POST(
 
     const exercises = await getRoutineExercises(routineId);
     const exerciseNames = exercises.flatMap((ex) => {
-      if (ex.exercise_type === EXERCISE_TYPES.b2b && ex.b2b_partner_name) {
+      if (ex.exercise_id2 && ex.exercise2_name) {
         return [
-          `Superset: ${ex.exercise_name} (sets: ${ex.sets ?? 'N/A'}, reps: ${ex.target_reps ?? 'N/A'}) + ${ex.b2b_partner_name} (sets: ${ex.b2b_sets ?? 'N/A'}, reps: ${ex.b2b_target_reps ?? 'N/A'})`,
+          `Superset: ${ex.exercise_name} + ${ex.exercise2_name}`,
         ];
       }
       return [
-        `${ex.exercise_name} (sets: ${ex.sets ?? 'N/A'}, reps: ${ex.target_reps ?? 'N/A'}, rest: ${ex.rest_time ?? 'N/A'}s)`
+        ex.exercise_name
       ];
     });
 

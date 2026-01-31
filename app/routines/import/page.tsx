@@ -123,11 +123,6 @@ export default function ImportRoutinePage() {
     {
       "type": "single",
       "name": "Bench Press",
-      "sets": 4,
-      "targetReps": 10,
-      "targetWeight": 135,
-      "warmupWeight": 95,
-      "restTime": 120,
       "videoUrl": "https://example.com/video",
       "tips": "Optional form cue"
     },
@@ -136,19 +131,11 @@ export default function ImportRoutinePage() {
       "exercises": [
         {
           "name": "Pull-ups",
-          "sets": 3,
-          "targetReps": 12,
-          "targetWeight": 0,
-          "warmupWeight": 0,
           "videoUrl": "https://example.com/video",
           "tips": "Optional form cue"
         },
         {
           "name": "Push-ups",
-          "sets": 3,
-          "targetReps": 15,
-          "targetWeight": 0,
-          "warmupWeight": 0,
           "videoUrl": "https://example.com/video",
           "tips": "Optional form cue"
         }

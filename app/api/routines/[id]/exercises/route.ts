@@ -29,24 +29,11 @@ export async function POST(
     }
 
     const body = await request.json();
-    const {
-      exerciseId,
-      exerciseType,
-      sets,
-      targetReps,
-      targetWeight,
-      warmupWeight,
-      restTime,
-      b2bPartnerId,
-      b2bSets,
-      b2bTargetReps,
-      b2bTargetWeight,
-      b2bWarmupWeight
-    } = body;
+    const { exerciseId1, exerciseId2 } = body;
 
-    if (!exerciseId || !exerciseType) {
+    if (!exerciseId1) {
       return NextResponse.json(
-        { error: 'Exercise ID and type are required' },
+        { error: 'Exercise ID is required' },
         { status: 400 }
       );
     }
@@ -57,19 +44,9 @@ export async function POST(
 
     const exerciseConfigId = await addExerciseToRoutine({
       routineId,
-      exerciseId,
-      orderIndex,
-      exerciseType,
-      sets,
-      targetReps,
-      targetWeight,
-      warmupWeight,
-      restTime,
-      b2bPartnerId,
-      b2bSets,
-      b2bTargetReps,
-      b2bTargetWeight,
-      b2bWarmupWeight
+      exerciseId1,
+      exerciseId2: exerciseId2 ?? null,
+      orderIndex
     });
 
     return NextResponse.json({ id: exerciseConfigId, success: true }, { status: 201 });

@@ -5,7 +5,6 @@ import {
   EXERCISE_HISTORY_DISPLAY_MODES,
   ExerciseHistoryDisplayMode,
   ExerciseType,
-  EXERCISE_TYPES,
 } from './constants';
 
 // Initialize database connection
@@ -13,6 +12,7 @@ let db: Client | null = null;
 let workoutSessionModeColumnReady: boolean | null = null;
 let workoutSessionRoutineIdColumnReady: boolean | null = null;
 let workoutSessionKeyColumnReady: boolean | null = null;
+let routineStretchTablesReady: boolean | null = null;
 const DEFAULT_REST_TIME_SECONDS = 60;
 const DEFAULT_SUPERSET_REST_TIME_SECONDS = 15;
 
@@ -229,6 +229,64 @@ async function ensureUserSettingsTable(): Promise<void> {
       )
     `
   });
+}
+
+async function ensureRoutineStretchTables(): Promise<void> {
+  if (routineStretchTablesReady) return;
+  const db = getDatabase();
+
+  const tableExists = async (tableName: string): Promise<boolean> => {
+    const result = await db.execute({
+      sql: "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+      args: [tableName]
+    });
+    return result.rows.length > 0;
+  };
+
+  const hasLegacyStretchFk = async (tableName: string): Promise<boolean> => {
+    if (!(await tableExists(tableName))) return false;
+    const result = await db.execute(`PRAGMA foreign_key_list(${tableName})`);
+    return result.rows.some((row: any) => row?.table === 'stretches_old');
+  };
+
+  const rebuildRoutineStretchTable = async (tableName: 'routine_pre_stretches' | 'routine_post_stretches') => {
+    const exists = await tableExists(tableName);
+    const oldName = `${tableName}_old`;
+    if (exists) {
+      await db.execute(`ALTER TABLE ${tableName} RENAME TO ${oldName}`);
+    }
+    await db.execute(`
+      CREATE TABLE ${tableName} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        routine_id INTEGER NOT NULL,
+        stretch_id INTEGER NOT NULL,
+        order_index INTEGER NOT NULL,
+        FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE CASCADE,
+        FOREIGN KEY (stretch_id) REFERENCES stretches(id) ON DELETE CASCADE
+      )
+    `);
+    if (exists) {
+      await db.execute(`INSERT INTO ${tableName} SELECT * FROM ${oldName}`);
+      await db.execute(`DROP TABLE ${oldName}`);
+    }
+  };
+
+  const needsPreFix = await hasLegacyStretchFk('routine_pre_stretches');
+  const needsPostFix = await hasLegacyStretchFk('routine_post_stretches');
+
+  if (needsPreFix) {
+    await rebuildRoutineStretchTable('routine_pre_stretches');
+  } else if (!(await tableExists('routine_pre_stretches'))) {
+    await rebuildRoutineStretchTable('routine_pre_stretches');
+  }
+
+  if (needsPostFix) {
+    await rebuildRoutineStretchTable('routine_post_stretches');
+  } else if (!(await tableExists('routine_post_stretches'))) {
+    await rebuildRoutineStretchTable('routine_post_stretches');
+  }
+
+  routineStretchTablesReady = true;
 }
 
 export async function getUserSettings(userId: string): Promise<{
@@ -1053,44 +1111,22 @@ export async function updateRoutineNotes(id: number, notes: string | null, userI
 // Routine exercise management
 export async function addExerciseToRoutine(data: {
   routineId: number;
-  exerciseId: number;
+  exerciseId1: number;
+  exerciseId2?: number | null;
   orderIndex: number;
-  exerciseType: typeof EXERCISE_TYPES.single | typeof EXERCISE_TYPES.b2b;
-  sets?: number;
-  targetReps?: number;
-  targetWeight?: number;
-  warmupWeight?: number;
-  restTime?: number;
-  b2bPartnerId?: number;
-  b2bSets?: number;
-  b2bTargetReps?: number;
-  b2bTargetWeight?: number;
-  b2bWarmupWeight?: number;
 }): Promise<number> {
   const db = getDatabase();
   const result = await db.execute({
     sql: `
       INSERT INTO routine_exercises (
-        routine_id, exercise_id, order_index, exercise_type,
-        sets, target_reps, target_weight, warmup_weight, rest_time,
-        b2b_partner_id, b2b_sets, b2b_target_reps, b2b_target_weight, b2b_warmup_weight
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        routine_id, exercise_id1, exercise_id2, order_index
+      ) VALUES (?, ?, ?, ?)
     `,
     args: [
       data.routineId,
-      data.exerciseId,
-      data.orderIndex,
-      data.exerciseType,
-      data.sets ?? null,
-      data.targetReps ?? null,
-      data.targetWeight ?? null,
-      data.warmupWeight ?? null,
-      data.restTime ?? null,
-      data.b2bPartnerId ?? null,
-      data.b2bSets ?? null,
-      data.b2bTargetReps ?? null,
-      data.b2bTargetWeight ?? null,
-      data.b2bWarmupWeight ?? null
+      data.exerciseId1,
+      data.exerciseId2 ?? null,
+      data.orderIndex
     ]
   });
   return Number(result.lastInsertRowid);
@@ -1100,15 +1136,16 @@ export async function getRoutineExercises(routineId: number): Promise<any[]> {
   const db = getDatabase();
   const result = await db.execute({
     sql: `
-      SELECT re.*, e.name as exercise_name, e.video_url, e.tips,
-             e.equipment as exercise_equipment,
-             e.is_bodyweight as exercise_is_bodyweight,
-             e2.name as b2b_partner_name, e2.video_url as b2b_video_url, e2.tips as b2b_tips,
-             e2.equipment as b2b_partner_equipment,
-             e2.is_bodyweight as b2b_partner_is_bodyweight
+      SELECT re.*,
+             e1.name as exercise_name, e1.video_url, e1.tips,
+             e1.equipment as exercise_equipment,
+             e1.is_bodyweight as exercise_is_bodyweight,
+             e2.name as exercise2_name, e2.video_url as exercise2_video_url, e2.tips as exercise2_tips,
+             e2.equipment as exercise2_equipment,
+             e2.is_bodyweight as exercise2_is_bodyweight
       FROM routine_exercises re
-      JOIN exercises e ON re.exercise_id = e.id
-      LEFT JOIN exercises e2 ON re.b2b_partner_id = e2.id
+      JOIN exercises e1 ON re.exercise_id1 = e1.id
+      LEFT JOIN exercises e2 ON re.exercise_id2 = e2.id
       WHERE re.routine_id = ?
       ORDER BY re.order_index
     `,
@@ -1172,6 +1209,7 @@ export async function addStretchToRoutine(
   type: 'pre' | 'post',
   orderIndex: number
 ): Promise<number> {
+  await ensureRoutineStretchTables();
   const db = getDatabase();
   const tableName = type === 'pre' ? 'routine_pre_stretches' : 'routine_post_stretches';
   const result = await db.execute({
@@ -1186,6 +1224,7 @@ export async function removeStretchFromRoutine(
   stretchId: number,
   type: 'pre' | 'post'
 ): Promise<void> {
+  await ensureRoutineStretchTables();
   const db = getDatabase();
   const tableName = type === 'pre' ? 'routine_pre_stretches' : 'routine_post_stretches';
   await db.execute({
@@ -1230,6 +1269,7 @@ export async function reorderRoutineStretches(
   type: 'pre' | 'post',
   stretchOrder: number[] // Array of stretch IDs in new order
 ): Promise<void> {
+  await ensureRoutineStretchTables();
   const db = getDatabase();
   const tableName = type === 'pre' ? 'routine_pre_stretches' : 'routine_post_stretches';
 
@@ -1408,14 +1448,13 @@ export async function cloneRoutine(routineId: number, newUserId: string, newName
     const e = ex as any;
     await db.execute({
       sql: `INSERT INTO routine_exercises (
-        routine_id, exercise_id, order_index, exercise_type,
-        sets, target_reps, target_weight, warmup_weight, rest_time,
-        b2b_partner_id, b2b_sets, b2b_target_reps, b2b_target_weight, b2b_warmup_weight
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        routine_id, exercise_id1, exercise_id2, order_index
+      ) VALUES (?, ?, ?, ?)`,
       args: [
-        newRoutineId, e.exercise_id, e.order_index, e.exercise_type,
-        e.sets, e.target_reps, e.target_weight, e.warmup_weight, e.rest_time,
-        e.b2b_partner_id, e.b2b_sets, e.b2b_target_reps, e.b2b_target_weight, e.b2b_warmup_weight
+        newRoutineId,
+        e.exercise_id1 ?? e.exercise_id,
+        e.exercise_id2 ?? e.b2b_partner_id ?? null,
+        e.order_index
       ]
     });
   }

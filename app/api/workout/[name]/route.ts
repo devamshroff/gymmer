@@ -3,10 +3,9 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { WorkoutPlan } from '@/lib/types';
-import { getRoutineByName, getRoutineExercises, getRoutineStretches, getDatabase, getRoutineById, isFavorited } from '@/lib/database';
+import { getRoutineByName, getRoutineExercises, getRoutineStretches, getDatabase, getRoutineById, isFavorited, getUserSettings } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 import { EXERCISE_TYPES } from '@/lib/constants';
-import { parseTimerSecondsFromText } from '@/lib/stretch-utils';
 
 function withWarmupFlags(workout: WorkoutPlan): WorkoutPlan {
   const exercises = workout.exercises.map((exercise) => {
@@ -27,19 +26,13 @@ function withWarmupFlags(workout: WorkoutPlan): WorkoutPlan {
   return { ...workout, exercises };
 }
 
-function resolveStretchTimerSeconds(value?: number, durationText?: string): number {
-  if (Number.isFinite(value) && Number(value) > 0) {
-    return Math.round(Number(value));
-  }
-  const parsed = parseTimerSecondsFromText(durationText);
-  return parsed ?? 0;
-}
-
 function normalizeStretches(stretches: Array<any> | undefined): WorkoutPlan['preWorkoutStretches'] {
   if (!Array.isArray(stretches)) return [];
   return stretches.map((stretch) => ({
     name: stretch.name,
-    timerSeconds: resolveStretchTimerSeconds(stretch.timerSeconds, stretch.duration),
+    timerSeconds: Number.isFinite(Number(stretch.timerSeconds)) && Number(stretch.timerSeconds) > 0
+      ? Math.round(Number(stretch.timerSeconds))
+      : 0,
     videoUrl: stretch.videoUrl || '',
     tips: stretch.tips || ''
   }));
@@ -72,7 +65,7 @@ export async function GET(
           const hasFavorited = await isFavorited(user.id, routineId);
 
           if (isOwner || isPublic || hasFavorited) {
-            const workout = await loadRoutineFromDatabase(routine.id, routine.name);
+            const workout = await loadRoutineFromDatabase(routine.id, routine.name, user.id);
             return NextResponse.json({ workout });
           }
         }
@@ -84,7 +77,7 @@ export async function GET(
 
     if (routine) {
       // Load from database
-      const workout = await loadRoutineFromDatabase(routine.id, workoutName);
+      const workout = await loadRoutineFromDatabase(routine.id, workoutName, user.id);
       return NextResponse.json({ workout });
     }
 
@@ -99,7 +92,7 @@ export async function GET(
 
     if (favoritedRoutine.rows.length > 0) {
       const routine = favoritedRoutine.rows[0] as any;
-      const workout = await loadRoutineFromDatabase(routine.id, workoutName);
+      const workout = await loadRoutineFromDatabase(routine.id, workoutName, user.id);
       return NextResponse.json({ workout });
     }
 
@@ -131,86 +124,92 @@ export async function GET(
   }
 }
 
-async function loadRoutineFromDatabase(routineId: number, name: string): Promise<WorkoutPlan> {
+async function loadRoutineFromDatabase(
+  routineId: number,
+  name: string,
+  userId: string
+): Promise<WorkoutPlan> {
   const db = getDatabase();
+  const { restTimeSeconds, supersetRestSeconds } = await getUserSettings(userId);
+  const defaultSets = 3;
+  const defaultTargetReps = 10;
+  const defaultTargetWeight = 0;
+  const defaultWarmupWeight = 0;
 
   // Get exercises
   const routineExercises = await getRoutineExercises(routineId);
   const exercises = routineExercises.map((re: any) => {
-    if (re.exercise_type === EXERCISE_TYPES.single) {
-      const targetWeight = re.target_weight || 0;
-      const warmupWeight = re.warmup_weight || 0;
-      const isBodyweight = typeof re.exercise_is_bodyweight === 'number'
-        ? re.exercise_is_bodyweight === 1
-        : false;
+    const isSuperset = Boolean(re.exercise_id2);
+    const isBodyweight = typeof re.exercise_is_bodyweight === 'number'
+      ? re.exercise_is_bodyweight === 1
+      : false;
+
+    if (!isSuperset) {
       return {
         type: EXERCISE_TYPES.single,
         name: re.exercise_name,
-        sets: re.sets || 3,
-        targetReps: re.target_reps || 10,
-        targetWeight,
-        warmupWeight,
+        sets: defaultSets,
+        targetReps: defaultTargetReps,
+        targetWeight: defaultTargetWeight,
+        warmupWeight: defaultWarmupWeight,
         hasWarmup: !isBodyweight,
-        restTime: re.rest_time || 60,
+        restTime: restTimeSeconds,
         videoUrl: re.video_url || '',
         tips: re.tips || '',
         isBodyweight
       };
-    } else {
-      // B2B exercise
-      return {
-        type: EXERCISE_TYPES.b2b,
-        restTime: re.rest_time || 30,
-        exercises: [
-          {
-            name: re.exercise_name,
-            sets: re.sets || 3,
-            targetReps: re.target_reps || 10,
-            targetWeight: re.target_weight || 0,
-            warmupWeight: re.warmup_weight || 0,
-            hasWarmup: false,
-            videoUrl: re.video_url || '',
-            tips: re.tips || '',
-            isBodyweight: typeof re.exercise_is_bodyweight === 'number'
-              ? re.exercise_is_bodyweight === 1
-              : false
-          },
-          {
-            name: re.b2b_partner_name,
-            sets: re.b2b_sets || 3,
-            targetReps: re.b2b_target_reps || 10,
-            targetWeight: re.b2b_target_weight || 0,
-            warmupWeight: re.b2b_warmup_weight || 0,
-            hasWarmup: false,
-            videoUrl: re.b2b_video_url || '',
-            tips: re.b2b_tips || '',
-            isBodyweight: typeof re.b2b_partner_is_bodyweight === 'number'
-              ? re.b2b_partner_is_bodyweight === 1
-              : false
-          }
-        ] as [{
-          name: string;
-          sets: number;
-          targetReps: number;
-          targetWeight: number;
-          warmupWeight: number;
-          hasWarmup?: boolean;
-          videoUrl: string;
-          tips: string;
-          isBodyweight?: boolean;
-        }, {
-          name: string;
-          sets: number;
-          targetReps: number;
-          targetWeight: number;
-          warmupWeight: number;
-          hasWarmup?: boolean;
-          videoUrl: string;
-          tips: string;
-          isBodyweight?: boolean;
-        }]
-      };
     }
+
+    return {
+      type: EXERCISE_TYPES.b2b,
+      restTime: supersetRestSeconds,
+      exercises: [
+        {
+          name: re.exercise_name,
+          sets: defaultSets,
+          targetReps: defaultTargetReps,
+          targetWeight: defaultTargetWeight,
+          warmupWeight: defaultWarmupWeight,
+          hasWarmup: false,
+          videoUrl: re.video_url || '',
+          tips: re.tips || '',
+          isBodyweight
+        },
+        {
+          name: re.exercise2_name || '',
+          sets: defaultSets,
+          targetReps: defaultTargetReps,
+          targetWeight: defaultTargetWeight,
+          warmupWeight: defaultWarmupWeight,
+          hasWarmup: false,
+          videoUrl: re.exercise2_video_url || '',
+          tips: re.exercise2_tips || '',
+          isBodyweight: typeof re.exercise2_is_bodyweight === 'number'
+            ? re.exercise2_is_bodyweight === 1
+            : false
+        }
+      ] as [{
+        name: string;
+        sets: number;
+        targetReps: number;
+        targetWeight: number;
+        warmupWeight: number;
+        hasWarmup?: boolean;
+        videoUrl: string;
+        tips: string;
+        isBodyweight?: boolean;
+      }, {
+        name: string;
+        sets: number;
+        targetReps: number;
+        targetWeight: number;
+        warmupWeight: number;
+        hasWarmup?: boolean;
+        videoUrl: string;
+        tips: string;
+        isBodyweight?: boolean;
+      }]
+    };
   });
 
   // Get pre-workout stretches

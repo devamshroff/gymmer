@@ -49,6 +49,6 @@ test('Browse public routines and clone', async ({ page }) => {
   const cloneResponse = await cloneResponsePromise;
   expect(cloneResponse.status()).toBe(201);
 
-  await page.goto('/');
+  await page.goto('/routines');
   await expect(page.getByRole('heading', { name: 'Sais Routine (Copy)' })).toBeVisible();
 });

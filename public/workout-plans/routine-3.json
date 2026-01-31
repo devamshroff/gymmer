@@ -3,125 +3,125 @@
   "preWorkoutStretches": [
     {
       "name": "Leg Swings",
-      "duration": "10 forward/back, 10 side-to-side each leg",
       "videoUrl": "https://www.youtube.com/results?search_query=leg+swings+dynamic+stretch",
-      "tips": "Loosens hip flexors and hamstrings"
+      "tips": "Loosens hip flexors and hamstrings",
+      "timerSeconds": 30
     },
     {
       "name": "Walking Lunges with Twist",
-      "duration": "10 total",
       "videoUrl": "https://www.youtube.com/results?search_query=walking+lunge+with+twist",
-      "tips": "Lunge + rotate torso toward front leg. Opens hips + core warmup"
+      "tips": "Lunge + rotate torso toward front leg. Opens hips + core warmup",
+      "timerSeconds": 30
     },
     {
       "name": "Glute Bridges",
-      "duration": "15 reps",
       "videoUrl": "https://www.youtube.com/results?search_query=glute+bridge+exercise",
-      "tips": "Activates glutes before RDLs"
+      "tips": "Activates glutes before RDLs",
+      "timerSeconds": 30
     },
     {
       "name": "Inchworms",
-      "duration": "8 reps",
       "videoUrl": "https://www.youtube.com/results?search_query=inchworm+exercise",
-      "tips": "Walk hands out to plank, walk feet to hands. Hamstring warmup for RDLs"
+      "tips": "Walk hands out to plank, walk feet to hands. Hamstring warmup for RDLs",
+      "timerSeconds": 30
     },
     {
       "name": "Arm Circles",
-      "duration": "10 forward, 10 backward",
       "videoUrl": "https://www.youtube.com/results?search_query=arm+circles+dynamic+stretch",
-      "tips": "Shoulder mobility and warmup"
+      "tips": "Shoulder mobility and warmup",
+      "timerSeconds": 30
     },
     {
       "name": "Band Pull-Aparts",
-      "duration": "15 reps",
       "videoUrl": "https://www.youtube.com/results?search_query=band+pull+aparts",
-      "tips": "Activates rear delts, opens chest"
+      "tips": "Activates rear delts, opens chest",
+      "timerSeconds": 30
     },
     {
       "name": "Scapular Wall Slides",
-      "duration": "10 reps",
       "videoUrl": "https://www.youtube.com/results?search_query=scapular+wall+slides",
-      "tips": "Primes shoulder blade movement"
+      "tips": "Primes shoulder blade movement",
+      "timerSeconds": 30
     },
     {
       "name": "Lateral Leg Swings",
-      "duration": "10 each leg",
       "videoUrl": "https://www.youtube.com/results?search_query=lateral+leg+swings",
-      "tips": "Swinging side-to-side aggressively. Primes lateral movement"
+      "tips": "Swinging side-to-side aggressively. Primes lateral movement",
+      "timerSeconds": 30
     }
   ],
   "postWorkoutStretches": [
     {
       "name": "Quad Stretch",
-      "duration": "45 sec each leg",
       "videoUrl": "https://www.youtube.com/results?search_query=standing+quad+stretch",
-      "tips": "Longer hold after belt squats"
+      "tips": "Longer hold after belt squats",
+      "timerSeconds": 45
     },
     {
       "name": "Pigeon Pose",
-      "duration": "60 sec each side",
       "videoUrl": "https://www.youtube.com/results?search_query=pigeon+pose+stretch",
-      "tips": "Extra time for glutes after RDLs"
+      "tips": "Extra time for glutes after RDLs",
+      "timerSeconds": 60
     },
     {
       "name": "Hamstring Stretch (Standing)",
-      "duration": "45 sec each leg",
       "videoUrl": "https://www.youtube.com/results?search_query=standing+hamstring+stretch",
-      "tips": "Foot elevated on bench, lean forward. Critical after RDLs"
+      "tips": "Foot elevated on bench, lean forward. Critical after RDLs",
+      "timerSeconds": 45
     },
     {
       "name": "Calf Stretch",
-      "duration": "30 sec each leg",
       "videoUrl": "https://www.youtube.com/results?search_query=calf+stretch+wall",
-      "tips": "Against wall, straight leg then bent leg"
+      "tips": "Against wall, straight leg then bent leg",
+      "timerSeconds": 30
     },
     {
       "name": "Hip Flexor Stretch (Couch Stretch)",
-      "duration": "45 sec each side",
       "videoUrl": "https://www.youtube.com/results?search_query=couch+stretch+hip+flexor",
-      "tips": "One knee down, other foot forward. Deep hip flexor stretch after squats"
+      "tips": "One knee down, other foot forward. Deep hip flexor stretch after squats",
+      "timerSeconds": 45
     },
     {
       "name": "Doorway Chest Stretch",
-      "duration": "45 sec each side",
       "videoUrl": "https://www.youtube.com/results?search_query=doorway+chest+stretch",
-      "tips": "After shoulder press"
+      "tips": "After shoulder press",
+      "timerSeconds": 45
     },
     {
       "name": "Child's Pose",
-      "duration": "60 sec",
       "videoUrl": "https://www.youtube.com/results?search_query=child+pose+stretch",
-      "tips": "After chest-supported rows"
+      "tips": "After chest-supported rows",
+      "timerSeconds": 60
     },
     {
       "name": "Lat Stretch on Bar",
-      "duration": "30 sec each side",
       "videoUrl": "https://www.youtube.com/results?search_query=hanging+lat+stretch",
-      "tips": "Deep lat stretch"
+      "tips": "Deep lat stretch",
+      "timerSeconds": 30
     },
     {
       "name": "Tricep Overhead Stretch",
-      "duration": "30 sec each arm",
       "videoUrl": "https://www.youtube.com/results?search_query=tricep+overhead+stretch",
-      "tips": "Targets triceps"
+      "tips": "Targets triceps",
+      "timerSeconds": 30
     },
     {
       "name": "Bicep Wall Stretch",
-      "duration": "30 sec each arm",
       "videoUrl": "https://www.youtube.com/results?search_query=bicep+wall+stretch",
-      "tips": "Deep bicep stretch"
+      "tips": "Deep bicep stretch",
+      "timerSeconds": 30
     },
     {
       "name": "Cat-Cow",
-      "duration": "10 slow reps",
       "videoUrl": "https://www.youtube.com/results?search_query=cat+cow+stretch",
-      "tips": "After RDLs and core work"
+      "tips": "After RDLs and core work",
+      "timerSeconds": 30
     },
     {
       "name": "Supine Twist",
-      "duration": "45 sec each side",
       "videoUrl": "https://www.youtube.com/results?search_query=supine+spinal+twist",
-      "tips": "Lying on back, knee across body. Releases lower back after squats/RDLs"
+      "tips": "Lying on back, knee across body. Releases lower back after squats/RDLs",
+      "timerSeconds": 45
     }
   ],
   "exercises": [

@@ -173,27 +173,12 @@ CREATE TABLE IF NOT EXISTS routine_pre_stretches (
 CREATE TABLE IF NOT EXISTS routine_exercises (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   routine_id INTEGER NOT NULL,
-  exercise_id INTEGER NOT NULL,
+  exercise_id1 INTEGER NOT NULL,
+  exercise_id2 INTEGER,
   order_index INTEGER NOT NULL,
-  exercise_type TEXT NOT NULL,  -- "single" or "b2b"
-
-  -- Single exercise config
-  sets INTEGER,
-  target_reps INTEGER,
-  target_weight REAL,
-  warmup_weight REAL,
-  rest_time INTEGER,  -- seconds
-
-  -- B2B partner (if exercise_type = "b2b")
-  b2b_partner_id INTEGER,
-  b2b_sets INTEGER,
-  b2b_target_reps INTEGER,
-  b2b_target_weight REAL,
-  b2b_warmup_weight REAL,
-
   FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE CASCADE,
-  FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE,
-  FOREIGN KEY (b2b_partner_id) REFERENCES exercises(id) ON DELETE CASCADE
+  FOREIGN KEY (exercise_id1) REFERENCES exercises(id) ON DELETE CASCADE,
+  FOREIGN KEY (exercise_id2) REFERENCES exercises(id) ON DELETE CASCADE
 );
 
 -- Junction: routines to post-workout stretches

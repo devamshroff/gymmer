@@ -28,23 +28,16 @@ type Stretch = {
 type SingleExercise = {
   type: typeof EXERCISE_TYPES.single;
   name: string;
-  sets?: number;
-  targetReps?: number;
-  targetWeight?: number;
-  warmupWeight?: number;
-  restTime?: number;
   tips?: string;
+  videoUrl?: string;
 };
 
 type B2BExercise = {
   type: typeof EXERCISE_TYPES.b2b;
   exercises: Array<{
     name: string;
-    sets?: number;
-    targetReps?: number;
-    targetWeight?: number;
-    warmupWeight?: number;
     tips?: string;
+    videoUrl?: string;
   }>;
 };
 
@@ -89,17 +82,13 @@ function ExercisePreviewItem({ exercise }: { exercise: SingleExercise | B2BExerc
   if (exercise.type === EXERCISE_TYPES.b2b) {
     const [ex1, ex2] = exercise.exercises || [];
     return (
-      <div className="bg-zinc-800 rounded-lg p-4 border-2 border-purple-700 mb-2">
+        <div className="bg-zinc-800 rounded-lg p-4 border-2 border-purple-700 mb-2">
         <div className="text-purple-400 text-xs font-bold mb-2">SUPERSET</div>
         <div className="text-white font-semibold">{ex1?.name || 'Exercise 1'}</div>
-        <div className="text-zinc-500 text-xs mt-1">
-          Sets: {ex1?.sets ?? 'N/A'} • Reps: {ex1?.targetReps ?? 'N/A'} • Weight: {ex1?.targetWeight ?? 'N/A'}
-        </div>
+        {ex1?.tips && <div className="text-zinc-500 text-xs mt-1">{ex1.tips}</div>}
         <div className="text-purple-400 text-sm my-1">+</div>
         <div className="text-white font-semibold">{ex2?.name || 'Exercise 2'}</div>
-        <div className="text-zinc-500 text-xs mt-1">
-          Sets: {ex2?.sets ?? 'N/A'} • Reps: {ex2?.targetReps ?? 'N/A'} • Weight: {ex2?.targetWeight ?? 'N/A'}
-        </div>
+        {ex2?.tips && <div className="text-zinc-500 text-xs mt-1">{ex2.tips}</div>}
       </div>
     );
   }
@@ -107,18 +96,7 @@ function ExercisePreviewItem({ exercise }: { exercise: SingleExercise | B2BExerc
   return (
     <div className="bg-zinc-800 rounded-lg p-4 border-2 border-zinc-700 mb-2">
       <div className="text-white font-semibold">{exercise.name}</div>
-      <div className="text-zinc-500 text-xs mt-1">
-        Sets: {exercise.sets ?? 'N/A'} • Reps: {exercise.targetReps ?? 'N/A'} • Weight: {exercise.targetWeight ?? 'N/A'}
-      </div>
-      {typeof exercise.restTime === 'number' && (
-        <div className="text-zinc-500 text-xs mt-1">Rest: {exercise.restTime}s</div>
-      )}
-      {typeof exercise.warmupWeight === 'number' && (
-        <div className="text-zinc-500 text-xs mt-1">Warmup: {exercise.warmupWeight}</div>
-      )}
-      {exercise.tips && (
-        <div className="text-zinc-500 text-xs mt-1">{exercise.tips}</div>
-      )}
+      {exercise.tips && <div className="text-zinc-500 text-xs mt-1">{exercise.tips}</div>}
     </div>
   );
 }
@@ -228,11 +206,6 @@ export default function AiRoutinePreviewPage() {
       exercises.splice(insertAt, 0, {
         type: EXERCISE_TYPES.single,
         name: exercise.name,
-        sets: 3,
-        targetReps: 10,
-        targetWeight: 0,
-        warmupWeight: 0,
-        restTime: 60,
         tips: exercise.tips || undefined
       });
       return { ...plan, exercises };
@@ -250,18 +223,10 @@ export default function AiRoutinePreviewPage() {
         exercises: [
           {
             name: exercise1.name,
-            sets: 3,
-            targetReps: 10,
-            targetWeight: 0,
-            warmupWeight: 0,
             tips: exercise1.tips || undefined
           },
           {
             name: exercise2.name,
-            sets: 3,
-            targetReps: 10,
-            targetWeight: 0,
-            warmupWeight: 0,
             tips: exercise2.tips || undefined
           }
         ]
@@ -510,13 +475,13 @@ export default function AiRoutinePreviewPage() {
                         exercise.type === EXERCISE_TYPES.b2b
                           ? {
                               exercise_name: exercise.exercises?.[0]?.name || 'Exercise 1',
-                              exercise_type: EXERCISE_TYPES.b2b,
-                              b2b_partner_name: exercise.exercises?.[1]?.name || 'Exercise 2'
+                              exercise_id2: 1,
+                              exercise2_name: exercise.exercises?.[1]?.name || 'Exercise 2'
                             }
                           : {
                               exercise_name: exercise.name,
-                              exercise_type: EXERCISE_TYPES.single,
-                              b2b_partner_name: null
+                              exercise_id2: null,
+                              exercise2_name: null
                             }
                       }
                       onDelete={() => handleDeleteExercise(index)}

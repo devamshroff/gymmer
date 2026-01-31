@@ -3,95 +3,95 @@
   "preWorkoutStretches": [
     {
       "name": "Leg Swings",
-      "duration": "10 forward/back, 10 side-to-side each leg",
       "videoUrl": "https://www.youtube.com/results?search_query=leg+swings+dynamic+stretch",
-      "tips": "Loosens hip flexors and hamstrings"
+      "tips": "Loosens hip flexors and hamstrings",
+      "timerSeconds": 30
     },
     {
       "name": "Walking Lunges",
-      "duration": "10 total (5 each leg)",
       "videoUrl": "https://www.youtube.com/results?search_query=walking+lunges+warmup",
-      "tips": "Activates glutes, opens hip flexors"
+      "tips": "Activates glutes, opens hip flexors",
+      "timerSeconds": 30
     },
     {
       "name": "Bodyweight Squats",
-      "duration": "15 reps",
       "videoUrl": "https://www.youtube.com/results?search_query=bodyweight+squats+warmup",
-      "tips": "Primes squat pattern, knee warmup"
+      "tips": "Primes squat pattern, knee warmup",
+      "timerSeconds": 30
     },
     {
       "name": "Arm Circles",
-      "duration": "10 forward, 10 backward (small to large)",
       "videoUrl": "https://www.youtube.com/results?search_query=arm+circles+dynamic+stretch",
-      "tips": "Shoulder mobility and warmup"
+      "tips": "Shoulder mobility and warmup",
+      "timerSeconds": 30
     },
     {
       "name": "Band Pull-Aparts",
-      "duration": "15 reps",
       "videoUrl": "https://www.youtube.com/results?search_query=band+pull+aparts",
-      "tips": "Activates rear delts, opens chest. Use light resistance"
+      "tips": "Activates rear delts, opens chest. Use light resistance",
+      "timerSeconds": 30
     },
     {
       "name": "Scapular Wall Slides",
-      "duration": "10 reps",
       "videoUrl": "https://www.youtube.com/results?search_query=scapular+wall+slides",
-      "tips": "Stand with back against wall, slide arms up/down. Primes shoulder blade movement for pulls"
+      "tips": "Stand with back against wall, slide arms up/down. Primes shoulder blade movement for pulls",
+      "timerSeconds": 30
     },
     {
       "name": "Cat-Cow Stretch",
-      "duration": "10 reps",
       "videoUrl": "https://www.youtube.com/results?search_query=cat+cow+stretch",
-      "tips": "Spine mobility for rowing movements"
+      "tips": "Spine mobility for rowing movements",
+      "timerSeconds": 30
     }
   ],
   "postWorkoutStretches": [
     {
       "name": "Quad Stretch",
-      "duration": "30 sec each leg",
       "videoUrl": "https://www.youtube.com/results?search_query=standing+quad+stretch",
-      "tips": "Stand on one leg, pull heel to butt. Hit after hack squats"
+      "tips": "Stand on one leg, pull heel to butt. Hit after hack squats",
+      "timerSeconds": 30
     },
     {
       "name": "Pigeon Pose",
-      "duration": "45 sec each side",
       "videoUrl": "https://www.youtube.com/results?search_query=pigeon+pose+stretch",
-      "tips": "Deep hip opener, glute stretch. Crucial after squats"
+      "tips": "Deep hip opener, glute stretch. Crucial after squats",
+      "timerSeconds": 45
     },
     {
       "name": "Seated Hamstring Stretch",
-      "duration": "45 sec each leg",
       "videoUrl": "https://www.youtube.com/results?search_query=seated+hamstring+stretch",
-      "tips": "One leg extended, reach toward toes"
+      "tips": "One leg extended, reach toward toes",
+      "timerSeconds": 45
     },
     {
       "name": "Doorway Chest Stretch",
-      "duration": "45 sec each side",
       "videoUrl": "https://www.youtube.com/results?search_query=doorway+chest+stretch",
-      "tips": "Arm at 90 degrees against doorframe, lean forward. Opens chest after pressing"
+      "tips": "Arm at 90 degrees against doorframe, lean forward. Opens chest after pressing",
+      "timerSeconds": 45
     },
     {
       "name": "Child's Pose",
-      "duration": "60 sec",
       "videoUrl": "https://www.youtube.com/results?search_query=child+pose+stretch",
-      "tips": "Stretches lats, shoulders, lower back. Great after pulldowns"
+      "tips": "Stretches lats, shoulders, lower back. Great after pulldowns",
+      "timerSeconds": 60
     },
     {
       "name": "Tricep Overhead Stretch",
-      "duration": "30 sec each arm",
       "videoUrl": "https://www.youtube.com/results?search_query=tricep+overhead+stretch",
-      "tips": "Reach arm overhead, pull elbow behind head. Targets triceps after extensions"
+      "tips": "Reach arm overhead, pull elbow behind head. Targets triceps after extensions",
+      "timerSeconds": 30
     },
     {
       "name": "Lat Stretch on Pull-up Bar",
-      "duration": "30 sec each side",
       "videoUrl": "https://www.youtube.com/results?search_query=hanging+lat+stretch",
-      "tips": "Hang from bar, let one arm stretch while other supports. Deep lat stretch after rows/pulldowns"
+      "tips": "Hang from bar, let one arm stretch while other supports. Deep lat stretch after rows/pulldowns",
+      "timerSeconds": 30
     },
     {
       "name": "Thread the Needle",
-      "duration": "30 sec each side",
       "videoUrl": "https://www.youtube.com/results?search_query=thread+the+needle+stretch",
-      "tips": "On all fours, thread one arm under body. Stretches shoulders and upper back"
+      "tips": "On all fours, thread one arm under body. Stretches shoulders and upper back",
+      "timerSeconds": 30
     }
   ],
   "exercises": [

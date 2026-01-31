@@ -41,14 +41,14 @@ function RoutineBuilderContent() {
 
       // Convert exercises to local format
       const loadedExercises = data.exercises.map((ex: any) => {
-        if (ex.exercise_type === EXERCISE_TYPES.b2b) {
+        if (ex.exercise_id2) {
           return {
             type: EXERCISE_TYPES.b2b,
-            exercise1: { id: ex.exercise_id, name: ex.exercise_name },
-            exercise2: { id: ex.b2b_partner_id, name: ex.b2b_partner_name }
+            exercise1: { id: ex.exercise_id1, name: ex.exercise_name },
+            exercise2: { id: ex.exercise_id2, name: ex.exercise2_name }
           };
         }
-        return { id: ex.exercise_id, name: ex.exercise_name };
+        return { id: ex.exercise_id1, name: ex.exercise_name };
       });
       setExercises(loadedExercises);
     } catch (error) {
@@ -98,14 +98,7 @@ function RoutineBuilderContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          exerciseId: exercise.id,
-          orderIndex: exercises.length,
-          exerciseType: EXERCISE_TYPES.single,
-          sets: 3,
-          targetReps: 10,
-          targetWeight: 0,
-          warmupWeight: 0,
-          restTime: 60
+          exerciseId1: exercise.id
         })
       });
 
@@ -131,19 +124,8 @@ function RoutineBuilderContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          exerciseId: exercise1.id,
-          orderIndex: exercises.length,
-          exerciseType: EXERCISE_TYPES.b2b,
-          sets: 3,
-          targetReps: 10,
-          targetWeight: 0,
-          warmupWeight: 0,
-          restTime: 30,
-          b2bPartnerId: exercise2.id,
-          b2bSets: 3,
-          b2bTargetReps: 10,
-          b2bTargetWeight: 0,
-          b2bWarmupWeight: 0
+          exerciseId1: exercise1.id,
+          exerciseId2: exercise2.id
         })
       });
 

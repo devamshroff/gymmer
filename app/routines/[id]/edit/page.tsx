@@ -5,7 +5,6 @@ import { useParams, useRouter } from 'next/navigation';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
 import SupersetSelector from '@/app/components/SupersetSelector';
 import StretchSelector from '@/app/components/StretchSelector';
-import { EXERCISE_TYPES } from '@/lib/constants';
 import {
   AddButton,
   CardioForm,
@@ -26,11 +25,10 @@ interface RoutineStretch {
 
 interface RoutineExercise {
   id: number;
-  exercise_id: number;
+  exercise_id1: number;
   exercise_name: string;
-  exercise_type: typeof EXERCISE_TYPES.single | typeof EXERCISE_TYPES.b2b;
-  b2b_partner_id: number | null;
-  b2b_partner_name: string | null;
+  exercise_id2: number | null;
+  exercise2_name: string | null;
 }
 
 interface RoutineCardio {
@@ -284,13 +282,7 @@ export default function EditRoutinePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          exerciseId: exercise.id,
-          exerciseType: EXERCISE_TYPES.single,
-          sets: 3,
-          targetReps: 10,
-          targetWeight: 0,
-          warmupWeight: 0,
-          restTime: 60
+          exerciseId1: exercise.id
         })
       });
 
@@ -298,11 +290,10 @@ export default function EditRoutinePage() {
 
       const newExercise: RoutineExercise = {
         id: data.id,
-        exercise_id: exercise.id,
+        exercise_id1: exercise.id,
         exercise_name: exercise.name,
-        exercise_type: EXERCISE_TYPES.single,
-        b2b_partner_id: null,
-        b2b_partner_name: null
+        exercise_id2: null,
+        exercise2_name: null
       };
 
       const newExercises = [...exercises];
@@ -331,18 +322,8 @@ export default function EditRoutinePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          exerciseId: exercise1.id,
-          exerciseType: EXERCISE_TYPES.b2b,
-          sets: 3,
-          targetReps: 10,
-          targetWeight: 0,
-          warmupWeight: 0,
-          restTime: 30,
-          b2bPartnerId: exercise2.id,
-          b2bSets: 3,
-          b2bTargetReps: 10,
-          b2bTargetWeight: 0,
-          b2bWarmupWeight: 0
+          exerciseId1: exercise1.id,
+          exerciseId2: exercise2.id
         })
       });
 
@@ -350,11 +331,10 @@ export default function EditRoutinePage() {
 
       const newExercise: RoutineExercise = {
         id: data.id,
-        exercise_id: exercise1.id,
+        exercise_id1: exercise1.id,
         exercise_name: exercise1.name,
-        exercise_type: EXERCISE_TYPES.b2b,
-        b2b_partner_id: exercise2.id,
-        b2b_partner_name: exercise2.name
+        exercise_id2: exercise2.id,
+        exercise2_name: exercise2.name
       };
 
       const newExercises = [...exercises];

@@ -174,19 +174,9 @@ export interface CustomRoutine {
 export interface RoutineExerciseConfig {
   id: number;
   routine_id: number;
-  exercise_id: number;
+  exercise_id1: number;
+  exercise_id2: number | null;
   order_index: number;
-  exercise_type: typeof EXERCISE_TYPES.single | typeof EXERCISE_TYPES.b2b;
-  sets: number | null;
-  target_reps: number | null;
-  target_weight: number | null;
-  warmup_weight: number | null;
-  rest_time: number | null;
-  b2b_partner_id: number | null;
-  b2b_sets: number | null;
-  b2b_target_reps: number | null;
-  b2b_target_weight: number | null;
-  b2b_warmup_weight: number | null;
 }
 
 export interface RoutineCardio {
@@ -204,7 +194,7 @@ export interface FullRoutineData {
   exercises: Array<{
     config: RoutineExerciseConfig;
     exercise: ExerciseDB;
-    b2bPartner?: ExerciseDB;
+    exercise2?: ExerciseDB;
   }>;
   postWorkoutStretches: StretchDB[];
   cardio?: RoutineCardio;

@@ -1,7 +1,6 @@
 // scripts/seed-exercises.ts
 // Seed exercises and stretches from existing JSON files
 import { getDatabase } from '../lib/database';
-import { parseTimerSecondsFromText } from '../lib/stretch-utils';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
@@ -41,8 +40,9 @@ async function main() {
       if (workout.preWorkoutStretches) {
         for (const stretch of workout.preWorkoutStretches) {
           if (!allStretches.has(stretch.name)) {
+            const timerSeconds = Number(stretch.timerSeconds);
             allStretches.set(stretch.name, {
-              timerSeconds: parseTimerSecondsFromText(stretch.duration) ?? 0,
+              timerSeconds: Number.isFinite(timerSeconds) && timerSeconds > 0 ? Math.round(timerSeconds) : 30,
               videoUrl: stretch.videoUrl,
               tips: stretch.tips
             });
@@ -54,8 +54,9 @@ async function main() {
       if (workout.postWorkoutStretches) {
         for (const stretch of workout.postWorkoutStretches) {
           if (!allStretches.has(stretch.name)) {
+            const timerSeconds = Number(stretch.timerSeconds);
             allStretches.set(stretch.name, {
-              timerSeconds: parseTimerSecondsFromText(stretch.duration) ?? 0,
+              timerSeconds: Number.isFinite(timerSeconds) && timerSeconds > 0 ? Math.round(timerSeconds) : 30,
               videoUrl: stretch.videoUrl,
               tips: stretch.tips
             });

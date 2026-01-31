@@ -12,17 +12,3 @@ export function formatStretchTimer(timerSeconds?: number | null): string {
   }
   return `${timerSeconds} sec`;
 }
-
-export function parseTimerSecondsFromText(value?: string | null): number | null {
-  if (!value) return null;
-  const text = value.toLowerCase();
-  const secondsMatch = text.match(/(\d+)\s*(sec|second)/);
-  if (secondsMatch) {
-    return Number(secondsMatch[1]);
-  }
-  const minutesMatch = text.match(/(\d+)\s*(min|minute)/);
-  if (minutesMatch) {
-    return Number(minutesMatch[1]) * 60;
-  }
-  return null;
-}

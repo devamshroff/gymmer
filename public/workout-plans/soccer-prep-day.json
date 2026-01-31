@@ -3,101 +3,101 @@
   "preWorkoutStretches": [
     {
       "name": "Dynamic Leg Swings",
-      "duration": "10 forward/back, 10 side-to-side each leg",
       "videoUrl": "https://www.youtube.com/results?search_query=leg+swings+dynamic+stretch",
-      "tips": "Full range of motion, controlled swings"
+      "tips": "Full range of motion, controlled swings",
+      "timerSeconds": 30
     },
     {
       "name": "Walking Lunges",
-      "duration": "10 total",
       "videoUrl": "https://www.youtube.com/results?search_query=walking+lunges+warmup",
-      "tips": "Activate glutes and quads"
+      "tips": "Activate glutes and quads",
+      "timerSeconds": 30
     },
     {
       "name": "Lateral Lunges",
-      "duration": "8 each side",
       "videoUrl": "https://www.youtube.com/results?search_query=lateral+lunge+dynamic",
-      "tips": "Opens up hips for lateral movement"
+      "tips": "Opens up hips for lateral movement",
+      "timerSeconds": 30
     },
     {
       "name": "High Knees",
-      "duration": "20 sec",
       "videoUrl": "https://www.youtube.com/results?search_query=high+knees+exercise",
-      "tips": "Warm up hip flexors"
+      "tips": "Warm up hip flexors",
+      "timerSeconds": 20
     },
     {
       "name": "Butt Kicks",
-      "duration": "20 sec",
       "videoUrl": "https://www.youtube.com/results?search_query=butt+kicks+exercise",
-      "tips": "Activate hamstrings and calves"
+      "tips": "Activate hamstrings and calves",
+      "timerSeconds": 20
     },
     {
       "name": "Ankle Circles",
-      "duration": "10 each direction, both ankles",
       "videoUrl": "https://www.youtube.com/results?search_query=ankle+circles+mobility",
-      "tips": "Prep ankles for plyometrics"
+      "tips": "Prep ankles for plyometrics",
+      "timerSeconds": 30
     },
     {
       "name": "Hip Circles",
-      "duration": "10 each direction",
       "videoUrl": "https://www.youtube.com/results?search_query=hip+circles+warmup",
-      "tips": "Open up hip mobility"
+      "tips": "Open up hip mobility",
+      "timerSeconds": 30
     }
   ],
   "postWorkoutStretches": [
     {
       "name": "Standing Quad Stretch",
-      "duration": "45 sec each leg",
       "videoUrl": "https://www.youtube.com/results?search_query=standing+quad+stretch",
-      "tips": "After all the jumping and squatting"
+      "tips": "After all the jumping and squatting",
+      "timerSeconds": 45
     },
     {
       "name": "Pigeon Pose",
-      "duration": "60 sec each side",
       "videoUrl": "https://www.youtube.com/results?search_query=pigeon+pose+stretch",
-      "tips": "Deep hip and glute stretch"
+      "tips": "Deep hip and glute stretch",
+      "timerSeconds": 60
     },
     {
       "name": "Figure-4 Stretch",
-      "duration": "45 sec each side",
       "videoUrl": "https://www.youtube.com/results?search_query=figure+4+stretch",
-      "tips": "Additional hip rotator work"
+      "tips": "Additional hip rotator work",
+      "timerSeconds": 45
     },
     {
       "name": "Seated Hamstring Stretch",
-      "duration": "45 sec each leg",
       "videoUrl": "https://www.youtube.com/results?search_query=seated+hamstring+stretch",
-      "tips": "After RDLs and jumping"
+      "tips": "After RDLs and jumping",
+      "timerSeconds": 45
     },
     {
       "name": "Calf Stretch",
-      "duration": "30 sec each leg (straight and bent)",
       "videoUrl": "https://www.youtube.com/results?search_query=calf+stretch+wall",
-      "tips": "Critical after all the plyometric work"
+      "tips": "Critical after all the plyometric work",
+      "timerSeconds": 30
     },
     {
       "name": "IT Band Stretch",
-      "duration": "30 sec each side",
       "videoUrl": "https://www.youtube.com/results?search_query=IT+band+stretch",
-      "tips": "After lateral movements"
+      "tips": "After lateral movements",
+      "timerSeconds": 30
     },
     {
       "name": "Butterfly Stretch",
-      "duration": "60 sec",
       "videoUrl": "https://www.youtube.com/results?search_query=butterfly+stretch",
-      "tips": "Groin and inner thigh"
+      "tips": "Groin and inner thigh",
+      "timerSeconds": 60
     },
     {
       "name": "Child's Pose",
-      "duration": "60 sec",
       "videoUrl": "https://www.youtube.com/results?search_query=child+pose+stretch",
-      "tips": "Full body relaxation"
+      "tips": "Full body relaxation",
+      "timerSeconds": 60
     },
     {
       "name": "Supine Twist",
-      "duration": "45 sec each side",
       "videoUrl": "https://www.youtube.com/results?search_query=supine+spinal+twist",
-      "tips": "Release lower back"
+      "tips": "Release lower back",
+      "timerSeconds": 45
     }
   ],
   "exercises": [

@@ -1,6 +1,6 @@
 // app/api/routines/import/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getDatabase, getUserGoals } from '@/lib/database';
+import { addStretchToRoutine, getDatabase, getUserGoals } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 import { generateExerciseInsights, generateStretchInsights } from '@/lib/form-tips';
 import {
@@ -8,7 +8,6 @@ import {
   STRETCH_MUSCLE_TAGS,
   normalizeTypeList,
 } from '@/lib/muscle-tags';
-import { parseTimerSecondsFromText } from '@/lib/stretch-utils';
 import { EXERCISE_TYPES } from '@/lib/constants';
 
 export async function POST(request: NextRequest) {
@@ -63,19 +62,13 @@ export async function POST(request: NextRequest) {
 
         await db.execute({
           sql: `INSERT INTO routine_exercises (
-            routine_id, exercise_id, order_index, exercise_type,
-            sets, target_reps, target_weight, warmup_weight, rest_time
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            routine_id, exercise_id1, exercise_id2, order_index
+          ) VALUES (?, ?, ?, ?)`,
           args: [
             routineId,
             exerciseId,
-            i,
-            EXERCISE_TYPES.single,
-            exercise.sets || null,
-            exercise.targetReps || null,
-            exercise.targetWeight || null,
-            exercise.warmupWeight || null,
-            exercise.restTime || null
+            null,
+            i
           ]
         });
       } else if (exercise.type === EXERCISE_TYPES.b2b && exercise.exercises && exercise.exercises.length >= 2) {
@@ -87,24 +80,13 @@ export async function POST(request: NextRequest) {
 
         await db.execute({
           sql: `INSERT INTO routine_exercises (
-            routine_id, exercise_id, order_index, exercise_type,
-            sets, target_reps, target_weight, warmup_weight,
-            b2b_partner_id, b2b_sets, b2b_target_reps, b2b_target_weight, b2b_warmup_weight
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            routine_id, exercise_id1, exercise_id2, order_index
+          ) VALUES (?, ?, ?, ?)`,
           args: [
             routineId,
             exerciseId1,
-            i,
-            EXERCISE_TYPES.b2b,
-            ex1.sets || null,
-            ex1.targetReps || null,
-            ex1.targetWeight || null,
-            ex1.warmupWeight || null,
             exerciseId2,
-            ex2.sets || null,
-            ex2.targetReps || null,
-            ex2.targetWeight || null,
-            ex2.warmupWeight || null
+            i
           ]
         });
       }
@@ -115,10 +97,7 @@ export async function POST(request: NextRequest) {
       for (let i = 0; i < workoutPlan.preWorkoutStretches.length; i++) {
         const stretch = workoutPlan.preWorkoutStretches[i];
         const stretchId = await getOrCreateStretch(db, stretchIndex, stretch, goalsText);
-        await db.execute({
-          sql: 'INSERT INTO routine_pre_stretches (routine_id, stretch_id, order_index) VALUES (?, ?, ?)',
-          args: [routineId, stretchId, i]
-        });
+        await addStretchToRoutine(routineId, stretchId, 'pre', i);
       }
     }
 
@@ -126,10 +105,7 @@ export async function POST(request: NextRequest) {
       for (let i = 0; i < workoutPlan.postWorkoutStretches.length; i++) {
         const stretch = workoutPlan.postWorkoutStretches[i];
         const stretchId = await getOrCreateStretch(db, stretchIndex, stretch, goalsText);
-        await db.execute({
-          sql: 'INSERT INTO routine_post_stretches (routine_id, stretch_id, order_index) VALUES (?, ?, ?)',
-          args: [routineId, stretchId, i]
-        });
+        await addStretchToRoutine(routineId, stretchId, 'post', i);
       }
     }
 
@@ -259,7 +235,7 @@ async function getOrCreateStretch(
 
   const providedTimer = Number.isFinite(Number(stretch.timerSeconds)) && Number(stretch.timerSeconds) > 0
     ? Math.round(Number(stretch.timerSeconds))
-    : parseTimerSecondsFromText(stretch.duration);
+    : null;
   const muscleGroupsInput = normalizeTypeList(
     stretch.muscleGroups || stretch.stretchTypes,
     STRETCH_MUSCLE_TAGS

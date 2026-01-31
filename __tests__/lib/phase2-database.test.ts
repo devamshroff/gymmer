@@ -398,19 +398,9 @@ describe('Phase 2: Clone Routine', () => {
       mockExecute.mockResolvedValueOnce({
         rows: [
           {
-            exercise_id: 1,
+            exercise_id1: 1,
+            exercise_id2: null,
             order_index: 0,
-            exercise_type: 'single',
-            sets: 3,
-            target_reps: 10,
-            target_weight: 100,
-            warmup_weight: 50,
-            rest_time: 60,
-            b2b_partner_id: null,
-            b2b_sets: null,
-            b2b_target_reps: null,
-            b2b_target_weight: null,
-            b2b_warmup_weight: null,
           },
         ],
       });
