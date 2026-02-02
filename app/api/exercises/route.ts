@@ -4,6 +4,7 @@ import { getAllExercises, searchExercises, createExercise, getUserGoals } from '
 import { requireAuth } from '@/lib/auth-utils';
 import { generateExerciseInsights } from '@/lib/form-tips';
 import { MUSCLE_GROUP_TAGS, normalizeTypeList } from '@/lib/muscle-tags';
+import { assertPrimaryMetric, getDefaultMetricUnit, resolvePrimaryMetric } from '@/lib/metric-utils';
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth();
@@ -34,7 +35,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, videoUrl, tips, equipment, difficulty } = body;
+    const { name, videoUrl, tips, equipment, difficulty, isMachine } = body;
+    const primaryMetricInput = body?.primaryMetric;
+    const metricUnitInput = body?.metricUnit;
     const muscleGroupsInput = normalizeTypeList(
       body.muscleGroups ?? body.muscleGroup ?? body.exerciseTypes ?? body.exerciseType,
       MUSCLE_GROUP_TAGS
@@ -69,6 +72,21 @@ export async function POST(request: NextRequest) {
     const muscleGroups = muscleGroupsInput.length ? muscleGroupsInput : inferredMuscleGroups;
     const resolvedMuscleGroups = muscleGroups.length ? muscleGroups : ['unknown'];
 
+    try {
+      assertPrimaryMetric(primaryMetricInput);
+    } catch {
+      return NextResponse.json(
+        { error: 'primaryMetric is required' },
+        { status: 400 }
+      );
+    }
+
+    const resolvedPrimaryMetric = resolvePrimaryMetric(primaryMetricInput, inferredBodyweight);
+    const fallbackMetricUnit = getDefaultMetricUnit(resolvedPrimaryMetric);
+    const resolvedMetricUnit = typeof metricUnitInput === 'string' && metricUnitInput.trim()
+      ? metricUnitInput.trim()
+      : fallbackMetricUnit;
+
     const exerciseId = await createExercise({
       name,
       videoUrl,
@@ -76,11 +94,20 @@ export async function POST(request: NextRequest) {
       muscleGroups: resolvedMuscleGroups,
       equipment,
       isBodyweight: inferredBodyweight,
-      difficulty: resolvedDifficulty
+      isMachine: typeof isMachine === 'boolean' ? isMachine : undefined,
+      difficulty: resolvedDifficulty,
+      primaryMetric: resolvedPrimaryMetric,
+      metricUnit: resolvedMetricUnit
     });
 
     return NextResponse.json(
-      { id: exerciseId, success: true, is_bodyweight: inferredBodyweight ? 1 : 0 },
+      {
+        id: exerciseId,
+        success: true,
+        is_bodyweight: inferredBodyweight ? 1 : 0,
+        primary_metric: resolvedPrimaryMetric,
+        metric_unit: resolvedMetricUnit
+      },
       { status: 201 }
     );
   } catch (error) {

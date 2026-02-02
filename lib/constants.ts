@@ -27,6 +27,18 @@ export const EXERCISE_HISTORY_AGGREGATION_MODES = {
 export type ExerciseHistoryAggregationMode =
   typeof EXERCISE_HISTORY_AGGREGATION_MODES[keyof typeof EXERCISE_HISTORY_AGGREGATION_MODES];
 
+// Exercise tracking primary metrics (how we interpret the numeric value).
+export const EXERCISE_PRIMARY_METRICS = {
+  weight: 'weight',
+  height: 'height',
+  time: 'time',
+  distance: 'distance',
+  repsOnly: 'reps_only',
+} as const;
+
+export type ExercisePrimaryMetric =
+  typeof EXERCISE_PRIMARY_METRICS[keyof typeof EXERCISE_PRIMARY_METRICS];
+
 // Workout session modes (preview-only target selection).
 export const SESSION_MODES = {
   progress: 'progress',

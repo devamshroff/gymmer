@@ -1,6 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import {
+  DEFAULT_HEIGHT_UNIT,
+  DEFAULT_WEIGHT_UNIT,
+  normalizeHeightUnit,
+  normalizeWeightUnit,
+} from '@/lib/units';
+import type { HeightUnit, WeightUnit } from '@/lib/units';
 
 interface UserInfo {
   username: string | null;
@@ -12,6 +19,8 @@ export default function ProfilePage() {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [restTimeSeconds, setRestTimeSeconds] = useState('60');
   const [supersetRestSeconds, setSupersetRestSeconds] = useState('15');
+  const [weightUnit, setWeightUnit] = useState<WeightUnit>(DEFAULT_WEIGHT_UNIT);
+  const [heightUnit, setHeightUnit] = useState<HeightUnit>(DEFAULT_HEIGHT_UNIT);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
@@ -47,6 +56,12 @@ export default function ProfilePage() {
           }
           if (settingsData?.supersetRestSeconds !== undefined) {
             setSupersetRestSeconds(String(settingsData.supersetRestSeconds));
+          }
+          if (settingsData?.weightUnit !== undefined) {
+            setWeightUnit(normalizeWeightUnit(settingsData.weightUnit));
+          }
+          if (settingsData?.heightUnit !== undefined) {
+            setHeightUnit(normalizeHeightUnit(settingsData.heightUnit));
           }
         }
 
@@ -98,7 +113,9 @@ export default function ProfilePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           restTimeSeconds: restSeconds,
-          supersetRestSeconds: supersetSeconds
+          supersetRestSeconds: supersetSeconds,
+          weightUnit,
+          heightUnit
         })
       });
 
@@ -145,7 +162,7 @@ export default function ProfilePage() {
         <div className="rounded-lg border border-zinc-700 bg-zinc-800 p-6">
           <h1 className="text-3xl font-bold mb-2">{displayName}</h1>
           <p className="text-sm text-zinc-300 mb-6">
-            Set your default rest timers. Set a value to 0 seconds to skip the timer between sets.
+            Set your default rest timers and preferred units. Set a value to 0 seconds to skip the timer between sets.
           </p>
 
           {loadError && (
@@ -222,6 +239,40 @@ export default function ProfilePage() {
                 disabled={loading || saving}
                 className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
               />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="weight-unit" className="text-sm font-semibold text-zinc-200">
+                  Weight unit
+                </label>
+                <select
+                  id="weight-unit"
+                  value={weightUnit}
+                  onChange={(event) => setWeightUnit(event.target.value as WeightUnit)}
+                  disabled={loading || saving}
+                  className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                >
+                  <option value="lbs">lbs</option>
+                  <option value="kg">kg</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="height-unit" className="text-sm font-semibold text-zinc-200">
+                  Height unit
+                </label>
+                <select
+                  id="height-unit"
+                  value={heightUnit}
+                  onChange={(event) => setHeightUnit(event.target.value as HeightUnit)}
+                  disabled={loading || saving}
+                  className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                >
+                  <option value="in">in</option>
+                  <option value="cm">cm</option>
+                </select>
+              </div>
             </div>
           </div>
 

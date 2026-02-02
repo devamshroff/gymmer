@@ -3,9 +3,12 @@ import { createClient, Client } from '@libsql/client';
 import type { WorkoutSession, WorkoutExerciseLog, WorkoutCardioLog } from './types';
 import {
   EXERCISE_HISTORY_DISPLAY_MODES,
+  EXERCISE_PRIMARY_METRICS,
   ExerciseHistoryDisplayMode,
   ExerciseType,
 } from './constants';
+import { normalizeHeightUnit, normalizeWeightUnit } from './units';
+import type { HeightUnit, WeightUnit } from './units';
 
 // Initialize database connection
 let db: Client | null = null;
@@ -15,6 +18,7 @@ let workoutSessionReportColumnReady: boolean | null = null;
 let routineStretchTablesReady: boolean | null = null;
 let stretchRecommendationCacheReady: boolean | null = null;
 let stretchVersionTableReady: boolean | null = null;
+let exerciseColumnsReady: boolean | null = null;
 const DEFAULT_REST_TIME_SECONDS = 60;
 const DEFAULT_SUPERSET_REST_TIME_SECONDS = 15;
 
@@ -247,12 +251,54 @@ async function ensureUserSettingsTable(): Promise<void> {
         user_id TEXT PRIMARY KEY,
         rest_time_seconds INTEGER DEFAULT 60,
         superset_rest_seconds INTEGER DEFAULT 15,
+        weight_unit TEXT DEFAULT 'lbs',
+        height_unit TEXT DEFAULT 'in',
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       )
     `
   });
+  await ensureUserSettingsColumns();
+}
+
+async function ensureUserSettingsColumns(): Promise<void> {
+  const db = getDatabase();
+  try {
+    const result = await db.execute({
+      sql: 'PRAGMA table_info(user_settings)'
+    });
+    const columns = new Set(result.rows.map((row: any) => row.name));
+    if (!columns.has('weight_unit')) {
+      await db.execute("ALTER TABLE user_settings ADD COLUMN weight_unit TEXT DEFAULT 'lbs'");
+    }
+    if (!columns.has('height_unit')) {
+      await db.execute("ALTER TABLE user_settings ADD COLUMN height_unit TEXT DEFAULT 'in'");
+    }
+  } catch (error) {
+    console.warn('Failed to inspect user_settings schema:', error);
+  }
+}
+
+async function ensureExerciseColumns(): Promise<void> {
+  if (exerciseColumnsReady) return;
+  const db = getDatabase();
+  try {
+    const result = await db.execute({
+      sql: 'PRAGMA table_info(exercises)'
+    });
+    const columns = new Set(result.rows.map((row: any) => row.name));
+    if (!columns.has('primary_metric')) {
+      await db.execute("ALTER TABLE exercises ADD COLUMN primary_metric TEXT DEFAULT 'weight'");
+    }
+    if (!columns.has('metric_unit')) {
+      await db.execute('ALTER TABLE exercises ADD COLUMN metric_unit TEXT');
+    }
+    exerciseColumnsReady = true;
+  } catch (error) {
+    console.warn('Failed to inspect exercises schema:', error);
+    exerciseColumnsReady = false;
+  }
 }
 
 async function ensureRoutineStretchTables(): Promise<void> {
@@ -351,41 +397,51 @@ async function ensureStretchRecommendationCacheTable(): Promise<void> {
 export async function getUserSettings(userId: string): Promise<{
   restTimeSeconds: number;
   supersetRestSeconds: number;
+  weightUnit: WeightUnit;
+  heightUnit: HeightUnit;
 }> {
   await ensureUserSettingsTable();
   const db = getDatabase();
   const result = await db.execute({
-    sql: 'SELECT rest_time_seconds, superset_rest_seconds FROM user_settings WHERE user_id = ?',
+    sql: 'SELECT rest_time_seconds, superset_rest_seconds, weight_unit, height_unit FROM user_settings WHERE user_id = ?',
     args: [userId]
   });
   const row = result.rows[0] as any | undefined;
   const restTimeSeconds = Number(row?.rest_time_seconds);
   const supersetRestSeconds = Number(row?.superset_rest_seconds);
+  const weightUnit = normalizeWeightUnit(row?.weight_unit);
+  const heightUnit = normalizeHeightUnit(row?.height_unit);
 
   return {
     restTimeSeconds: Number.isFinite(restTimeSeconds) ? restTimeSeconds : DEFAULT_REST_TIME_SECONDS,
     supersetRestSeconds: Number.isFinite(supersetRestSeconds)
       ? supersetRestSeconds
-      : DEFAULT_SUPERSET_REST_TIME_SECONDS
+      : DEFAULT_SUPERSET_REST_TIME_SECONDS,
+    weightUnit,
+    heightUnit
   };
 }
 
 export async function upsertUserSettings(userId: string, data: {
   restTimeSeconds: number;
   supersetRestSeconds: number;
+  weightUnit: WeightUnit;
+  heightUnit: HeightUnit;
 }): Promise<void> {
   await ensureUserSettingsTable();
   const db = getDatabase();
   await db.execute({
     sql: `
-      INSERT INTO user_settings (user_id, rest_time_seconds, superset_rest_seconds, updated_at)
-      VALUES (?, ?, ?, datetime('now'))
+      INSERT INTO user_settings (user_id, rest_time_seconds, superset_rest_seconds, weight_unit, height_unit, updated_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
       ON CONFLICT(user_id) DO UPDATE SET
         rest_time_seconds = excluded.rest_time_seconds,
         superset_rest_seconds = excluded.superset_rest_seconds,
+        weight_unit = excluded.weight_unit,
+        height_unit = excluded.height_unit,
         updated_at = datetime('now')
     `,
-    args: [userId, data.restTimeSeconds, data.supersetRestSeconds]
+    args: [userId, data.restTimeSeconds, data.supersetRestSeconds, data.weightUnit, data.heightUnit]
   });
 }
 
@@ -907,6 +963,9 @@ export type ExerciseHistoryPoint = {
 
 export type ExerciseHistorySeries = {
   display_mode: ExerciseHistoryDisplayMode;
+  is_machine?: boolean;
+  primary_metric?: string | null;
+  metric_unit?: string | null;
   points: ExerciseHistoryPoint[];
 };
 
@@ -915,6 +974,7 @@ export async function getExerciseHistory(
   exerciseName: string,
   range: 'week' | 'month' | 'all'
 ): Promise<ExerciseHistorySeries> {
+  await ensureExerciseColumns();
   const db = getDatabase();
   const daysBack = range === 'week' ? 7 : range === 'month' ? 30 : null;
   const cutoff = daysBack ? new Date(Date.now() - (daysBack - 1) * 86400000).toISOString() : null;
@@ -1050,16 +1110,30 @@ export async function getExerciseHistory(
   })) as ExerciseHistoryPoint[];
 
   const equipmentResult = await db.execute({
-    sql: 'SELECT equipment, is_bodyweight FROM exercises WHERE name = ? LIMIT 1',
+    sql: 'SELECT equipment, is_bodyweight, is_machine, primary_metric, metric_unit FROM exercises WHERE name = ? LIMIT 1',
     args: [exerciseName]
   });
   const row = equipmentResult.rows[0] as any;
   const isBodyweight = row?.is_bodyweight === 1;
-  const displayMode: ExerciseHistorySeries['display_mode'] = isBodyweight
+  const isMachine = row?.is_machine === 1;
+  const primaryMetric = typeof row?.primary_metric === 'string'
+    ? row.primary_metric
+    : EXERCISE_PRIMARY_METRICS.weight;
+  const metricUnit = typeof row?.metric_unit === 'string' ? row.metric_unit : null;
+  const displayMode: ExerciseHistorySeries['display_mode'] = primaryMetric === EXERCISE_PRIMARY_METRICS.repsOnly || isBodyweight
     ? EXERCISE_HISTORY_DISPLAY_MODES.reps
     : EXERCISE_HISTORY_DISPLAY_MODES.weight;
+  const normalizedPoints = primaryMetric === EXERCISE_PRIMARY_METRICS.weight
+    ? points
+    : points.map((point) => ({ ...point, volume: null }));
 
-  return { display_mode: displayMode, points };
+  return {
+    display_mode: displayMode,
+    is_machine: isMachine,
+    primary_metric: primaryMetric,
+    metric_unit: metricUnit,
+    points: normalizedPoints,
+  };
 }
 
 // ============================================================================
@@ -1074,13 +1148,28 @@ export async function createExercise(data: {
   muscleGroups?: string[];
   equipment?: string;
   isBodyweight?: boolean;
+  isMachine?: boolean;
   difficulty?: string;
+  primaryMetric?: string;
+  metricUnit?: string | null;
 }): Promise<number> {
+  await ensureExerciseColumns();
   const db = getDatabase();
   const result = await db.execute({
     sql: `
-      INSERT INTO exercises (name, video_url, tips, muscle_groups, equipment, is_bodyweight, difficulty)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO exercises (
+        name,
+        video_url,
+        tips,
+        muscle_groups,
+        equipment,
+        is_bodyweight,
+        is_machine,
+        difficulty,
+        primary_metric,
+        metric_unit
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     args: [
       data.name,
@@ -1089,19 +1178,24 @@ export async function createExercise(data: {
       data.muscleGroups ? JSON.stringify(data.muscleGroups) : null,
       data.equipment || null,
       typeof data.isBodyweight === 'boolean' ? (data.isBodyweight ? 1 : 0) : null,
-      data.difficulty || null
+      typeof data.isMachine === 'boolean' ? (data.isMachine ? 1 : 0) : null,
+      data.difficulty || null,
+      data.primaryMetric || 'weight',
+      data.metricUnit || null
     ]
   });
   return Number(result.lastInsertRowid);
 }
 
 export async function getAllExercises(): Promise<any[]> {
+  await ensureExerciseColumns();
   const db = getDatabase();
   const result = await db.execute('SELECT * FROM exercises ORDER BY name');
   return result.rows as any[];
 }
 
 export async function searchExercises(query: string): Promise<any[]> {
+  await ensureExerciseColumns();
   const db = getDatabase();
   const result = await db.execute({
     sql: 'SELECT * FROM exercises WHERE name LIKE ? ORDER BY name',
@@ -1111,6 +1205,7 @@ export async function searchExercises(query: string): Promise<any[]> {
 }
 
 export async function getExerciseById(id: number): Promise<any | null> {
+  await ensureExerciseColumns();
   const db = getDatabase();
   const result = await db.execute({
     sql: 'SELECT * FROM exercises WHERE id = ?',
@@ -1239,6 +1334,7 @@ export async function addExerciseToRoutine(data: {
 }
 
 export async function getRoutineExercises(routineId: number): Promise<any[]> {
+  await ensureExerciseColumns();
   const db = getDatabase();
   const result = await db.execute({
     sql: `
@@ -1246,9 +1342,15 @@ export async function getRoutineExercises(routineId: number): Promise<any[]> {
              e1.name as exercise_name, e1.video_url, e1.tips,
              e1.equipment as exercise_equipment,
              e1.is_bodyweight as exercise_is_bodyweight,
+             e1.is_machine as exercise_is_machine,
+             e1.primary_metric as exercise_primary_metric,
+             e1.metric_unit as exercise_metric_unit,
              e2.name as exercise2_name, e2.video_url as exercise2_video_url, e2.tips as exercise2_tips,
              e2.equipment as exercise2_equipment,
-             e2.is_bodyweight as exercise2_is_bodyweight
+             e2.is_bodyweight as exercise2_is_bodyweight,
+             e2.is_machine as exercise2_is_machine,
+             e2.primary_metric as exercise2_primary_metric,
+             e2.metric_unit as exercise2_metric_unit
       FROM routine_exercises re
       JOIN exercises e1 ON re.exercise_id1 = e1.id
       LEFT JOIN exercises e2 ON re.exercise_id2 = e2.id

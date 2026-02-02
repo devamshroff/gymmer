@@ -1,6 +1,8 @@
 'use client';
 
 import { EXERCISE_TYPES } from '@/lib/constants';
+import { DEFAULT_WEIGHT_UNIT } from '@/lib/units';
+import type { WeightUnit } from '@/lib/units';
 
 interface SetData {
   weight: number;
@@ -16,6 +18,8 @@ interface SetDataInputProps {
   variant?: typeof EXERCISE_TYPES.single | typeof EXERCISE_TYPES.b2b;
   /** Accent color for focus ring */
   accentColor?: 'orange' | 'purple';
+  /** Display unit for weight */
+  weightUnit?: WeightUnit;
 }
 
 /**
@@ -29,6 +33,7 @@ export default function SetDataInput({
   onChange,
   variant = EXERCISE_TYPES.single,
   accentColor = 'orange',
+  weightUnit = DEFAULT_WEIGHT_UNIT,
 }: SetDataInputProps) {
   const isSingle = variant === EXERCISE_TYPES.single;
   const ringColor = accentColor === 'orange' ? 'focus:ring-orange-500' : 'focus:ring-purple-500';
@@ -61,7 +66,7 @@ export default function SetDataInput({
       <div className={`bg-zinc-900 rounded-lg ${padding}`}>
         <label className="block">
           <span className={`text-zinc-400 ${labelSize} block ${labelMargin}`}>
-            Weight (lbs)
+            Weight ({weightUnit})
           </span>
           <input
             type="text"

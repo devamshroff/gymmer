@@ -1,15 +1,21 @@
 // lib/workout-session.ts
 // Client-side storage for current workout session
 
-import { EXERCISE_TYPES, SESSION_MODES, type SessionMode } from '@/lib/constants';
+import { EXERCISE_TYPES, SESSION_MODES, type ExercisePrimaryMetric, type SessionMode } from '@/lib/constants';
 
 export interface SessionExerciseData {
   name: string;
   type: typeof EXERCISE_TYPES.single | typeof EXERCISE_TYPES.b2b;
+  isMachine?: boolean;
+  primaryMetric?: ExercisePrimaryMetric;
+  metricUnit?: string | null;
   warmup?: { weight: number; reps: number };
   sets: Array<{ weight: number; reps: number }>;
   b2bPartner?: {
     name: string;
+    isMachine?: boolean;
+    primaryMetric?: ExercisePrimaryMetric;
+    metricUnit?: string | null;
     warmup?: { weight: number; reps: number };
     sets: Array<{ weight: number; reps: number }>;
   };

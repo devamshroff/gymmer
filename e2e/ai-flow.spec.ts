@@ -4,6 +4,7 @@ test('AI routine flow: generate, edit, save, and complete workout', async ({ pag
   const routineName = `E2E AI Routine ${Date.now()}`;
   const routineId = 9001;
   const autosaveEvents: Array<any> = [];
+  let saveWorkoutCalled = false;
   const samplePlan = {
     name: routineName,
     description: 'Short push session for testing.',
@@ -34,7 +35,12 @@ test('AI routine flow: generate, edit, save, and complete workout', async ({ pag
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ restTimeSeconds: 60, supersetRestSeconds: 15 }),
+      body: JSON.stringify({
+        restTimeSeconds: 60,
+        supersetRestSeconds: 15,
+        weightUnit: 'lbs',
+        heightUnit: 'in',
+      }),
     });
   });
 
@@ -88,6 +94,7 @@ test('AI routine flow: generate, edit, save, and complete workout', async ({ pag
   });
 
   await page.route('**/api/save-workout', async (route) => {
+    saveWorkoutCalled = true;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -223,7 +230,7 @@ test('AI routine flow: generate, edit, save, and complete workout', async ({ pag
   await page.getByRole('button', { name: 'Skip Cardio', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/workout/${encodeURIComponent(routineName)}/post-stretches`));
   await page.getByRole('button', { name: /View Summary/ }).click();
-
-  await expect(page.getByText('✓ Workout saved')).toBeVisible();
+  await page.waitForURL(new RegExp(`/workout/${encodeURIComponent(routineName)}/summary`), { timeout: 10000 });
+  await expect(page.getByRole('heading', { name: 'Workout Complete!' })).toBeVisible();
   expect(autosaveEvents.some((event) => event?.event?.type === 'single_set' || event?.event?.type === 'b2b_set')).toBeTruthy();
 });

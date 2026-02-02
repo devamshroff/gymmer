@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS user_settings (
   user_id TEXT PRIMARY KEY,
   rest_time_seconds INTEGER DEFAULT 60,
   superset_rest_seconds INTEGER DEFAULT 15,
+  weight_unit TEXT DEFAULT 'lbs',
+  height_unit TEXT DEFAULT 'in',
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -118,7 +120,10 @@ CREATE TABLE IF NOT EXISTS exercises (
   equipment TEXT,      -- e.g., "Dumbbells", "Barbell", "Bodyweight"
   difficulty TEXT,     -- "Beginner", "Intermediate", "Advanced"
   created_at TEXT DEFAULT (datetime('now')),
-  is_bodyweight INTEGER DEFAULT 0 -- 1 = bodyweight, 0 = not bodyweight
+  is_bodyweight INTEGER DEFAULT 0, -- 1 = bodyweight, 0 = not bodyweight
+  is_machine INTEGER DEFAULT 0, -- 1 = machine with base weight, 0 = not
+  primary_metric TEXT DEFAULT 'weight', -- weight | height | time | distance | reps_only
+  metric_unit TEXT -- e.g., lbs, in, sec
 );
 
 CREATE TABLE IF NOT EXISTS stretches (

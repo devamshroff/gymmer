@@ -5,7 +5,7 @@
  * Handles the distinction between single exercises and B2B (back-to-back) supersets.
  */
 
-import { EXERCISE_TYPES } from '@/lib/constants';
+import { EXERCISE_TYPES, ExercisePrimaryMetric } from '@/lib/constants';
 
 // Re-export types from the main types file for convenience
 export interface SingleExercise {
@@ -17,6 +17,9 @@ export interface SingleExercise {
   warmupWeight: number;
   hasWarmup?: boolean;
   isBodyweight?: boolean;
+  isMachine?: boolean;
+  primaryMetric?: ExercisePrimaryMetric;
+  metricUnit?: string | null;
   restTime: number;
   tips: string;
   videoUrl: string;
@@ -29,6 +32,8 @@ export interface B2BExerciseItem {
   targetWeight: number;
   tips: string;
   videoUrl: string;
+  primaryMetric?: ExercisePrimaryMetric;
+  metricUnit?: string | null;
 }
 
 export interface B2BExercise {
@@ -84,6 +89,9 @@ export interface SingleExerciseDisplayInfo {
   tips: string;
   videoUrl: string;
   hasWarmup: boolean;
+  isMachine?: boolean;
+  primaryMetric?: ExercisePrimaryMetric;
+  metricUnit?: string | null;
 }
 
 /**
@@ -99,6 +107,8 @@ export interface B2BExerciseDisplayInfo {
     targetWeight: number;
     tips: string;
     videoUrl: string;
+    primaryMetric?: ExercisePrimaryMetric;
+    metricUnit?: string | null;
   };
   exercise2: {
     name: string;
@@ -106,6 +116,8 @@ export interface B2BExerciseDisplayInfo {
     targetWeight: number;
     tips: string;
     videoUrl: string;
+    primaryMetric?: ExercisePrimaryMetric;
+    metricUnit?: string | null;
   };
 }
 
@@ -130,6 +142,9 @@ export function getExerciseDisplayInfo(exercise: Exercise): ExerciseDisplayInfo 
       tips: exercise.tips,
       videoUrl: exercise.videoUrl,
       hasWarmup,
+      isMachine: exercise.isMachine,
+      primaryMetric: exercise.primaryMetric,
+      metricUnit: exercise.metricUnit,
     };
   }
 
@@ -147,6 +162,8 @@ export function getExerciseDisplayInfo(exercise: Exercise): ExerciseDisplayInfo 
       targetWeight: ex1.targetWeight,
       tips: ex1.tips,
       videoUrl: ex1.videoUrl,
+      primaryMetric: ex1.primaryMetric,
+      metricUnit: ex1.metricUnit,
     },
     exercise2: {
       name: ex2.name,
@@ -154,6 +171,8 @@ export function getExerciseDisplayInfo(exercise: Exercise): ExerciseDisplayInfo 
       targetWeight: ex2.targetWeight,
       tips: ex2.tips,
       videoUrl: ex2.videoUrl,
+      primaryMetric: ex2.primaryMetric,
+      metricUnit: ex2.metricUnit,
     },
   };
 }

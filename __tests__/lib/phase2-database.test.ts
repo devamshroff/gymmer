@@ -175,6 +175,7 @@ describe('Phase 2: User Settings Functions', () => {
     it('returns defaults when settings are missing', async () => {
       mockExecute
         .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ name: 'weight_unit' }, { name: 'height_unit' }] })
         .mockResolvedValueOnce({ rows: [] });
 
       const settings = await getUserSettings('user-123');
@@ -182,12 +183,14 @@ describe('Phase 2: User Settings Functions', () => {
       expect(settings).toEqual({
         restTimeSeconds: 60,
         supersetRestSeconds: 15,
+        weightUnit: 'lbs',
+        heightUnit: 'in',
       });
       expect(mockExecute).toHaveBeenCalledWith({
         sql: expect.stringContaining('CREATE TABLE IF NOT EXISTS user_settings'),
       });
       expect(mockExecute).toHaveBeenCalledWith({
-        sql: 'SELECT rest_time_seconds, superset_rest_seconds FROM user_settings WHERE user_id = ?',
+        sql: 'SELECT rest_time_seconds, superset_rest_seconds, weight_unit, height_unit FROM user_settings WHERE user_id = ?',
         args: ['user-123'],
       });
     });
@@ -195,8 +198,9 @@ describe('Phase 2: User Settings Functions', () => {
     it('returns stored settings when present', async () => {
       mockExecute
         .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ name: 'weight_unit' }, { name: 'height_unit' }] })
         .mockResolvedValueOnce({
-          rows: [{ rest_time_seconds: 45, superset_rest_seconds: 20 }],
+          rows: [{ rest_time_seconds: 45, superset_rest_seconds: 20, weight_unit: 'kg', height_unit: 'cm' }],
         });
 
       const settings = await getUserSettings('user-123');
@@ -204,6 +208,8 @@ describe('Phase 2: User Settings Functions', () => {
       expect(settings).toEqual({
         restTimeSeconds: 45,
         supersetRestSeconds: 20,
+        weightUnit: 'kg',
+        heightUnit: 'cm',
       });
     });
   });
@@ -217,6 +223,8 @@ describe('Phase 2: User Settings Functions', () => {
       await upsertUserSettings('user-123', {
         restTimeSeconds: 90,
         supersetRestSeconds: 30,
+        weightUnit: 'lbs',
+        heightUnit: 'in',
       });
 
       expect(mockExecute).toHaveBeenCalledWith({
@@ -224,7 +232,7 @@ describe('Phase 2: User Settings Functions', () => {
       });
       expect(mockExecute).toHaveBeenCalledWith({
         sql: expect.stringContaining('INSERT INTO user_settings'),
-        args: ['user-123', 90, 30],
+        args: ['user-123', 90, 30, 'lbs', 'in'],
       });
     });
   });

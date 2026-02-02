@@ -17,6 +17,7 @@ type PreWorkoutTarget = {
   targetWeight?: number | null;
   targetReps?: number | null;
   isBodyweight?: boolean;
+  isMachine?: boolean;
 };
 
 type PreWorkoutTargetsPayload = {

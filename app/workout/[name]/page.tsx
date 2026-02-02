@@ -13,11 +13,25 @@ import { saveSessionTargetsMeta, saveSessionWorkout } from '@/lib/session-workou
 import {
   EXERCISE_TYPES,
   ExerciseHistoryDisplayMode,
+  type ExercisePrimaryMetric,
   SESSION_MODE_DESCRIPTIONS,
   SESSION_MODE_LABELS,
   SESSION_MODES,
 } from '@/lib/constants';
 import type { SessionMode } from '@/lib/constants';
+import {
+  DEFAULT_HEIGHT_UNIT,
+  DEFAULT_WEIGHT_UNIT,
+  normalizeHeightUnit,
+  normalizeWeightUnit,
+} from '@/lib/units';
+import type { HeightUnit, WeightUnit } from '@/lib/units';
+import {
+  formatMetricDisplay,
+  getMetricLabel,
+  isRepsOnlyMetric,
+  resolvePrimaryMetric,
+} from '@/lib/metric-utils';
 
 type ExerciseTarget = {
   suggestedWeight?: number | null;
@@ -32,6 +46,7 @@ type ExerciseHistoryPoint = {
 
 type ExerciseHistorySeries = {
   display_mode: ExerciseHistoryDisplayMode;
+  is_machine?: boolean;
   points: ExerciseHistoryPoint[];
 };
 
@@ -61,7 +76,7 @@ type TrendCounts = {
 };
 
 const WEIGHT_INCREMENT = 2.5;
-type TargetExercise = Pick<SingleExercise, 'name' | 'targetWeight' | 'targetReps' | 'isBodyweight'>;
+type TargetExercise = Pick<SingleExercise, 'name' | 'targetWeight' | 'targetReps' | 'isBodyweight' | 'isMachine'>;
 
 function roundUpToIncrement(value: number, increment: number) {
   if (!Number.isFinite(value)) return 0;
@@ -238,6 +253,8 @@ export default function WorkoutDetailPage() {
   const [lastWorkoutReportLoading, setLastWorkoutReportLoading] = useState(false);
   const [showLastWorkoutReport, setShowLastWorkoutReport] = useState(false);
   const [loadingDots, setLoadingDots] = useState('...');
+  const [weightUnit, setWeightUnit] = useState<WeightUnit>(DEFAULT_WEIGHT_UNIT);
+  const [heightUnit, setHeightUnit] = useState<HeightUnit>(DEFAULT_HEIGHT_UNIT);
 
   const cacheTargetsForSession = useCallback(
     (nextTargets: Record<string, ExerciseTarget>) => {
@@ -342,6 +359,27 @@ export default function WorkoutDetailPage() {
     fetchWorkout();
   }, [params.name, searchParams]);
 
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchUserSettings() {
+      try {
+        const response = await fetch('/api/user/settings');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!isMounted) return;
+        setWeightUnit(normalizeWeightUnit(data?.weightUnit));
+        setHeightUnit(normalizeHeightUnit(data?.heightUnit));
+      } catch (error) {
+        console.error('Error fetching user settings:', error);
+      }
+    }
+
+    fetchUserSettings();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const fetchExerciseHistory = async (
     signal: AbortSignal
   ): Promise<Record<string, ExerciseHistorySeries>> => {
@@ -431,6 +469,7 @@ export default function WorkoutDetailPage() {
       const baseWeight = exercise.targetWeight;
       const baseReps = exercise.targetReps;
       const isBodyweight = !!exercise.isBodyweight;
+      const isMachine = !!exercise.isMachine;
       const usesHistory = points.length > 0 && (maxWeight !== null || maxReps !== null);
       let suggestedWeight: number | null = null;
       let suggestedReps: number | null = null;
@@ -449,14 +488,19 @@ export default function WorkoutDetailPage() {
         const scaledWeight = roundUpToIncrement(sourceWeight * weightFactor, WEIGHT_INCREMENT);
         const repFactorForMode = sessionMode === SESSION_MODES.progress ? 1 : repsFactor;
         const scaledReps = roundUpWhole(sourceReps * repFactorForMode);
-        suggestedWeight = Math.max(0, scaledWeight);
+        const hasAddedWeight = isMachine ? (maxWeight !== null && maxWeight > 0) : true;
+        suggestedWeight = hasAddedWeight ? Math.max(0, scaledWeight) : null;
         suggestedReps = Math.max(1, scaledReps);
         const repNote = sessionMode === SESSION_MODES.progress
           ? 'max reps at your max weight'
           : `${Math.round(repsFactor * 100)}% of your max reps`;
-        rationale = usesHistory
-          ? `Default target uses ${Math.round(weightFactor * 100)}% of your last 30-day max weight and ${repNote}.`
-          : 'Default target uses your routine baseline until more history is logged.';
+        if (usesHistory) {
+          rationale = hasAddedWeight
+            ? `Default target uses ${Math.round(weightFactor * 100)}% of your last 30-day max weight and ${repNote}.`
+            : `Default target uses ${repNote}; add weight when you feel ready.`;
+        } else {
+          rationale = 'Default target uses your routine baseline until more history is logged.';
+        }
       }
 
       fallback[exercise.name] = {
@@ -579,6 +623,7 @@ export default function WorkoutDetailPage() {
         targetReps: number;
         warmupWeight?: number;
         isBodyweight?: boolean;
+        isMachine?: boolean;
       }> = [];
 
       for (const exercise of workout.exercises) {
@@ -591,6 +636,7 @@ export default function WorkoutDetailPage() {
             targetReps: exercise.targetReps,
             warmupWeight: exercise.warmupWeight,
             isBodyweight: exercise.isBodyweight,
+            isMachine: exercise.isMachine,
           });
         } else {
           const [ex1, ex2] = exercise.exercises;
@@ -602,6 +648,7 @@ export default function WorkoutDetailPage() {
             targetReps: ex1.targetReps,
             warmupWeight: ex1.warmupWeight,
             isBodyweight: ex1.isBodyweight,
+            isMachine: ex1.isMachine,
           });
           exercisePayload.push({
             name: ex2.name,
@@ -611,6 +658,7 @@ export default function WorkoutDetailPage() {
             targetReps: ex2.targetReps,
             warmupWeight: ex2.warmupWeight,
             isBodyweight: ex2.isBodyweight,
+            isMachine: ex2.isMachine,
           });
         }
       }
@@ -994,6 +1042,8 @@ export default function WorkoutDetailPage() {
                 targets={targets}
                 showTargets={isPreview}
                 lastSessionMaxes={lastSessionMaxes}
+                weightUnit={weightUnit}
+                heightUnit={heightUnit}
               />
             ))}
           </div>
@@ -1093,6 +1143,8 @@ export default function WorkoutDetailPage() {
         exerciseNames={historyExerciseNames}
         title="Exercise History"
         targets={historyTargets}
+        weightUnit={weightUnit}
+        heightUnit={heightUnit}
       />
     </div>
   );
@@ -1127,28 +1179,71 @@ function TargetCard({
   baseReps,
   suggestion,
   isBodyweight,
+  isMachine,
+  primaryMetric,
+  metricUnit,
+  weightUnit,
+  heightUnit,
   lastSession,
 }: {
   baseWeight: number;
   baseReps: number;
   suggestion?: ExerciseTarget;
   isBodyweight?: boolean;
+  isMachine?: boolean;
+  primaryMetric?: ExercisePrimaryMetric;
+  metricUnit?: string | null;
+  weightUnit: WeightUnit;
+  heightUnit: HeightUnit;
   lastSession?: LastSessionMax;
 }) {
+  const metricInfo = {
+    primaryMetric: resolvePrimaryMetric(primaryMetric, isBodyweight),
+    metricUnit: metricUnit ?? null,
+  };
   const targetWeight = suggestion?.suggestedWeight ?? baseWeight;
   const targetReps = suggestion?.suggestedReps ?? baseReps;
   const lastWeight = lastSession?.weight ?? null;
   const lastReps = lastSession?.reps ?? null;
   const weightDelta = lastWeight !== null ? targetWeight - lastWeight : null;
   const repsDelta = lastReps !== null ? targetReps - lastReps : null;
-  const showWeight = !isBodyweight;
+  const showMetric = !isRepsOnlyMetric(metricInfo.primaryMetric);
+  const weightLabel = getMetricLabel(
+    metricInfo.primaryMetric,
+    metricInfo.metricUnit,
+    weightUnit,
+    heightUnit,
+    isMachine
+  );
   const lastSummaryParts: string[] = [];
-  if (showWeight) {
-    if (lastWeight !== null) lastSummaryParts.push(`${lastWeight} lbs`);
+  if (showMetric) {
+    if (lastWeight !== null) {
+      lastSummaryParts.push(
+        formatMetricDisplay(
+          lastWeight,
+          metricInfo.primaryMetric,
+          metricInfo.metricUnit,
+          weightUnit,
+          heightUnit,
+          isMachine
+        )
+      );
+    }
     if (lastReps !== null) lastSummaryParts.push(`${lastReps} reps`);
   } else {
     if (lastReps !== null) lastSummaryParts.push(`${lastReps} reps`);
-    else if (lastWeight !== null) lastSummaryParts.push(`${lastWeight} lbs`);
+    else if (lastWeight !== null) {
+      lastSummaryParts.push(
+        formatMetricDisplay(
+          lastWeight,
+          metricInfo.primaryMetric,
+          metricInfo.metricUnit,
+          weightUnit,
+          heightUnit,
+          isMachine
+        )
+      );
+    }
   }
   const lastSummary = lastSummaryParts.join(' · ');
 
@@ -1158,12 +1253,19 @@ function TargetCard({
   return (
     <div className="bg-zinc-900 rounded p-3 border border-emerald-800">
       <div className="text-emerald-400 text-xs mb-2">Today&apos;s target</div>
-      <div className={`grid ${showWeight ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
-        {showWeight && (
+      <div className={`grid ${showMetric ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
+        {showMetric && (
           <div>
-            <div className="text-zinc-500 text-xs mb-1">Weight</div>
+            <div className="text-zinc-500 text-xs mb-1">{weightLabel}</div>
             <div className="text-white font-semibold text-lg">
-              {targetWeight} lbs
+              {formatMetricDisplay(
+                targetWeight,
+                metricInfo.primaryMetric,
+                metricInfo.metricUnit,
+                weightUnit,
+                heightUnit,
+                isMachine
+              )}
               {weightDelta !== null && weightDelta !== 0 && (
                 <span className={`ml-2 text-sm ${deltaClass(weightDelta)}`}>({formatDelta(weightDelta)})</span>
               )}
@@ -1199,6 +1301,8 @@ function ExerciseCard({
   targets,
   showTargets,
   lastSessionMaxes,
+  weightUnit,
+  heightUnit,
 }: {
   exercise: Exercise;
   index: number;
@@ -1206,10 +1310,28 @@ function ExerciseCard({
   targets: Record<string, ExerciseTarget>;
   showTargets: boolean;
   lastSessionMaxes: Record<string, LastSessionMax>;
+  weightUnit: WeightUnit;
+  heightUnit: HeightUnit;
 }) {
   if (exercise.type === EXERCISE_TYPES.single) {
     const tips = getFormTips(exercise.tips);
     const videoHref = getVideoUrl(exercise.name, exercise.videoUrl);
+    const metricInfo = {
+      primaryMetric: resolvePrimaryMetric(exercise.primaryMetric, exercise.isBodyweight),
+      metricUnit: exercise.metricUnit ?? null,
+    };
+    const showMetric = !isRepsOnlyMetric(metricInfo.primaryMetric);
+    const isMachine = !!exercise.isMachine;
+    const metricLabel = getMetricLabel(
+      metricInfo.primaryMetric,
+      metricInfo.metricUnit,
+      weightUnit,
+      heightUnit,
+      isMachine
+    );
+    const showWarmup = showMetric
+      && metricInfo.primaryMetric === 'weight'
+      && (exercise.hasWarmup ?? !exercise.isBodyweight);
 
     return (
       <div className="bg-zinc-800 rounded-lg p-5 border-2 border-zinc-700">
@@ -1237,17 +1359,38 @@ function ExerciseCard({
         </div>
 
         <div className="space-y-2 mb-3">
-          {/* Weights together */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-green-950 border border-green-800 rounded p-3">
-              <div className="text-green-400 text-xs mb-1">Warmup Weight</div>
-              <div className="text-green-300 font-bold text-2xl">{exercise.warmupWeight} lbs</div>
+          {showMetric && (
+            <div className={`grid ${showWarmup ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
+              {showWarmup && (
+                <div className="bg-green-950 border border-green-800 rounded p-3">
+                  <div className="text-green-400 text-xs mb-1">Warmup {metricLabel}</div>
+                  <div className="text-green-300 font-bold text-2xl">
+                    {formatMetricDisplay(
+                      exercise.warmupWeight,
+                      metricInfo.primaryMetric,
+                      metricInfo.metricUnit,
+                      weightUnit,
+                      heightUnit,
+                      isMachine
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="bg-orange-950 border border-orange-800 rounded p-3">
+                <div className="text-orange-400 text-xs mb-1">Target {metricLabel}</div>
+                <div className="text-orange-300 font-bold text-2xl">
+                  {formatMetricDisplay(
+                    exercise.targetWeight,
+                    metricInfo.primaryMetric,
+                    metricInfo.metricUnit,
+                    weightUnit,
+                    heightUnit,
+                    isMachine
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="bg-orange-950 border border-orange-800 rounded p-3">
-              <div className="text-orange-400 text-xs mb-1">Working Weight</div>
-              <div className="text-orange-300 font-bold text-2xl">{exercise.targetWeight} lbs</div>
-            </div>
-          </div>
+          )}
 
           {/* Sets & Rest */}
           <div className="grid grid-cols-2 gap-3">
@@ -1270,6 +1413,11 @@ function ExerciseCard({
             baseReps={exercise.targetReps}
             suggestion={targets[exercise.name]}
             isBodyweight={exercise.isBodyweight}
+            isMachine={exercise.isMachine}
+            primaryMetric={exercise.primaryMetric}
+            metricUnit={exercise.metricUnit}
+            weightUnit={weightUnit}
+            heightUnit={heightUnit}
             lastSession={lastSessionMaxes[exercise.name]}
           />
         )}
@@ -1288,6 +1436,38 @@ function ExerciseCard({
   const ex2Tips = getFormTips(ex2.tips);
   const ex1VideoHref = getVideoUrl(ex1.name, ex1.videoUrl);
   const ex2VideoHref = getVideoUrl(ex2.name, ex2.videoUrl);
+  const ex1MetricInfo = {
+    primaryMetric: resolvePrimaryMetric(ex1.primaryMetric, ex1.isBodyweight),
+    metricUnit: ex1.metricUnit ?? null,
+  };
+  const ex2MetricInfo = {
+    primaryMetric: resolvePrimaryMetric(ex2.primaryMetric, ex2.isBodyweight),
+    metricUnit: ex2.metricUnit ?? null,
+  };
+  const ex1ShowMetric = !isRepsOnlyMetric(ex1MetricInfo.primaryMetric);
+  const ex2ShowMetric = !isRepsOnlyMetric(ex2MetricInfo.primaryMetric);
+  const ex1Machine = !!ex1.isMachine;
+  const ex2Machine = !!ex2.isMachine;
+  const ex1MetricLabel = getMetricLabel(
+    ex1MetricInfo.primaryMetric,
+    ex1MetricInfo.metricUnit,
+    weightUnit,
+    heightUnit,
+    ex1Machine
+  );
+  const ex2MetricLabel = getMetricLabel(
+    ex2MetricInfo.primaryMetric,
+    ex2MetricInfo.metricUnit,
+    weightUnit,
+    heightUnit,
+    ex2Machine
+  );
+  const ex1ShowWarmup = ex1ShowMetric
+    && ex1MetricInfo.primaryMetric === 'weight'
+    && (ex1.hasWarmup ?? !ex1.isBodyweight);
+  const ex2ShowWarmup = ex2ShowMetric
+    && ex2MetricInfo.primaryMetric === 'weight'
+    && (ex2.hasWarmup ?? !ex2.isBodyweight);
 
   return (
     <div className="bg-zinc-800 rounded-lg p-5 border-2 border-purple-700">
@@ -1321,17 +1501,38 @@ function ExerciseCard({
         </div>
 
         <div className="space-y-2">
-          {/* Weights together */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-green-950 border border-green-800 rounded p-2">
-              <div className="text-green-400 text-xs mb-1">Warmup</div>
-              <div className="text-green-300 font-bold text-xl">{ex1.warmupWeight} lbs</div>
+          {ex1ShowMetric && (
+            <div className={`grid ${ex1ShowWarmup ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+              {ex1ShowWarmup && (
+                <div className="bg-green-950 border border-green-800 rounded p-2">
+                  <div className="text-green-400 text-xs mb-1">Warmup {ex1MetricLabel}</div>
+                  <div className="text-green-300 font-bold text-xl">
+                    {formatMetricDisplay(
+                      ex1.warmupWeight,
+                      ex1MetricInfo.primaryMetric,
+                      ex1MetricInfo.metricUnit,
+                      weightUnit,
+                      heightUnit,
+                      ex1Machine
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="bg-orange-950 border border-orange-800 rounded p-2">
+                <div className="text-orange-400 text-xs mb-1">Target {ex1MetricLabel}</div>
+                <div className="text-orange-300 font-bold text-xl">
+                  {formatMetricDisplay(
+                    ex1.targetWeight,
+                    ex1MetricInfo.primaryMetric,
+                    ex1MetricInfo.metricUnit,
+                    weightUnit,
+                    heightUnit,
+                    ex1Machine
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="bg-orange-950 border border-orange-800 rounded p-2">
-              <div className="text-orange-400 text-xs mb-1">Working</div>
-              <div className="text-orange-300 font-bold text-xl">{ex1.targetWeight} lbs</div>
-            </div>
-          </div>
+          )}
 
           {/* Sets × Reps and Tips */}
           <div className="grid grid-cols-2 gap-2">
@@ -1355,6 +1556,11 @@ function ExerciseCard({
               baseReps={ex1.targetReps}
               suggestion={targets[ex1.name]}
               isBodyweight={ex1.isBodyweight}
+              isMachine={ex1.isMachine}
+              primaryMetric={ex1.primaryMetric}
+              metricUnit={ex1.metricUnit}
+              weightUnit={weightUnit}
+              heightUnit={heightUnit}
               lastSession={lastSessionMaxes[ex1.name]}
             />
           </div>
@@ -1389,17 +1595,38 @@ function ExerciseCard({
         </div>
 
         <div className="space-y-2">
-          {/* Weights together */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-green-950 border border-green-800 rounded p-2">
-              <div className="text-green-400 text-xs mb-1">Warmup</div>
-              <div className="text-green-300 font-bold text-xl">{ex2.warmupWeight} lbs</div>
+          {ex2ShowMetric && (
+            <div className={`grid ${ex2ShowWarmup ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+              {ex2ShowWarmup && (
+                <div className="bg-green-950 border border-green-800 rounded p-2">
+                  <div className="text-green-400 text-xs mb-1">Warmup {ex2MetricLabel}</div>
+                  <div className="text-green-300 font-bold text-xl">
+                    {formatMetricDisplay(
+                      ex2.warmupWeight,
+                      ex2MetricInfo.primaryMetric,
+                      ex2MetricInfo.metricUnit,
+                      weightUnit,
+                      heightUnit,
+                      ex2Machine
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="bg-orange-950 border border-orange-800 rounded p-2">
+                <div className="text-orange-400 text-xs mb-1">Target {ex2MetricLabel}</div>
+                <div className="text-orange-300 font-bold text-xl">
+                  {formatMetricDisplay(
+                    ex2.targetWeight,
+                    ex2MetricInfo.primaryMetric,
+                    ex2MetricInfo.metricUnit,
+                    weightUnit,
+                    heightUnit,
+                    ex2Machine
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="bg-orange-950 border border-orange-800 rounded p-2">
-              <div className="text-orange-400 text-xs mb-1">Working</div>
-              <div className="text-orange-300 font-bold text-xl">{ex2.targetWeight} lbs</div>
-            </div>
-          </div>
+          )}
 
           {/* Sets × Reps and Tips */}
           <div className="grid grid-cols-2 gap-2">
@@ -1423,6 +1650,11 @@ function ExerciseCard({
               baseReps={ex2.targetReps}
               suggestion={targets[ex2.name]}
               isBodyweight={ex2.isBodyweight}
+              isMachine={ex2.isMachine}
+              primaryMetric={ex2.primaryMetric}
+              metricUnit={ex2.metricUnit}
+              weightUnit={weightUnit}
+              heightUnit={heightUnit}
               lastSession={lastSessionMaxes[ex2.name]}
             />
           </div>

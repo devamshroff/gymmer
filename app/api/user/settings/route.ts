@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-utils';
 import { getUserSettings, upsertUserSettings } from '@/lib/database';
+import { isHeightUnit, isWeightUnit } from '@/lib/units';
 
 export async function GET() {
   const authResult = await requireAuth();
@@ -29,6 +30,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const restTimeSeconds = Number(body?.restTimeSeconds);
     const supersetRestSeconds = Number(body?.supersetRestSeconds);
+    const weightUnitInput = body?.weightUnit;
+    const heightUnitInput = body?.heightUnit;
 
     if (!Number.isFinite(restTimeSeconds) || restTimeSeconds < 0) {
       return NextResponse.json(
@@ -44,15 +47,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (weightUnitInput !== undefined && !isWeightUnit(weightUnitInput)) {
+      return NextResponse.json(
+        { error: 'weightUnit must be either lbs or kg' },
+        { status: 400 }
+      );
+    }
+
+    if (heightUnitInput !== undefined && !isHeightUnit(heightUnitInput)) {
+      return NextResponse.json(
+        { error: 'heightUnit must be either in or cm' },
+        { status: 400 }
+      );
+    }
+
+    const existingSettings = await getUserSettings(user.id);
+    const weightUnit = isWeightUnit(weightUnitInput) ? weightUnitInput : existingSettings.weightUnit;
+    const heightUnit = isHeightUnit(heightUnitInput) ? heightUnitInput : existingSettings.heightUnit;
+
     await upsertUserSettings(user.id, {
       restTimeSeconds,
-      supersetRestSeconds
+      supersetRestSeconds,
+      weightUnit,
+      heightUnit
     });
 
     return NextResponse.json({
       success: true,
       restTimeSeconds,
-      supersetRestSeconds
+      supersetRestSeconds,
+      weightUnit,
+      heightUnit
     });
   } catch (error) {
     console.error('Error updating user settings:', error);

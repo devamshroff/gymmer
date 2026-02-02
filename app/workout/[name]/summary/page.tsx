@@ -1,18 +1,35 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
 import { loadSessionTargetsMeta, loadSessionWorkout } from '@/lib/session-workout';
 import { getWorkoutSession, WorkoutSessionData } from '@/lib/workout-session';
-import { EXERCISE_TYPES } from '@/lib/constants';
+import { EXERCISE_TYPES, type ExercisePrimaryMetric } from '@/lib/constants';
+import {
+  DEFAULT_HEIGHT_UNIT,
+  DEFAULT_WEIGHT_UNIT,
+  convertWeightFromStorage,
+  normalizeHeightUnit,
+  normalizeWeightUnit,
+} from '@/lib/units';
+import type { HeightUnit, WeightUnit } from '@/lib/units';
+import {
+  formatMetricDisplay,
+  isRepsOnlyMetric,
+  isWeightMetric,
+  resolvePrimaryMetric,
+} from '@/lib/metric-utils';
 
 type ReportTarget = {
   name: string;
   targetWeight: number | null;
   targetReps: number | null;
   isBodyweight?: boolean;
+  isMachine?: boolean;
+  primaryMetric?: ExercisePrimaryMetric;
+  metricUnit?: string | null;
 };
 
 function extractReportTargets(plan: WorkoutPlan | null): ReportTarget[] {
@@ -24,7 +41,10 @@ function extractReportTargets(plan: WorkoutPlan | null): ReportTarget[] {
         name: exercise.name,
         targetWeight: Number.isFinite(exercise.targetWeight) ? exercise.targetWeight : null,
         targetReps: Number.isFinite(exercise.targetReps) ? exercise.targetReps : null,
-        isBodyweight: exercise.isBodyweight ?? false
+        isBodyweight: exercise.isBodyweight ?? false,
+        isMachine: exercise.isMachine ?? false,
+        primaryMetric: exercise.primaryMetric,
+        metricUnit: exercise.metricUnit ?? null
       });
     } else {
       const [ex1, ex2] = exercise.exercises;
@@ -32,13 +52,19 @@ function extractReportTargets(plan: WorkoutPlan | null): ReportTarget[] {
         name: ex1.name,
         targetWeight: Number.isFinite(ex1.targetWeight) ? ex1.targetWeight : null,
         targetReps: Number.isFinite(ex1.targetReps) ? ex1.targetReps : null,
-        isBodyweight: ex1.isBodyweight ?? false
+        isBodyweight: ex1.isBodyweight ?? false,
+        isMachine: ex1.isMachine ?? false,
+        primaryMetric: ex1.primaryMetric,
+        metricUnit: ex1.metricUnit ?? null
       });
       targets.push({
         name: ex2.name,
         targetWeight: Number.isFinite(ex2.targetWeight) ? ex2.targetWeight : null,
         targetReps: Number.isFinite(ex2.targetReps) ? ex2.targetReps : null,
-        isBodyweight: ex2.isBodyweight ?? false
+        isBodyweight: ex2.isBodyweight ?? false,
+        isMachine: ex2.isMachine ?? false,
+        primaryMetric: ex2.primaryMetric,
+        metricUnit: ex2.metricUnit ?? null
       });
     }
   }
@@ -59,10 +85,63 @@ export default function SummaryPage() {
   const [totalDuration, setTotalDuration] = useState(0);
   const [report, setReport] = useState<string | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [weightUnit, setWeightUnit] = useState<WeightUnit>(DEFAULT_WEIGHT_UNIT);
+  const [heightUnit, setHeightUnit] = useState<HeightUnit>(DEFAULT_HEIGHT_UNIT);
+
+  const getMetricInfo = (entry: {
+    primaryMetric?: ExercisePrimaryMetric;
+    metricUnit?: string | null;
+    isBodyweight?: boolean;
+  }) => ({
+    primaryMetric: resolvePrimaryMetric(entry.primaryMetric, entry.isBodyweight),
+    metricUnit: entry.metricUnit ?? null,
+  });
+
+  const formatMetric = (
+    value: number,
+    entry: { primaryMetric?: ExercisePrimaryMetric; metricUnit?: string | null; isBodyweight?: boolean },
+    isMachine?: boolean
+  ) => {
+    const metricInfo = getMetricInfo(entry);
+    return formatMetricDisplay(value, metricInfo.primaryMetric, metricInfo.metricUnit, weightUnit, heightUnit, isMachine);
+  };
+
+  const formatVolume = (volume: number) =>
+    Math.round(convertWeightFromStorage(volume, weightUnit)).toLocaleString();
+
+  const reportTargets = useMemo(() => extractReportTargets(workout), [workout]);
+  const reportTargetsByName = useMemo(() => {
+    const map = new Map<string, ReportTarget>();
+    for (const target of reportTargets) {
+      map.set(target.name, target);
+    }
+    return map;
+  }, [reportTargets]);
 
   // Prevent double-save in React Strict Mode / re-renders
   const hasSavedRef = useRef(false);
   const hasReportedRef = useRef(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchUserSettings() {
+      try {
+        const response = await fetch('/api/user/settings');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!isMounted) return;
+        setWeightUnit(normalizeWeightUnit(data?.weightUnit));
+        setHeightUnit(normalizeHeightUnit(data?.heightUnit));
+      } catch (error) {
+        console.error('Error fetching user settings:', error);
+      }
+    }
+
+    fetchUserSettings();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Get routineId from URL params (for public/favorited routines)
   const routineIdParam = searchParams.get('routineId');
@@ -105,21 +184,37 @@ export default function SummaryPage() {
 
     setSessionData(session);
 
-    // Calculate total volume
+    // Calculate total volume (weight-based only)
     let volume = 0;
     for (const exercise of session.exercises) {
-      if (exercise.warmup) {
-        volume += exercise.warmup.weight * exercise.warmup.reps;
-      }
-      for (const set of exercise.sets) {
-        volume += set.weight * set.reps;
+      const meta = reportTargetsByName.get(exercise.name);
+      const metricInfo = getMetricInfo({
+        primaryMetric: exercise.primaryMetric ?? meta?.primaryMetric,
+        metricUnit: exercise.metricUnit ?? meta?.metricUnit,
+        isBodyweight: meta?.isBodyweight,
+      });
+      if (isWeightMetric(metricInfo.primaryMetric)) {
+        if (exercise.warmup) {
+          volume += exercise.warmup.weight * exercise.warmup.reps;
+        }
+        for (const set of exercise.sets) {
+          volume += set.weight * set.reps;
+        }
       }
       if (exercise.b2bPartner) {
-        if (exercise.b2bPartner.warmup) {
-          volume += exercise.b2bPartner.warmup.weight * exercise.b2bPartner.warmup.reps;
-        }
-        for (const set of exercise.b2bPartner.sets) {
-          volume += set.weight * set.reps;
+        const partnerMeta = reportTargetsByName.get(exercise.b2bPartner.name);
+        const partnerMetricInfo = getMetricInfo({
+          primaryMetric: exercise.b2bPartner.primaryMetric ?? partnerMeta?.primaryMetric,
+          metricUnit: exercise.b2bPartner.metricUnit ?? partnerMeta?.metricUnit,
+          isBodyweight: partnerMeta?.isBodyweight,
+        });
+        if (isWeightMetric(partnerMetricInfo.primaryMetric)) {
+          if (exercise.b2bPartner.warmup) {
+            volume += exercise.b2bPartner.warmup.weight * exercise.b2bPartner.warmup.reps;
+          }
+          for (const set of exercise.b2bPartner.sets) {
+            volume += set.weight * set.reps;
+          }
         }
       }
     }
@@ -130,7 +225,7 @@ export default function SummaryPage() {
     const endTime = new Date();
     const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
     setTotalDuration(durationMinutes);
-  }, []);
+  }, [reportTargetsByName]);
 
   // ---------------------------
   // AUTO-SAVE WORKOUT (with duplicate protection)
@@ -301,7 +396,7 @@ export default function SummaryPage() {
             <div className="text-center">
               <div className="text-zinc-400 text-sm mb-2">Total Volume</div>
               <div className="text-white text-4xl font-bold mb-1">
-                {totalVolume.toLocaleString()} lbs
+                {formatVolume(totalVolume)} {weightUnit}
               </div>
               <div className="text-zinc-500 text-sm mt-2">
                 Duration: {totalDuration} minutes
@@ -336,19 +431,39 @@ export default function SummaryPage() {
             <h2 className="text-xl font-bold text-white mb-4">EXERCISES COMPLETED</h2>
             <div className="space-y-4">
               {sessionData.exercises.map((exercise, index) => {
-                const exerciseVolume =
-                  (exercise.warmup ? exercise.warmup.weight * exercise.warmup.reps : 0) +
-                  exercise.sets.reduce((sum, set) => sum + set.weight * set.reps, 0) +
-                  (exercise.b2bPartner
-                    ? (exercise.b2bPartner.warmup
-                        ? exercise.b2bPartner.warmup.weight *
-                          exercise.b2bPartner.warmup.reps
-                        : 0) +
-                      exercise.b2bPartner.sets.reduce(
-                        (sum, set) => sum + set.weight * set.reps,
-                        0
-                      )
-                    : 0);
+                const targetMeta = reportTargetsByName.get(exercise.name);
+                const metricInfo = getMetricInfo({
+                  primaryMetric: exercise.primaryMetric ?? targetMeta?.primaryMetric,
+                  metricUnit: exercise.metricUnit ?? targetMeta?.metricUnit,
+                  isBodyweight: targetMeta?.isBodyweight,
+                });
+                const partnerMeta = exercise.b2bPartner?.name
+                  ? reportTargetsByName.get(exercise.b2bPartner.name)
+                  : undefined;
+                const partnerMetricInfo = getMetricInfo({
+                  primaryMetric: exercise.b2bPartner?.primaryMetric ?? partnerMeta?.primaryMetric,
+                  metricUnit: exercise.b2bPartner?.metricUnit ?? partnerMeta?.metricUnit,
+                  isBodyweight: partnerMeta?.isBodyweight,
+                });
+                const isMachine = !!exercise.isMachine && isWeightMetric(metricInfo.primaryMetric);
+                const isPartnerMachine = !!exercise.b2bPartner?.isMachine
+                  && isWeightMetric(partnerMetricInfo.primaryMetric);
+                const hasWeightVolume = isWeightMetric(metricInfo.primaryMetric)
+                  || (exercise.b2bPartner && isWeightMetric(partnerMetricInfo.primaryMetric));
+                let exerciseVolume = 0;
+                if (isWeightMetric(metricInfo.primaryMetric)) {
+                  exerciseVolume += (exercise.warmup ? exercise.warmup.weight * exercise.warmup.reps : 0) +
+                    exercise.sets.reduce((sum, set) => sum + set.weight * set.reps, 0);
+                }
+                if (exercise.b2bPartner && isWeightMetric(partnerMetricInfo.primaryMetric)) {
+                  exerciseVolume += (exercise.b2bPartner.warmup
+                    ? exercise.b2bPartner.warmup.weight * exercise.b2bPartner.warmup.reps
+                    : 0) +
+                    exercise.b2bPartner.sets.reduce(
+                      (sum, set) => sum + set.weight * set.reps,
+                      0
+                    );
+                }
 
                 return (
                   <div key={index} className="border-l-4 border-green-500 pl-3">
@@ -358,24 +473,38 @@ export default function SummaryPage() {
                         : `B2B: ${exercise.name} / ${exercise.b2bPartner?.name}`}
                     </div>
                     <div className="text-zinc-400 text-sm mb-2">
-                      {exercise.sets.length} sets •{' '}
-                      {Math.round(exerciseVolume).toLocaleString()} lbs volume
+                      {exercise.sets.length} sets
+                      {hasWeightVolume && (
+                        <> • {formatVolume(exerciseVolume)} {weightUnit} volume</>
+                      )}
                     </div>
                     <div className="space-y-1 text-xs">
                       {exercise.warmup && (
                         <div className="text-zinc-500">
-                          Warmup: {exercise.warmup.weight} lbs ×{' '}
+                          Warmup: {formatMetric(exercise.warmup.weight, {
+                            primaryMetric: metricInfo.primaryMetric,
+                            metricUnit: metricInfo.metricUnit,
+                            isBodyweight: targetMeta?.isBodyweight
+                          }, isMachine)} ×{' '}
                           {exercise.warmup.reps} reps
                         </div>
                       )}
                       {exercise.sets.map((set, setIndex) => (
                         <div key={setIndex} className="text-zinc-300">
-                          Set {setIndex + 1}: {set.weight} lbs × {set.reps} reps
+                          Set {setIndex + 1}: {formatMetric(set.weight, {
+                            primaryMetric: metricInfo.primaryMetric,
+                            metricUnit: metricInfo.metricUnit,
+                            isBodyweight: targetMeta?.isBodyweight
+                          }, isMachine)} × {set.reps} reps
                           {exercise.b2bPartner &&
                             exercise.b2bPartner.sets[setIndex] && (
                               <span className="text-purple-400">
                                 {' + '}
-                                {exercise.b2bPartner.sets[setIndex].weight} lbs ×{' '}
+                                {formatMetric(exercise.b2bPartner.sets[setIndex].weight, {
+                                  primaryMetric: partnerMetricInfo.primaryMetric,
+                                  metricUnit: partnerMetricInfo.metricUnit,
+                                  isBodyweight: partnerMeta?.isBodyweight
+                                }, isPartnerMachine)} ×{' '}
                                 {exercise.b2bPartner.sets[setIndex].reps} reps
                               </span>
                             )}

@@ -11,6 +11,9 @@ interface Exercise {
   tips: string | null;
   equipment: string | null;
   is_bodyweight?: number | null;
+  is_machine?: number | null;
+  primary_metric?: string | null;
+  metric_unit?: string | null;
   muscle_groups?: string | null;
 }
 
@@ -101,7 +104,9 @@ export default function SupersetSelector({ onSelect, onCancel }: SupersetSelecto
         name: exerciseData.name,
         video_url: exerciseData.videoUrl || null,
         tips: exerciseData.tips || null,
-        equipment: exerciseData.equipment || null
+        equipment: exerciseData.equipment || null,
+        primary_metric: typeof data.primary_metric === 'string' ? data.primary_metric : null,
+        metric_unit: typeof data.metric_unit === 'string' ? data.metric_unit : null
       };
 
       if (createTarget === 'exercise1') {

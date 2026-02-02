@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { EXERCISE_PRIMARY_METRICS } from '@/lib/constants';
+import type { ExercisePrimaryMetric } from '@/lib/constants';
 
 interface QuickExerciseFormProps {
   onSubmit: (exercise: {
@@ -9,6 +11,8 @@ interface QuickExerciseFormProps {
     tips?: string;
     equipment?: string;
     difficulty?: string;
+    primaryMetric?: ExercisePrimaryMetric;
+    metricUnit?: string;
   }) => Promise<void>;
   onCancel: () => void;
 }
@@ -18,6 +22,8 @@ export default function QuickExerciseForm({ onSubmit, onCancel }: QuickExerciseF
   const [videoUrl, setVideoUrl] = useState('');
   const [tips, setTips] = useState('');
   const [equipment, setEquipment] = useState('');
+  const [primaryMetric, setPrimaryMetric] = useState<ExercisePrimaryMetric>(EXERCISE_PRIMARY_METRICS.weight);
+  const [metricUnit, setMetricUnit] = useState('sec');
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -30,7 +36,12 @@ export default function QuickExerciseForm({ onSubmit, onCancel }: QuickExerciseF
         name: name.trim(),
         videoUrl: videoUrl.trim() || undefined,
         tips: tips.trim() || undefined,
-        equipment: equipment || undefined
+        equipment: equipment || undefined,
+        primaryMetric,
+        metricUnit: (primaryMetric === EXERCISE_PRIMARY_METRICS.time
+          || primaryMetric === EXERCISE_PRIMARY_METRICS.distance)
+          ? metricUnit.trim()
+          : undefined
       });
     } finally {
       setSubmitting(false);
@@ -86,6 +97,79 @@ export default function QuickExerciseForm({ onSubmit, onCancel }: QuickExerciseF
               <option value="Other">Other</option>
             </select>
           </div>
+
+          {/* Tracking Metric */}
+          <div>
+            <label className="text-zinc-300 text-sm font-semibold block mb-2">
+              Tracking Metric
+            </label>
+            <select
+              value={primaryMetric}
+              onChange={(e) => {
+                const nextMetric = e.target.value as ExercisePrimaryMetric;
+                setPrimaryMetric(nextMetric);
+                if (nextMetric === EXERCISE_PRIMARY_METRICS.time) {
+                  setMetricUnit('sec');
+                } else if (nextMetric === EXERCISE_PRIMARY_METRICS.distance) {
+                  setMetricUnit('m');
+                }
+              }}
+              className="w-full bg-zinc-900 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 appearance-none cursor-pointer"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`,
+                backgroundPosition: 'right 0.5rem center',
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: '1.5em 1.5em',
+                paddingRight: '2.5rem'
+              }}
+            >
+              <option value={EXERCISE_PRIMARY_METRICS.weight}>Weight</option>
+              <option value={EXERCISE_PRIMARY_METRICS.height}>Height</option>
+              <option value={EXERCISE_PRIMARY_METRICS.time}>Time</option>
+              <option value={EXERCISE_PRIMARY_METRICS.distance}>Distance</option>
+              <option value={EXERCISE_PRIMARY_METRICS.repsOnly}>Reps only</option>
+            </select>
+            {primaryMetric === EXERCISE_PRIMARY_METRICS.height && (
+              <p className="text-zinc-500 text-xs mt-2">
+                Uses your profile height unit (in or cm).
+              </p>
+            )}
+          </div>
+
+          {(primaryMetric === EXERCISE_PRIMARY_METRICS.time
+            || primaryMetric === EXERCISE_PRIMARY_METRICS.distance) && (
+            <div>
+              <label className="text-zinc-300 text-sm font-semibold block mb-2">
+                Unit
+              </label>
+              <select
+                value={metricUnit}
+                onChange={(e) => setMetricUnit(e.target.value)}
+                className="w-full bg-zinc-900 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 appearance-none cursor-pointer"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`,
+                  backgroundPosition: 'right 0.5rem center',
+                  backgroundRepeat: 'no-repeat',
+                  backgroundSize: '1.5em 1.5em',
+                  paddingRight: '2.5rem'
+                }}
+              >
+                {primaryMetric === EXERCISE_PRIMARY_METRICS.time ? (
+                  <>
+                    <option value="sec">sec</option>
+                    <option value="min">min</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="m">m</option>
+                    <option value="km">km</option>
+                    <option value="yd">yd</option>
+                    <option value="mi">mi</option>
+                  </>
+                )}
+              </select>
+            </div>
+          )}
 
           {/* Video URL - Optional */}
           <div>

@@ -1,6 +1,6 @@
 // lib/types.ts
 
-import { EXERCISE_TYPES, ExerciseType } from '@/lib/constants';
+import { EXERCISE_TYPES, ExercisePrimaryMetric, ExerciseType } from '@/lib/constants';
 
 export interface Stretch {
   name: string;
@@ -21,6 +21,9 @@ export interface SingleExercise {
   videoUrl: string;
   tips: string;
   isBodyweight?: boolean;
+  isMachine?: boolean;
+  primaryMetric?: ExercisePrimaryMetric;
+  metricUnit?: string | null;
 }
 
 export interface B2BExercise {
@@ -36,6 +39,9 @@ export interface B2BExercise {
       videoUrl: string;
       tips: string;
       isBodyweight?: boolean;
+      isMachine?: boolean;
+      primaryMetric?: ExercisePrimaryMetric;
+      metricUnit?: string | null;
     },
     {
       name: string;
@@ -47,6 +53,9 @@ export interface B2BExercise {
       videoUrl: string;
       tips: string;
       isBodyweight?: boolean;
+      isMachine?: boolean;
+      primaryMetric?: ExercisePrimaryMetric;
+      metricUnit?: string | null;
     }
   ];
   restTime: number;  // seconds between pairs
@@ -150,6 +159,9 @@ export interface ExerciseDB {
   muscle_groups: string | null;  // JSON string
   equipment: string | null;
   is_bodyweight?: number | null;
+  is_machine?: number | null;
+  primary_metric?: string | null;
+  metric_unit?: string | null;
   difficulty: string | null;
   created_at: string;
 }

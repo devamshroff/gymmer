@@ -2,21 +2,31 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { WorkoutPlan } from '@/lib/types';
+import { B2BExercise, WorkoutPlan } from '@/lib/types';
 import { getRoutineByName, getRoutineExercises, getRoutineStretches, getDatabase, getRoutineById, isFavorited, getUserSettings } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
-import { EXERCISE_TYPES } from '@/lib/constants';
+import { EXERCISE_PRIMARY_METRICS, EXERCISE_TYPES } from '@/lib/constants';
 
 function withWarmupFlags(workout: WorkoutPlan): WorkoutPlan {
   const exercises = workout.exercises.map((exercise) => {
     if (exercise.type === EXERCISE_TYPES.single) {
       const isBodyweight = exercise.isBodyweight ?? false;
       const hasWarmup = exercise.hasWarmup ?? !isBodyweight;
-      return { ...exercise, isBodyweight, hasWarmup };
+      const isMachine = exercise.isMachine ?? false;
+      const primaryMetric = exercise.primaryMetric ?? (
+        isBodyweight ? EXERCISE_PRIMARY_METRICS.repsOnly : EXERCISE_PRIMARY_METRICS.weight
+      );
+      const metricUnit = exercise.metricUnit ?? null;
+      return { ...exercise, isBodyweight, hasWarmup, isMachine, primaryMetric, metricUnit };
     }
     const exercisesWithFlags = exercise.exercises.map((item) => {
       const isBodyweight = item.isBodyweight ?? false;
-      return { ...item, isBodyweight, hasWarmup: false };
+      const isMachine = item.isMachine ?? false;
+      const primaryMetric = item.primaryMetric ?? (
+        isBodyweight ? EXERCISE_PRIMARY_METRICS.repsOnly : EXERCISE_PRIMARY_METRICS.weight
+      );
+      const metricUnit = item.metricUnit ?? null;
+      return { ...item, isBodyweight, hasWarmup: false, isMachine, primaryMetric, metricUnit };
     }) as typeof exercise.exercises;
     return {
       ...exercise,
@@ -143,6 +153,15 @@ async function loadRoutineFromDatabase(
     const isBodyweight = typeof re.exercise_is_bodyweight === 'number'
       ? re.exercise_is_bodyweight === 1
       : false;
+    const isMachine = typeof re.exercise_is_machine === 'number'
+      ? re.exercise_is_machine === 1
+      : false;
+    const primaryMetric = typeof re.exercise_primary_metric === 'string'
+      ? re.exercise_primary_metric
+      : undefined;
+    const metricUnit = typeof re.exercise_metric_unit === 'string'
+      ? re.exercise_metric_unit
+      : null;
 
     if (!isSuperset) {
       return {
@@ -156,7 +175,10 @@ async function loadRoutineFromDatabase(
         restTime: restTimeSeconds,
         videoUrl: re.video_url || '',
         tips: re.tips || '',
-        isBodyweight
+        isBodyweight,
+        isMachine,
+        primaryMetric,
+        metricUnit
       };
     }
 
@@ -173,7 +195,10 @@ async function loadRoutineFromDatabase(
           hasWarmup: false,
           videoUrl: re.video_url || '',
           tips: re.tips || '',
-          isBodyweight
+          isBodyweight,
+          isMachine,
+          primaryMetric,
+          metricUnit
         },
         {
           name: re.exercise2_name || '',
@@ -186,29 +211,18 @@ async function loadRoutineFromDatabase(
           tips: re.exercise2_tips || '',
           isBodyweight: typeof re.exercise2_is_bodyweight === 'number'
             ? re.exercise2_is_bodyweight === 1
-            : false
+            : false,
+          isMachine: typeof re.exercise2_is_machine === 'number'
+            ? re.exercise2_is_machine === 1
+            : false,
+          primaryMetric: typeof re.exercise2_primary_metric === 'string'
+            ? re.exercise2_primary_metric
+            : undefined,
+          metricUnit: typeof re.exercise2_metric_unit === 'string'
+            ? re.exercise2_metric_unit
+            : null
         }
-      ] as [{
-        name: string;
-        sets: number;
-        targetReps: number;
-        targetWeight: number;
-        warmupWeight: number;
-        hasWarmup?: boolean;
-        videoUrl: string;
-        tips: string;
-        isBodyweight?: boolean;
-      }, {
-        name: string;
-        sets: number;
-        targetReps: number;
-        targetWeight: number;
-        warmupWeight: number;
-        hasWarmup?: boolean;
-        videoUrl: string;
-        tips: string;
-        isBodyweight?: boolean;
-      }]
+      ] as B2BExercise['exercises']
     };
   });
 

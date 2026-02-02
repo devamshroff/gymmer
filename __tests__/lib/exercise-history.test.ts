@@ -19,14 +19,20 @@ describe('getExerciseHistory', () => {
   });
 
   it('skips session_mode filter when column is missing', async () => {
-    mockExecute
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+    mockExecute.mockImplementation((arg) => {
+      const sql = typeof arg === 'string' ? arg : arg?.sql;
+      if (typeof sql === 'string' && sql.includes('PRAGMA table_info(exercises)')) {
+        return Promise.resolve({ rows: [{ name: 'primary_metric' }, { name: 'metric_unit' }] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
 
     await getExerciseHistory('user-123', 'Box Jumps', 'month');
 
-    expect(mockExecute).toHaveBeenCalledTimes(2);
-    const historyCall = mockExecute.mock.calls[0][0];
+    const historyCall = mockExecute.mock.calls.find(
+      (call) => typeof call[0]?.sql === 'string' && call[0].sql.includes('WITH matched')
+    )?.[0];
+    expect(historyCall).toBeTruthy();
     expect(historyCall.sql).not.toContain('session_mode');
     expect(historyCall.args).not.toContain('light');
   });

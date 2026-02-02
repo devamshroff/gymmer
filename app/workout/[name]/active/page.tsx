@@ -13,7 +13,23 @@ import { acknowledgeChangeWarning, hasChangeWarningAck, loadSessionWorkout, save
 import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 import ExerciseHistoryModal from '@/app/components/ExerciseHistoryModal';
 import AutosaveBadge from '@/app/components/AutosaveBadge';
-import { EXERCISE_TYPES } from '@/lib/constants';
+import { EXERCISE_TYPES, type ExercisePrimaryMetric } from '@/lib/constants';
+import {
+  DEFAULT_HEIGHT_UNIT,
+  DEFAULT_WEIGHT_UNIT,
+  normalizeHeightUnit,
+  normalizeWeightUnit,
+} from '@/lib/units';
+import type { HeightUnit, WeightUnit } from '@/lib/units';
+import {
+  formatMetricDisplay,
+  formatMetricInputValue,
+  getMetricLabel,
+  isRepsOnlyMetric,
+  isWeightMetric,
+  parseMetricInput,
+  resolvePrimaryMetric,
+} from '@/lib/metric-utils';
 
 interface SetData {
   weight: number;
@@ -27,6 +43,7 @@ type ExerciseOption = {
   tips: string | null;
   equipment?: string | null;
   is_bodyweight?: number | null;
+  is_machine?: number | null;
 };
 
 function normalizeDateString(value: string): string {
@@ -51,6 +68,10 @@ function formatLocalDate(value?: string | null): string {
 }
 
 function resolveHasWarmup(exercise: SingleExercise): boolean {
+  const primaryMetric = resolvePrimaryMetric(exercise.primaryMetric, exercise.isBodyweight);
+  if (!isWeightMetric(primaryMetric)) {
+    return false;
+  }
   if (typeof exercise.hasWarmup === 'boolean') {
     return exercise.hasWarmup;
   }
@@ -73,18 +94,26 @@ function ActiveWorkoutContent() {
   const [restTimeRemaining, setRestTimeRemaining] = useState(0);
   const [restTimeSeconds, setRestTimeSeconds] = useState(60);
   const [supersetRestSeconds, setSupersetRestSeconds] = useState(15);
+  const [weightUnit, setWeightUnit] = useState<WeightUnit>(DEFAULT_WEIGHT_UNIT);
+  const [heightUnit, setHeightUnit] = useState<HeightUnit>(DEFAULT_HEIGHT_UNIT);
 
   // Single exercise state
   const [setData, setSetData] = useState<SetData>({ weight: 0, reps: 0 });
   const [completedSets, setCompletedSets] = useState<SetData[]>([]);
   const [warmupCompleted, setWarmupCompleted] = useState(false);
   const [warmupDecision, setWarmupDecision] = useState<'pending' | 'include' | 'skip'>('pending');
+  const [machineOnly, setMachineOnly] = useState(false);
+  const [machineOnlyHoldWeight, setMachineOnlyHoldWeight] = useState(0);
 
   // B2B/Superset state
   const [currentExerciseInPair, setCurrentExerciseInPair] = useState(0); // 0 or 1
   const [setData1, setSetData1] = useState<SetData>({ weight: 0, reps: 0 });
   const [setData2, setSetData2] = useState<SetData>({ weight: 0, reps: 0 });
   const [completedPairs, setCompletedPairs] = useState<Array<{ ex1: SetData; ex2: SetData }>>([]);
+  const [machineOnly1, setMachineOnly1] = useState(false);
+  const [machineOnly2, setMachineOnly2] = useState(false);
+  const [machineOnlyHoldWeight1, setMachineOnlyHoldWeight1] = useState(0);
+  const [machineOnlyHoldWeight2, setMachineOnlyHoldWeight2] = useState(0);
 
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [transitionTimeRemaining, setTransitionTimeRemaining] = useState(60);
@@ -95,6 +124,42 @@ function ActiveWorkoutContent() {
   const [exerciseActionMode, setExerciseActionMode] = useState<'add' | 'replace' | null>(null);
   const [showChangeWarning, setShowChangeWarning] = useState(false);
   const pendingChangeRef = useRef<(() => void) | null>(null);
+
+  const getMetricInfo = (exercise: {
+    primaryMetric?: ExercisePrimaryMetric;
+    metricUnit?: string | null;
+    isBodyweight?: boolean;
+  }) => ({
+    primaryMetric: resolvePrimaryMetric(exercise.primaryMetric, exercise.isBodyweight),
+    metricUnit: exercise.metricUnit ?? null,
+  });
+
+  const isExerciseWeightMetric = (exercise: {
+    primaryMetric?: ExercisePrimaryMetric;
+    isBodyweight?: boolean;
+  }) => isWeightMetric(resolvePrimaryMetric(exercise.primaryMetric, exercise.isBodyweight));
+
+  const formatMetric = (
+    value: number,
+    metricInfo: { primaryMetric: ExercisePrimaryMetric; metricUnit: string | null },
+    isMachine?: boolean
+  ) => formatMetricDisplay(value, metricInfo.primaryMetric, metricInfo.metricUnit, weightUnit, heightUnit, isMachine);
+
+  const getMetricLabelText = (
+    metricInfo: { primaryMetric: ExercisePrimaryMetric; metricUnit: string | null },
+    isMachine?: boolean
+  ) => getMetricLabel(metricInfo.primaryMetric, metricInfo.metricUnit, weightUnit, heightUnit, isMachine);
+
+  const parseMetricValueInput = (
+    value: string,
+    metricInfo: { primaryMetric: ExercisePrimaryMetric }
+  ): number | null => parseMetricInput(value, metricInfo.primaryMetric, weightUnit, heightUnit);
+
+  const formatMetricValueInput = (
+    value: number,
+    metricInfo: { primaryMetric: ExercisePrimaryMetric },
+    allowBlank = false
+  ) => formatMetricInputValue(value, metricInfo.primaryMetric, weightUnit, heightUnit, allowBlank);
 
   const historyTargets = useMemo(() => {
     if (!workout) return {};
@@ -140,12 +205,17 @@ function ActiveWorkoutContent() {
 
   const initSingleExerciseState = (exercise: SingleExercise) => {
     const hasWarmup = resolveHasWarmup(exercise);
+    const defaultMachineOnly = !!exercise.isMachine
+      && isExerciseWeightMetric(exercise)
+      && exercise.targetWeight <= 0;
     setWarmupCompleted(false);
+    setMachineOnly(defaultMachineOnly);
+    setMachineOnlyHoldWeight(exercise.targetWeight);
     if (!hasWarmup) {
       setWarmupDecision('skip');
       setCurrentSetIndex(1);
       setSetData({
-        weight: exercise.targetWeight,
+        weight: defaultMachineOnly ? 0 : exercise.targetWeight,
         reps: exercise.targetReps,
       });
       return;
@@ -153,7 +223,7 @@ function ActiveWorkoutContent() {
     setWarmupDecision('pending');
     setCurrentSetIndex(1);
     setSetData({
-      weight: exercise.targetWeight,
+      weight: defaultMachineOnly ? 0 : exercise.targetWeight,
       reps: exercise.targetReps,
     });
   };
@@ -201,14 +271,24 @@ function ActiveWorkoutContent() {
         } else {
           // B2B exercise - no warmups, start at set 1
           const b2bEx = exercise as B2BExercise;
+          const defaultMachineOnly1 = !!b2bEx.exercises[0].isMachine
+            && isExerciseWeightMetric(b2bEx.exercises[0])
+            && b2bEx.exercises[0].targetWeight <= 0;
+          const defaultMachineOnly2 = !!b2bEx.exercises[1].isMachine
+            && isExerciseWeightMetric(b2bEx.exercises[1])
+            && b2bEx.exercises[1].targetWeight <= 0;
           setSetData1({
-            weight: b2bEx.exercises[0].targetWeight,
+            weight: defaultMachineOnly1 ? 0 : b2bEx.exercises[0].targetWeight,
             reps: b2bEx.exercises[0].targetReps,
           });
           setSetData2({
-            weight: b2bEx.exercises[1].targetWeight,
+            weight: defaultMachineOnly2 ? 0 : b2bEx.exercises[1].targetWeight,
             reps: b2bEx.exercises[1].targetReps,
           });
+          setMachineOnly1(defaultMachineOnly1);
+          setMachineOnly2(defaultMachineOnly2);
+          setMachineOnlyHoldWeight1(b2bEx.exercises[0].targetWeight);
+          setMachineOnlyHoldWeight2(b2bEx.exercises[1].targetWeight);
           setCurrentSetIndex(1);
           setCurrentExerciseInPair(0); // Start with first exercise
           setWarmupDecision('skip');
@@ -236,6 +316,8 @@ function ActiveWorkoutContent() {
         const supersetSeconds = Number(data?.supersetRestSeconds);
         setRestTimeSeconds(Number.isFinite(restSeconds) ? restSeconds : 60);
         setSupersetRestSeconds(Number.isFinite(supersetSeconds) ? supersetSeconds : 15);
+        setWeightUnit(normalizeWeightUnit(data?.weightUnit));
+        setHeightUnit(normalizeHeightUnit(data?.heightUnit));
       } catch (error) {
         console.error('Error fetching user settings:', error);
       }
@@ -286,14 +368,24 @@ function ActiveWorkoutContent() {
       } else {
         // B2B exercise - no warmups, start at set 1
         const b2bEx = nextExercise as B2BExercise;
+        const defaultMachineOnly1 = !!b2bEx.exercises[0].isMachine
+          && isExerciseWeightMetric(b2bEx.exercises[0])
+          && b2bEx.exercises[0].targetWeight <= 0;
+        const defaultMachineOnly2 = !!b2bEx.exercises[1].isMachine
+          && isExerciseWeightMetric(b2bEx.exercises[1])
+          && b2bEx.exercises[1].targetWeight <= 0;
         setSetData1({
-          weight: b2bEx.exercises[0].targetWeight,
+          weight: defaultMachineOnly1 ? 0 : b2bEx.exercises[0].targetWeight,
           reps: b2bEx.exercises[0].targetReps,
         });
         setSetData2({
-          weight: b2bEx.exercises[1].targetWeight,
+          weight: defaultMachineOnly2 ? 0 : b2bEx.exercises[1].targetWeight,
           reps: b2bEx.exercises[1].targetReps,
         });
+        setMachineOnly1(defaultMachineOnly1);
+        setMachineOnly2(defaultMachineOnly2);
+        setMachineOnlyHoldWeight1(b2bEx.exercises[0].targetWeight);
+        setMachineOnlyHoldWeight2(b2bEx.exercises[1].targetWeight);
         setCurrentSetIndex(1);
         setCurrentExerciseInPair(0);
         setCompletedPairs([]);
@@ -436,9 +528,15 @@ function ActiveWorkoutContent() {
         addExerciseToSession({
           name: b2bExercise.exercises[0].name,
           type: EXERCISE_TYPES.b2b,
+          isMachine: b2bExercise.exercises[0].isMachine,
+          primaryMetric: b2bExercise.exercises[0].primaryMetric,
+          metricUnit: b2bExercise.exercises[0].metricUnit ?? null,
           sets: newCompletedPairs.map(pair => pair.ex1),
           b2bPartner: {
             name: b2bExercise.exercises[1].name,
+            isMachine: b2bExercise.exercises[1].isMachine,
+            primaryMetric: b2bExercise.exercises[1].primaryMetric,
+            metricUnit: b2bExercise.exercises[1].metricUnit ?? null,
             sets: newCompletedPairs.map(pair => pair.ex2),
           },
         });
@@ -500,7 +598,7 @@ function ActiveWorkoutContent() {
       // Auto-update weight for next set (if it was warmup, switch to working weight)
       if (currentSetIndex === 0) {
         setSetData({
-          weight: exercise.targetWeight,
+          weight: exercise.isMachine && machineOnly ? 0 : exercise.targetWeight,
           reps: exercise.targetReps,
         });
       }
@@ -509,6 +607,9 @@ function ActiveWorkoutContent() {
       addExerciseToSession({
         name: exercise.name,
         type: EXERCISE_TYPES.single,
+        isMachine: exercise.isMachine,
+        primaryMetric: exercise.primaryMetric,
+        metricUnit: exercise.metricUnit ?? null,
         warmup: hasWarmup && warmupCompleted ? newCompletedSets[0] : undefined,
         sets: hasWarmup && warmupCompleted ? newCompletedSets.slice(1) : newCompletedSets,
       });
@@ -541,7 +642,9 @@ function ActiveWorkoutContent() {
 
   const handleStartWarmup = () => {
     const exercise = currentExercise as SingleExercise;
-    const suggestedWeight = exercise.warmupWeight > 0 ? exercise.warmupWeight : 0;
+    const suggestedWeight = exercise.isMachine && machineOnly
+      ? 0
+      : (exercise.warmupWeight > 0 ? exercise.warmupWeight : 0);
     setWarmupDecision('include');
     setWarmupCompleted(false);
     setCurrentSetIndex(0);
@@ -557,7 +660,7 @@ function ActiveWorkoutContent() {
     setWarmupDecision('skip');
     setCurrentSetIndex(1);
     setSetData({
-      weight: exercise.targetWeight,
+      weight: exercise.isMachine && machineOnly ? 0 : exercise.targetWeight,
       reps: exercise.targetReps,
     });
     setWarmupCompleted(false);
@@ -601,6 +704,9 @@ function ActiveWorkoutContent() {
         addExerciseToSession({
           name: exercise.name,
           type: EXERCISE_TYPES.single,
+          isMachine: exercise.isMachine,
+          primaryMetric: exercise.primaryMetric,
+          metricUnit: exercise.metricUnit ?? null,
           warmup: hasWarmup && warmupCompleted ? completedSets[0] : undefined,
           sets: hasWarmup && warmupCompleted ? completedSets.slice(1) : completedSets,
         });
@@ -626,9 +732,15 @@ function ActiveWorkoutContent() {
         addExerciseToSession({
           name: b2bExercise.exercises[0].name,
           type: EXERCISE_TYPES.b2b,
+          isMachine: b2bExercise.exercises[0].isMachine,
+          primaryMetric: b2bExercise.exercises[0].primaryMetric,
+          metricUnit: b2bExercise.exercises[0].metricUnit ?? null,
           sets: completedPairs.map(pair => pair.ex1),
           b2bPartner: {
             name: b2bExercise.exercises[1].name,
+            isMachine: b2bExercise.exercises[1].isMachine,
+            primaryMetric: b2bExercise.exercises[1].primaryMetric,
+            metricUnit: b2bExercise.exercises[1].metricUnit ?? null,
             sets: completedPairs.map(pair => pair.ex2),
           },
         });
@@ -705,6 +817,9 @@ function ActiveWorkoutContent() {
     const isBodyweight = typeof exercise.is_bodyweight === 'number'
       ? exercise.is_bodyweight === 1
       : false;
+    const isMachine = typeof exercise.is_machine === 'number'
+      ? exercise.is_machine === 1
+      : false;
     return {
       type: EXERCISE_TYPES.single,
       name: exercise.name,
@@ -716,7 +831,8 @@ function ActiveWorkoutContent() {
       restTime: 60,
       videoUrl: exercise.video_url || '',
       tips: exercise.tips || '',
-      isBodyweight
+      isBodyweight,
+      isMachine
     };
   };
 
@@ -726,6 +842,12 @@ function ActiveWorkoutContent() {
       : false;
     const isBodyweight2 = typeof exercise2.is_bodyweight === 'number'
       ? exercise2.is_bodyweight === 1
+      : false;
+    const isMachine1 = typeof exercise1.is_machine === 'number'
+      ? exercise1.is_machine === 1
+      : false;
+    const isMachine2 = typeof exercise2.is_machine === 'number'
+      ? exercise2.is_machine === 1
       : false;
     return {
       type: EXERCISE_TYPES.b2b,
@@ -740,7 +862,8 @@ function ActiveWorkoutContent() {
           hasWarmup: false,
           videoUrl: exercise1.video_url || '',
           tips: exercise1.tips || '',
-          isBodyweight: isBodyweight1
+          isBodyweight: isBodyweight1,
+          isMachine: isMachine1
         },
         {
           name: exercise2.name,
@@ -751,7 +874,8 @@ function ActiveWorkoutContent() {
           hasWarmup: false,
           videoUrl: exercise2.video_url || '',
           tips: exercise2.tips || '',
-          isBodyweight: isBodyweight2
+          isBodyweight: isBodyweight2,
+          isMachine: isMachine2
         }
       ]
     };
@@ -777,14 +901,24 @@ function ActiveWorkoutContent() {
       initSingleExerciseState(exercise);
     } else {
       const b2bExercise = exercise as B2BExercise;
+      const defaultMachineOnly1 = !!b2bExercise.exercises[0].isMachine
+        && isExerciseWeightMetric(b2bExercise.exercises[0])
+        && b2bExercise.exercises[0].targetWeight <= 0;
+      const defaultMachineOnly2 = !!b2bExercise.exercises[1].isMachine
+        && isExerciseWeightMetric(b2bExercise.exercises[1])
+        && b2bExercise.exercises[1].targetWeight <= 0;
       setSetData1({
-        weight: b2bExercise.exercises[0].targetWeight,
+        weight: defaultMachineOnly1 ? 0 : b2bExercise.exercises[0].targetWeight,
         reps: b2bExercise.exercises[0].targetReps,
       });
       setSetData2({
-        weight: b2bExercise.exercises[1].targetWeight,
+        weight: defaultMachineOnly2 ? 0 : b2bExercise.exercises[1].targetWeight,
         reps: b2bExercise.exercises[1].targetReps,
       });
+      setMachineOnly1(defaultMachineOnly1);
+      setMachineOnly2(defaultMachineOnly2);
+      setMachineOnlyHoldWeight1(b2bExercise.exercises[0].targetWeight);
+      setMachineOnlyHoldWeight2(b2bExercise.exercises[1].targetWeight);
       setCurrentSetIndex(1);
       setWarmupDecision('skip');
       setWarmupCompleted(false);
@@ -983,6 +1117,8 @@ function ActiveWorkoutContent() {
         exerciseNames={historyExerciseNames}
         title="Exercise History"
         targets={historyTargets}
+        weightUnit={weightUnit}
+        heightUnit={heightUnit}
       />
     </>
   );
@@ -992,8 +1128,18 @@ function ActiveWorkoutContent() {
     const b2bExercise = exerciseToDisplay as B2BExercise;
     const ex1 = b2bExercise.exercises[0];
     const ex2 = b2bExercise.exercises[1];
-    const ex1RepsOnly = !!ex1.isBodyweight;
-    const ex2RepsOnly = !!ex2.isBodyweight;
+    const ex1MetricInfo = getMetricInfo(ex1);
+    const ex2MetricInfo = getMetricInfo(ex2);
+    const ex1RepsOnly = isRepsOnlyMetric(ex1MetricInfo.primaryMetric);
+    const ex2RepsOnly = isRepsOnlyMetric(ex2MetricInfo.primaryMetric);
+    const ex1IsWeightMetric = isWeightMetric(ex1MetricInfo.primaryMetric);
+    const ex2IsWeightMetric = isWeightMetric(ex2MetricInfo.primaryMetric);
+    const ex1Machine = !!ex1.isMachine && ex1IsWeightMetric;
+    const ex2Machine = !!ex2.isMachine && ex2IsWeightMetric;
+    const showMachineToggle1 = ex1Machine && !ex1RepsOnly;
+    const showMachineToggle2 = ex2Machine && !ex2RepsOnly;
+    const showMetricInput1 = !ex1RepsOnly && !(ex1Machine && machineOnly1);
+    const showMetricInput2 = !ex2RepsOnly && !(ex2Machine && machineOnly2);
 
     // In review mode, show cached completed pairs
     const displayCompletedPairs = isReviewMode && viewingCachedData
@@ -1197,7 +1343,7 @@ function ActiveWorkoutContent() {
                               <div key={setNum} className="text-zinc-300 text-xs">
                                 {ex1RepsOnly
                                   ? `Set ${setNum}: ${reps} reps`
-                                  : `Set ${setNum}: ${weight} × ${reps}`}
+                                  : `Set ${setNum}: ${formatMetric(weight, ex1MetricInfo, ex1Machine)} × ${reps}`}
                               </div>
                             );
                           }
@@ -1226,7 +1372,7 @@ function ActiveWorkoutContent() {
                               <div key={setNum} className="text-zinc-300 text-xs">
                                 {ex2RepsOnly
                                   ? `Set ${setNum}: ${reps} reps`
-                                  : `Set ${setNum}: ${weight} × ${reps}`}
+                                  : `Set ${setNum}: ${formatMetric(weight, ex2MetricInfo, ex2Machine)} × ${reps}`}
                               </div>
                             );
                           }
@@ -1268,9 +1414,11 @@ function ActiveWorkoutContent() {
               <div className={`grid ${ex1RepsOnly ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
                 {!ex1RepsOnly && (
                   <div className="text-center">
-                    <div className="text-zinc-500 text-xs mb-1">Weight</div>
+                    <div className="text-zinc-500 text-xs mb-1">
+                      {getMetricLabelText(ex1MetricInfo, ex1Machine)}
+                    </div>
                     <div className="text-white text-lg font-semibold">
-                      {ex1.targetWeight} lbs
+                      {formatMetric(ex1.targetWeight, ex1MetricInfo, ex1Machine)}
                     </div>
                   </div>
                 )}
@@ -1286,27 +1434,50 @@ function ActiveWorkoutContent() {
             {!isReviewMode && currentExerciseInPair === 0 ? (
               <>
                 {/* Active: Show inputs */}
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <div className="bg-zinc-900 rounded-lg p-3">
-                    <label className="text-zinc-400 text-xs block mb-1">Weight (lbs)</label>
+                {showMachineToggle1 && (
+                  <label className="flex items-center gap-2 text-xs text-zinc-400 mb-2">
                     <input
-                      type="text"
-                      inputMode="decimal"
-                      value={setData1.weight ?? ''}
+                      type="checkbox"
+                      checked={machineOnly1}
                       onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === '') {
-                          setSetData1({ ...setData1, weight: 0 });
-                        } else {
-                          const num = parseFloat(val);
-                          if (!isNaN(num)) {
-                            setSetData1({ ...setData1, weight: num });
+                        const checked = e.target.checked;
+                        setMachineOnly1(checked);
+                        setSetData1((prev) => {
+                          if (checked) {
+                            setMachineOnlyHoldWeight1(prev.weight);
+                            return { ...prev, weight: 0 };
                           }
-                        }
+                          const restore = Number.isFinite(machineOnlyHoldWeight1)
+                            ? machineOnlyHoldWeight1
+                            : ex1.targetWeight;
+                          return { ...prev, weight: restore };
+                        });
                       }}
-                      className="w-full bg-zinc-800 text-white text-2xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
                     />
-                  </div>
+                    Machine weight only
+                  </label>
+                )}
+                <div className={`grid ${showMetricInput1 ? 'grid-cols-2' : 'grid-cols-1'} gap-3 mb-3`}>
+                  {showMetricInput1 && (
+                    <div className="bg-zinc-900 rounded-lg p-3">
+                      <label className="text-zinc-400 text-xs block mb-1">
+                        {getMetricLabelText(ex1MetricInfo, ex1Machine)}
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={formatMetricValueInput(setData1.weight, ex1MetricInfo)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const nextValue = parseMetricValueInput(val, ex1MetricInfo);
+                          if (nextValue !== null) {
+                            setSetData1({ ...setData1, weight: nextValue });
+                          }
+                        }}
+                        className="w-full bg-zinc-800 text-white text-2xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                  )}
                   <div className="bg-zinc-900 rounded-lg p-3">
                     <label className="text-zinc-400 text-xs block mb-1">Reps</label>
                     <input
@@ -1336,9 +1507,11 @@ function ActiveWorkoutContent() {
                 {/* Inactive: Show entered data */}
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <div className="bg-zinc-900 rounded p-3 text-center">
-                    <div className="text-zinc-500 text-xs mb-1">Weight</div>
+                    <div className="text-zinc-500 text-xs mb-1">
+                      {getMetricLabelText(ex1MetricInfo, ex1Machine)}
+                    </div>
                     <div className="text-white text-xl font-semibold">
-                      {setData1.weight} lbs
+                      {formatMetric(setData1.weight, ex1MetricInfo, ex1Machine)}
                     </div>
                   </div>
                   <div className="bg-zinc-900 rounded p-3 text-center">
@@ -1378,9 +1551,11 @@ function ActiveWorkoutContent() {
               <div className={`grid ${ex2RepsOnly ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
                 {!ex2RepsOnly && (
                   <div className="text-center">
-                    <div className="text-zinc-500 text-xs mb-1">Weight</div>
+                    <div className="text-zinc-500 text-xs mb-1">
+                      {getMetricLabelText(ex2MetricInfo, ex2Machine)}
+                    </div>
                     <div className="text-white text-lg font-semibold">
-                      {ex2.targetWeight} lbs
+                      {formatMetric(ex2.targetWeight, ex2MetricInfo, ex2Machine)}
                     </div>
                   </div>
                 )}
@@ -1396,27 +1571,50 @@ function ActiveWorkoutContent() {
             {!isReviewMode && currentExerciseInPair === 1 ? (
               <>
                 {/* Active: Show inputs */}
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <div className="bg-zinc-900 rounded-lg p-3">
-                    <label className="text-zinc-400 text-xs block mb-1">Weight (lbs)</label>
+                {showMachineToggle2 && (
+                  <label className="flex items-center gap-2 text-xs text-zinc-400 mb-2">
                     <input
-                      type="text"
-                      inputMode="decimal"
-                      value={setData2.weight ?? ''}
+                      type="checkbox"
+                      checked={machineOnly2}
                       onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === '') {
-                          setSetData2({ ...setData2, weight: 0 });
-                        } else {
-                          const num = parseFloat(val);
-                          if (!isNaN(num)) {
-                            setSetData2({ ...setData2, weight: num });
+                        const checked = e.target.checked;
+                        setMachineOnly2(checked);
+                        setSetData2((prev) => {
+                          if (checked) {
+                            setMachineOnlyHoldWeight2(prev.weight);
+                            return { ...prev, weight: 0 };
                           }
-                        }
+                          const restore = Number.isFinite(machineOnlyHoldWeight2)
+                            ? machineOnlyHoldWeight2
+                            : ex2.targetWeight;
+                          return { ...prev, weight: restore };
+                        });
                       }}
-                      className="w-full bg-zinc-800 text-white text-2xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
                     />
-                  </div>
+                    Machine weight only
+                  </label>
+                )}
+                <div className={`grid ${showMetricInput2 ? 'grid-cols-2' : 'grid-cols-1'} gap-3 mb-3`}>
+                  {showMetricInput2 && (
+                    <div className="bg-zinc-900 rounded-lg p-3">
+                      <label className="text-zinc-400 text-xs block mb-1">
+                        {getMetricLabelText(ex2MetricInfo, ex2Machine)}
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={formatMetricValueInput(setData2.weight, ex2MetricInfo)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const nextValue = parseMetricValueInput(val, ex2MetricInfo);
+                          if (nextValue !== null) {
+                            setSetData2({ ...setData2, weight: nextValue });
+                          }
+                        }}
+                        className="w-full bg-zinc-800 text-white text-2xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                  )}
                   <div className="bg-zinc-900 rounded-lg p-3">
                     <label className="text-zinc-400 text-xs block mb-1">Reps</label>
                     <input
@@ -1448,9 +1646,11 @@ function ActiveWorkoutContent() {
                 {/* Inactive: Show entered data */}
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <div className="bg-zinc-900 rounded p-3 text-center">
-                    <div className="text-zinc-500 text-xs mb-1">Weight</div>
+                    <div className="text-zinc-500 text-xs mb-1">
+                      {getMetricLabelText(ex2MetricInfo, ex2Machine)}
+                    </div>
                     <div className="text-white text-xl font-semibold">
-                      {setData2.weight} lbs
+                      {formatMetric(setData2.weight, ex2MetricInfo, ex2Machine)}
                     </div>
                   </div>
                   <div className="bg-zinc-900 rounded p-3 text-center">
@@ -1472,10 +1672,10 @@ function ActiveWorkoutContent() {
                 <div key={index} className="mb-2">
                   <div className="text-green-400 text-sm font-semibold mb-1">Set {index + 1}:</div>
                   <div className="text-zinc-300 text-xs ml-2">
-                    ✓ {ex1.name}: {pair.ex1.weight} lbs × {pair.ex1.reps} reps
+                    ✓ {ex1.name}: {formatMetric(pair.ex1.weight, ex1MetricInfo, ex1Machine)} × {pair.ex1.reps} reps
                   </div>
                   <div className="text-zinc-300 text-xs ml-2">
-                    ✓ {ex2.name}: {pair.ex2.weight} lbs × {pair.ex2.reps} reps
+                    ✓ {ex2.name}: {formatMetric(pair.ex2.weight, ex2MetricInfo, ex2Machine)} × {pair.ex2.reps} reps
                   </div>
                 </div>
               ))}
@@ -1503,14 +1703,24 @@ function ActiveWorkoutContent() {
                     initSingleExerciseState(nextExercise);
                   } else {
                     const b2bEx = nextExercise as B2BExercise;
+                    const defaultMachineOnly1 = !!b2bEx.exercises[0].isMachine
+                      && isExerciseWeightMetric(b2bEx.exercises[0])
+                      && b2bEx.exercises[0].targetWeight <= 0;
+                    const defaultMachineOnly2 = !!b2bEx.exercises[1].isMachine
+                      && isExerciseWeightMetric(b2bEx.exercises[1])
+                      && b2bEx.exercises[1].targetWeight <= 0;
                     setSetData1({
-                      weight: b2bEx.exercises[0].targetWeight,
+                      weight: defaultMachineOnly1 ? 0 : b2bEx.exercises[0].targetWeight,
                       reps: b2bEx.exercises[0].targetReps,
                     });
                     setSetData2({
-                      weight: b2bEx.exercises[1].targetWeight,
+                      weight: defaultMachineOnly2 ? 0 : b2bEx.exercises[1].targetWeight,
                       reps: b2bEx.exercises[1].targetReps,
                     });
+                    setMachineOnly1(defaultMachineOnly1);
+                    setMachineOnly2(defaultMachineOnly2);
+                    setMachineOnlyHoldWeight1(b2bEx.exercises[0].targetWeight);
+                    setMachineOnlyHoldWeight2(b2bEx.exercises[1].targetWeight);
                     setCurrentSetIndex(1);
                     setCurrentExerciseInPair(0);
                     setWarmupDecision('skip');
@@ -1534,9 +1744,13 @@ function ActiveWorkoutContent() {
   }
 
   const exercise = exerciseToDisplay as SingleExercise;
+  const metricInfo = getMetricInfo(exercise);
   const hasWarmup = resolveHasWarmup(exercise);
   const isWarmupSet = hasWarmup && warmupDecision === 'include' && currentSetIndex === 0;
-  const isRepsOnly = !!exercise.isBodyweight;
+  const isRepsOnly = isRepsOnlyMetric(metricInfo.primaryMetric);
+  const isMachine = !!exercise.isMachine && isWeightMetric(metricInfo.primaryMetric);
+  const showMachineToggle = isMachine && !isRepsOnly;
+  const showMetricInput = !isRepsOnly && !(isMachine && machineOnly);
 
   // In review mode, show cached completed sets
   const displayCompletedSets = isReviewMode && viewingCachedData
@@ -1546,12 +1760,12 @@ function ActiveWorkoutContent() {
     ? !!viewingCachedData?.warmupCompleted
     : warmupCompleted);
   const showWarmupPrompt = !isReviewMode && hasWarmup && warmupDecision === 'pending';
-  const warmupSuggestionWeight = hasWarmup && exercise.warmupWeight > 0
+  const warmupSuggestionWeight = hasWarmup && exercise.warmupWeight > 0 && isWeightMetric(metricInfo.primaryMetric)
     ? exercise.warmupWeight
     : null;
-  const weightInputValue = isWarmupSet && warmupSuggestionWeight === null && !isRepsOnly && setData.weight === 0
+  const weightInputValue = isWarmupSet && warmupSuggestionWeight === null && showMetricInput && setData.weight === 0
     ? ''
-    : setData.weight ?? '';
+    : formatMetricValueInput(setData.weight, metricInfo);
 
   // Transition Screen (between exercises)
   if (isTransitioning) {
@@ -1657,7 +1871,7 @@ function ActiveWorkoutContent() {
               Set {currentSetIndex} (Working)
             </div>
             <div className="text-zinc-300 text-lg">
-              {exercise.targetWeight} lbs × {exercise.targetReps} reps
+              {formatMetric(exercise.targetWeight, metricInfo, isMachine)} × {exercise.targetReps} reps
             </div>
           </div>
         </div>
@@ -1753,7 +1967,7 @@ function ActiveWorkoutContent() {
                 <div className="text-zinc-300 text-sm">
                   {isRepsOnly
                     ? `Warmup: ${lastExerciseLog.warmup_reps} reps`
-                    : `Warmup: ${lastExerciseLog.warmup_weight} lbs × ${lastExerciseLog.warmup_reps} reps`}
+                    : `Warmup: ${formatMetric(lastExerciseLog.warmup_weight, metricInfo, isMachine)} × ${lastExerciseLog.warmup_reps} reps`}
                 </div>
               )}
               {[1, 2, 3, 4].map((setNum) => {
@@ -1764,7 +1978,7 @@ function ActiveWorkoutContent() {
                     <div key={setNum} className="text-zinc-300 text-sm">
                       {isRepsOnly
                         ? `Set ${setNum}: ${reps} reps`
-                        : `Set ${setNum}: ${weight} lbs × ${reps} reps`}
+                        : `Set ${setNum}: ${formatMetric(weight, metricInfo, isMachine)} × ${reps} reps`}
                     </div>
                   );
                 }
@@ -1779,9 +1993,11 @@ function ActiveWorkoutContent() {
           <div className={`grid ${isRepsOnly ? 'grid-cols-1' : 'grid-cols-2'} gap-4`}>
             {!isRepsOnly && (
               <div className="bg-zinc-900 rounded p-3 text-center">
-                <div className="text-zinc-500 text-xs mb-1">Weight</div>
+                <div className="text-zinc-500 text-xs mb-1">
+                  {getMetricLabelText(metricInfo, isMachine)}
+                </div>
                 <div className="text-white text-xl font-semibold">
-                  {exercise.targetWeight} lbs
+                  {formatMetric(exercise.targetWeight, metricInfo, isMachine)}
                 </div>
               </div>
             )}
@@ -1802,7 +2018,7 @@ function ActiveWorkoutContent() {
               <div className="text-zinc-400 text-sm">Optional warmup set before working sets.</div>
               {warmupSuggestionWeight !== null && !isRepsOnly && (
                 <div className="text-zinc-300 text-sm mt-2">
-                  Suggested warmup: {warmupSuggestionWeight} lbs
+                  Suggested warmup: {formatMetric(warmupSuggestionWeight, metricInfo, isMachine)}
                 </div>
               )}
             </div>
@@ -1833,27 +2049,50 @@ function ActiveWorkoutContent() {
             </div>
 
             {/* Weight and Reps Inputs */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="bg-zinc-900 rounded-lg p-4">
-                <label className="text-zinc-400 text-sm block mb-2">Weight (lbs)</label>
+            {showMachineToggle && (
+              <label className="flex items-center gap-2 text-xs text-zinc-400 mb-3">
                 <input
-                  type="text"
-                  inputMode="decimal"
-                  value={weightInputValue}
+                  type="checkbox"
+                  checked={machineOnly}
                   onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === '') {
-                      setSetData({ ...setData, weight: 0 });
-                    } else {
-                      const num = parseFloat(val);
-                      if (!isNaN(num)) {
-                        setSetData({ ...setData, weight: num });
+                    const checked = e.target.checked;
+                    setMachineOnly(checked);
+                    setSetData((prev) => {
+                      if (checked) {
+                        setMachineOnlyHoldWeight(prev.weight);
+                        return { ...prev, weight: 0 };
                       }
-                    }
+                      const restore = Number.isFinite(machineOnlyHoldWeight)
+                        ? machineOnlyHoldWeight
+                        : exercise.targetWeight;
+                      return { ...prev, weight: restore };
+                    });
                   }}
-                  className="w-full bg-zinc-800 text-white text-3xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-rose-600"
                 />
-              </div>
+                Machine weight only
+              </label>
+            )}
+            <div className={`grid ${showMetricInput ? 'grid-cols-2' : 'grid-cols-1'} gap-4 mb-4`}>
+              {showMetricInput && (
+                <div className="bg-zinc-900 rounded-lg p-4">
+                  <label className="text-zinc-400 text-sm block mb-2">
+                    {getMetricLabelText(metricInfo, isMachine)}
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={weightInputValue}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const nextValue = parseMetricValueInput(val, metricInfo);
+                      if (nextValue !== null) {
+                        setSetData({ ...setData, weight: nextValue });
+                      }
+                    }}
+                    className="w-full bg-zinc-800 text-white text-3xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-rose-600"
+                  />
+                </div>
+              )}
               <div className="bg-zinc-900 rounded-lg p-4">
                 <label className="text-zinc-400 text-sm block mb-2">Reps</label>
                 <input
@@ -1905,7 +2144,7 @@ function ActiveWorkoutContent() {
                 : `Set ${index + 1}`;
               return (
                 <div key={index} className="text-rose-300 text-sm mb-1">
-                  ✓ {label}: {set.weight} lbs × {set.reps} reps
+                  ✓ {label}: {formatMetric(set.weight, metricInfo, isMachine)} × {set.reps} reps
                 </div>
               );
             })}
@@ -1948,14 +2187,24 @@ function ActiveWorkoutContent() {
                     initSingleExerciseState(nextExercise);
                   } else {
                     const b2bEx = nextExercise as B2BExercise;
+                    const defaultMachineOnly1 = !!b2bEx.exercises[0].isMachine
+                      && isExerciseWeightMetric(b2bEx.exercises[0])
+                      && b2bEx.exercises[0].targetWeight <= 0;
+                    const defaultMachineOnly2 = !!b2bEx.exercises[1].isMachine
+                      && isExerciseWeightMetric(b2bEx.exercises[1])
+                      && b2bEx.exercises[1].targetWeight <= 0;
                     setSetData1({
-                      weight: b2bEx.exercises[0].targetWeight,
+                      weight: defaultMachineOnly1 ? 0 : b2bEx.exercises[0].targetWeight,
                       reps: b2bEx.exercises[0].targetReps,
                     });
                     setSetData2({
-                      weight: b2bEx.exercises[1].targetWeight,
+                      weight: defaultMachineOnly2 ? 0 : b2bEx.exercises[1].targetWeight,
                       reps: b2bEx.exercises[1].targetReps,
                     });
+                    setMachineOnly1(defaultMachineOnly1);
+                    setMachineOnly2(defaultMachineOnly2);
+                    setMachineOnlyHoldWeight1(b2bEx.exercises[0].targetWeight);
+                    setMachineOnlyHoldWeight2(b2bEx.exercises[1].targetWeight);
                     setCurrentSetIndex(1);
                     setCurrentExerciseInPair(0);
                     setCompletedPairs([]);

@@ -3,7 +3,7 @@ import { requireAuth } from '@/lib/auth-utils';
 import { getLatestWorkoutReportForWorkoutName, getRecentExerciseLogs, getUserGoals } from '@/lib/database';
 import { resolveSessionMode } from '@/lib/workout-session';
 import type { SessionMode } from '@/lib/constants';
-import { EXERCISE_TYPES } from '@/lib/constants';
+import { EXERCISE_PRIMARY_METRICS, EXERCISE_TYPES, type ExercisePrimaryMetric } from '@/lib/constants';
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
@@ -15,6 +15,9 @@ type ExercisePayload = {
   targetReps: number;
   warmupWeight?: number;
   isBodyweight?: boolean;
+  isMachine?: boolean;
+  primaryMetric?: ExercisePrimaryMetric;
+  metricUnit?: string | null;
 };
 
 type TargetSuggestion = {
@@ -108,7 +111,12 @@ function normalizeSummaryField(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function normalizeResponse(raw: any, exerciseNames: Set<string>): TargetResponse | null {
+function normalizeResponse(
+  raw: any,
+  exerciseNames: Set<string>,
+  machineAddedWeight: Map<string, boolean>,
+  exerciseMetrics: Map<string, ExercisePrimaryMetric>
+): TargetResponse | null {
   if (!raw || !Array.isArray(raw.targets)) return null;
   const cleaned: TargetSuggestion[] = [];
   for (const entry of raw.targets) {
@@ -116,8 +124,12 @@ function normalizeResponse(raw: any, exerciseNames: Set<string>): TargetResponse
     if (!exerciseNames.has(entry.name)) continue;
     const weightValue = Number(entry.suggestedWeight);
     const repsValue = Number(entry.suggestedReps);
-    const suggestedWeight = Number.isFinite(weightValue) ? weightValue : null;
+    let suggestedWeight = Number.isFinite(weightValue) ? weightValue : null;
     const suggestedReps = Number.isFinite(repsValue) ? repsValue : null;
+    if (exerciseMetrics.get(entry.name) === EXERCISE_PRIMARY_METRICS.weight
+      && machineAddedWeight.get(entry.name) === false) {
+      suggestedWeight = null;
+    }
     cleaned.push({
       name: entry.name,
       suggestedWeight,
@@ -161,9 +173,14 @@ export async function POST(request: NextRequest) {
       : null;
 
     const exerciseNames = new Set<string>();
+    const exerciseMetrics = new Map<string, ExercisePrimaryMetric>();
     for (const exercise of exercises) {
       if (exercise?.name) {
         exerciseNames.add(String(exercise.name));
+        const primaryMetric = exercise.primaryMetric ?? (exercise.isBodyweight
+          ? EXERCISE_PRIMARY_METRICS.repsOnly
+          : EXERCISE_PRIMARY_METRICS.weight);
+        exerciseMetrics.set(String(exercise.name), primaryMetric);
       }
     }
 
@@ -182,6 +199,18 @@ export async function POST(request: NextRequest) {
       history,
       historySummary: summarizeHistoryTrends(history),
     };
+
+    const machineAddedWeight = new Map<string, boolean>();
+    for (const exercise of exercises) {
+      if (!exercise.isMachine) continue;
+      const primaryMetric = exercise.primaryMetric ?? (exercise.isBodyweight
+        ? EXERCISE_PRIMARY_METRICS.repsOnly
+        : EXERCISE_PRIMARY_METRICS.weight);
+      if (primaryMetric !== EXERCISE_PRIMARY_METRICS.weight) continue;
+      const logs = history[exercise.name] || [];
+      const hasAdded = logs.some((log) => log.sets.some((set: { weight: number }) => set.weight > 0));
+      machineAddedWeight.set(exercise.name, hasAdded);
+    }
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -205,6 +234,8 @@ export async function POST(request: NextRequest) {
               'For progress, keep targets go up in targets a little unless slight adjustment helps recovery. Be mindful of their goals and push them for things that are more their goals.',
               'For maintenance, keep targets at baseline (last max) unless if doing multiple exercises with that muscle then maybe slight adjustment could help recovery. Take a call.',
               'For light sessions, reduce intensity a little bit and do not increase weight or reps.',
+              'Some exercises are machine-based; their weight values represent added plates only. If no added-weight history exists, suggest reps only and leave suggestedWeight null.',
+              'Each exercise has a primaryMetric and metricUnit; suggestedWeight should be the value for that metric (weight/height/time/distance) in the same units as the history.',
               'Return JSON only: {"encouragement":"...","goalSummary":"...","trendSummary":"...","targets":[{"name":"...","suggestedWeight":number|null,"suggestedReps":number|null,"rationale":"..."}]}',
               'Only include exercises provided by name.'
             ].join(' ')
@@ -249,7 +280,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const normalized = normalizeResponse(parsed, exerciseNames);
+    const normalized = normalizeResponse(parsed, exerciseNames, machineAddedWeight, exerciseMetrics);
     if (!normalized) {
       return NextResponse.json(
         { error: 'Invalid target response' },

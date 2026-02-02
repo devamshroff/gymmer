@@ -12,6 +12,11 @@ describe('SetDataInput Component', () => {
       expect(screen.getByLabelText('Reps')).toBeInTheDocument();
     });
 
+    it('renders custom weight unit labels', () => {
+      render(<SetDataInput data={defaultData} onChange={() => {}} weightUnit="kg" />);
+      expect(screen.getByLabelText('Weight (kg)')).toBeInTheDocument();
+    });
+
     it('displays current weight value', () => {
       render(<SetDataInput data={defaultData} onChange={() => {}} />);
       expect(screen.getByLabelText('Weight (lbs)')).toHaveValue('135');

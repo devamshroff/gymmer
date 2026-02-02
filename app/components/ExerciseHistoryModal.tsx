@@ -7,6 +7,19 @@ import {
   ExerciseHistoryAggregationMode,
   ExerciseHistoryDisplayMode,
 } from '@/lib/constants';
+import {
+  DEFAULT_HEIGHT_UNIT,
+  DEFAULT_WEIGHT_UNIT,
+} from '@/lib/units';
+import type { HeightUnit, WeightUnit } from '@/lib/units';
+import {
+  convertMetricFromStorage,
+  getMetricLabel,
+  isRepsOnlyMetric,
+  isWeightMetric,
+  resolveMetricUnit,
+  resolvePrimaryMetric,
+} from '@/lib/metric-utils';
 
 type HistoryRange = 'week' | 'month' | 'all';
 type WeightMode = ExerciseHistoryAggregationMode;
@@ -23,6 +36,9 @@ type HistoryPoint = {
 
 type ExerciseHistorySeries = {
   display_mode: ExerciseHistoryDisplayMode;
+  is_machine?: boolean;
+  primary_metric?: string | null;
+  metric_unit?: string | null;
   points: HistoryPoint[];
 };
 
@@ -32,6 +48,8 @@ type ExerciseHistoryModalProps = {
   exerciseNames: string[];
   title?: string;
   targets?: Record<string, { weight?: number | null; reps?: number | null }>;
+  weightUnit?: WeightUnit;
+  heightUnit?: HeightUnit;
 };
 
 const RANGE_LABELS: Record<HistoryRange, string> = {
@@ -47,9 +65,10 @@ function formatDayLabel(day: string): string {
 }
 
 function formatNumber(value: number): string {
-  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
-  return Math.round(value).toString();
+  const rounded = Math.round(value * 10) / 10;
+  if (rounded >= 1000000) return `${(rounded / 1000000).toFixed(1)}M`;
+  if (rounded >= 1000) return `${(rounded / 1000).toFixed(1)}k`;
+  return Number.isInteger(rounded) ? rounded.toString() : rounded.toFixed(1);
 }
 
 function buildLinePath(points: Array<{ x: number; y: number }>): string {
@@ -61,12 +80,22 @@ function LineChart({
   points,
   weightMode,
   mode,
+  primaryMetric,
+  metricUnit,
   targetValue,
+  isMachine,
+  weightUnit,
+  heightUnit,
 }: {
   points: HistoryPoint[];
   weightMode: WeightMode;
   mode: ExerciseHistoryDisplayMode;
+  primaryMetric: ReturnType<typeof resolvePrimaryMetric>;
+  metricUnit: string | null;
   targetValue?: number | null;
+  isMachine?: boolean;
+  weightUnit: WeightUnit;
+  heightUnit: HeightUnit;
 }) {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; label: string } | null>(null);
   const width = 720;
@@ -75,20 +104,39 @@ function LineChart({
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
 
+  const isRepsPrimary = mode === EXERCISE_HISTORY_DISPLAY_MODES.reps || isRepsOnlyMetric(primaryMetric);
+  const isWeightPrimary = isWeightMetric(primaryMetric);
+  const isMachineWeight = !!isMachine && isWeightPrimary;
+  const resolvedUnit = resolveMetricUnit(primaryMetric, metricUnit, weightUnit, heightUnit);
+  const secondaryUnit = resolvedUnit ?? weightUnit;
+  const unitSuffix = resolvedUnit ? ` ${resolvedUnit}` : '';
+  const convertPrimaryValue = (value: number | null) => (
+    value === null ? null : convertMetricFromStorage(value, primaryMetric, weightUnit, heightUnit)
+  );
+  const useVolume = !isRepsPrimary && isWeightPrimary;
   const primaryValues = points
     .map((point) => {
-      if (mode === EXERCISE_HISTORY_DISPLAY_MODES.reps) {
+      if (isRepsPrimary) {
         return weightMode === EXERCISE_HISTORY_AGGREGATION_MODES.max ? point.reps_max : point.reps_avg;
       }
-      return weightMode === EXERCISE_HISTORY_AGGREGATION_MODES.max ? point.weight_max : point.weight_avg;
+      const rawValue = weightMode === EXERCISE_HISTORY_AGGREGATION_MODES.max ? point.weight_max : point.weight_avg;
+      return convertPrimaryValue(rawValue);
     })
     .filter((value): value is number => value !== null);
-  const hasTargetValue = Number.isFinite(targetValue as number) && (targetValue as number) > 0;
+  const displayTargetValue = targetValue == null
+    ? null
+    : convertMetricFromStorage(targetValue, primaryMetric, weightUnit, heightUnit);
+  const hasTargetValue = displayTargetValue !== null && Number.isFinite(displayTargetValue) && displayTargetValue > 0;
   if (hasTargetValue) {
-    primaryValues.push(targetValue as number);
+    primaryValues.push(displayTargetValue);
   }
   const secondaryValues = points
-    .map((point) => (mode === EXERCISE_HISTORY_DISPLAY_MODES.reps ? point.reps_total : point.volume))
+    .map((point) => {
+      if (isRepsPrimary || !useVolume) {
+        return point.reps_total;
+      }
+      return convertPrimaryValue(point.volume);
+    })
     .filter((value): value is number => value !== null);
 
   let primaryMin = primaryValues.length ? Math.min(...primaryValues) : 0;
@@ -106,16 +154,26 @@ function LineChart({
     secondaryMin -= pad;
     secondaryMax += pad;
   }
+  if (isMachineWeight) {
+    primaryMin = 0;
+    if (primaryMax <= primaryMin) {
+      primaryMax = primaryMin + 1;
+    }
+  }
 
   const primaryRange = primaryMax - primaryMin || 1;
   const secondaryRange = secondaryMax - secondaryMin || 1;
 
   const stepX = points.length > 1 ? plotWidth / (points.length - 1) : 0;
   const basePoints = points.map((point, index) => {
-    const primaryValue = mode === EXERCISE_HISTORY_DISPLAY_MODES.reps
+    const primaryValue = isRepsPrimary
       ? (weightMode === EXERCISE_HISTORY_AGGREGATION_MODES.max ? point.reps_max : point.reps_avg)
-      : (weightMode === EXERCISE_HISTORY_AGGREGATION_MODES.max ? point.weight_max : point.weight_avg);
-    const secondaryValue = mode === EXERCISE_HISTORY_DISPLAY_MODES.reps ? point.reps_total : point.volume;
+      : convertPrimaryValue(
+        weightMode === EXERCISE_HISTORY_AGGREGATION_MODES.max ? point.weight_max : point.weight_avg
+      );
+    const secondaryValue = isRepsPrimary || !useVolume
+      ? point.reps_total
+      : convertPrimaryValue(point.volume);
     const baseX = margin.left + index * stepX;
     const hasPrimary = primaryValue !== null;
     const hasSecondary = secondaryValue !== null;
@@ -147,8 +205,20 @@ function LineChart({
 
   const primaryPath = buildLinePath(primaryPoints.map(({ x, y }) => ({ x, y })));
   const secondaryPath = buildLinePath(secondaryPoints.map(({ x, y }) => ({ x, y })));
-  const primaryLabel = mode === EXERCISE_HISTORY_DISPLAY_MODES.reps ? 'Reps' : 'Weight';
-  const secondaryLabel = mode === EXERCISE_HISTORY_DISPLAY_MODES.reps ? 'Total Reps' : 'Volume';
+  const primaryLabel = getMetricLabel(primaryMetric, metricUnit, weightUnit, heightUnit, isMachineWeight);
+  const secondaryLabel = isRepsPrimary
+    ? 'Total Reps'
+    : (useVolume ? `Volume (${secondaryUnit})` : 'Total Reps');
+  const formatPrimaryValue = (value: number) => {
+    if (isRepsPrimary) return formatNumber(value);
+    if (!isMachineWeight) return `${formatNumber(value)}${unitSuffix}`;
+    return value === 0 ? 'Machine' : `+${formatNumber(value)}${unitSuffix}`;
+  };
+  const formatSecondaryValue = (value: number) => (
+    isRepsPrimary || !useVolume
+      ? formatNumber(value)
+      : `${formatNumber(value)}${unitSuffix}`
+  );
 
   const labelIndexes = points.length <= 1 ? [0] : [0, Math.floor((points.length - 1) / 2), points.length - 1];
   const labelIndexesUnique = Array.from(new Set(labelIndexes)).filter((idx) => points[idx]);
@@ -164,8 +234,13 @@ function LineChart({
     : 0;
 
   const targetY = hasTargetValue
-    ? margin.top + plotHeight - (((targetValue as number) - primaryMin) / primaryRange) * plotHeight
+    ? margin.top + plotHeight - (((displayTargetValue as number) - primaryMin) / primaryRange) * plotHeight
     : null;
+  const targetLabel = hasTargetValue
+    ? (isMachineWeight
+      ? `Target +${formatNumber(displayTargetValue as number)}${unitSuffix}`
+      : `Target ${formatNumber(displayTargetValue as number)}${unitSuffix}`)
+    : '';
 
   return (
     <div className="w-full overflow-x-auto">
@@ -197,17 +272,17 @@ function LineChart({
               fontSize="12"
               textAnchor="end"
             >
-              Target {formatNumber(targetValue as number)}
+              {targetLabel}
             </text>
           </>
         )}
 
         <g fill="#94a3b8" fontSize="12">
           <text x={margin.left - 12} y={margin.top + 10} textAnchor="end">
-            {formatNumber(primaryMax)}
+            {formatPrimaryValue(primaryMax)}
           </text>
           <text x={margin.left - 12} y={margin.top + plotHeight} textAnchor="end">
-            {formatNumber(primaryMin)}
+            {formatPrimaryValue(primaryMin)}
           </text>
           <text x={width - margin.right + 12} y={margin.top + 10} textAnchor="start">
             {formatNumber(secondaryMax)}
@@ -255,8 +330,8 @@ function LineChart({
               cy={point.y}
               r={4}
               fill="#38bdf8"
-              onMouseEnter={() => setTooltip({ x: point.x, y: point.y, label: `${primaryLabel}: ${formatNumber(point.value)}` })}
-              onMouseMove={() => setTooltip({ x: point.x, y: point.y, label: `${primaryLabel}: ${formatNumber(point.value)}` })}
+              onMouseEnter={() => setTooltip({ x: point.x, y: point.y, label: `${primaryLabel}: ${formatPrimaryValue(point.value)}` })}
+              onMouseMove={() => setTooltip({ x: point.x, y: point.y, label: `${primaryLabel}: ${formatPrimaryValue(point.value)}` })}
               onMouseLeave={() => setTooltip(null)}
             />
           ))}
@@ -267,8 +342,8 @@ function LineChart({
               cy={point.y}
               r={4}
               fill="#22c55e"
-              onMouseEnter={() => setTooltip({ x: point.x, y: point.y, label: `${secondaryLabel}: ${formatNumber(point.value)}` })}
-              onMouseMove={() => setTooltip({ x: point.x, y: point.y, label: `${secondaryLabel}: ${formatNumber(point.value)}` })}
+              onMouseEnter={() => setTooltip({ x: point.x, y: point.y, label: `${secondaryLabel}: ${formatSecondaryValue(point.value)}` })}
+              onMouseMove={() => setTooltip({ x: point.x, y: point.y, label: `${secondaryLabel}: ${formatSecondaryValue(point.value)}` })}
               onMouseLeave={() => setTooltip(null)}
             />
           ))}
@@ -319,7 +394,11 @@ export default function ExerciseHistoryModal({
   exerciseNames,
   title = 'Exercise History',
   targets,
+  weightUnit,
+  heightUnit,
 }: ExerciseHistoryModalProps) {
+  const resolvedWeightUnit = weightUnit ?? DEFAULT_WEIGHT_UNIT;
+  const resolvedHeightUnit = heightUnit ?? DEFAULT_HEIGHT_UNIT;
   const [range, setRange] = useState<HistoryRange>('month');
   const [weightMode, setWeightMode] = useState<WeightMode>(EXERCISE_HISTORY_AGGREGATION_MODES.max);
   const [loading, setLoading] = useState(false);
@@ -383,7 +462,7 @@ export default function ExerciseHistoryModal({
         <div className="p-6 border-b border-zinc-800 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold text-white">{title}</h2>
-            <div className="text-zinc-400 text-sm">Weight or reps trends</div>
+            <div className="text-zinc-400 text-sm">Primary metric trends</div>
           </div>
           <button
             onClick={onClose}
@@ -449,13 +528,23 @@ export default function ExerciseHistoryModal({
             const mode = explicitMode === EXERCISE_HISTORY_DISPLAY_MODES.reps
               ? EXERCISE_HISTORY_DISPLAY_MODES.reps
               : EXERCISE_HISTORY_DISPLAY_MODES.weight;
+            const primaryMetric = resolvePrimaryMetric(series?.primary_metric, mode === EXERCISE_HISTORY_DISPLAY_MODES.reps);
+            const metricUnit = typeof series?.metric_unit === 'string' ? series.metric_unit : null;
+            const isMachine = !!series?.is_machine && isWeightMetric(primaryMetric);
+            const primaryLegendLabel = getMetricLabel(primaryMetric, metricUnit, resolvedWeightUnit, resolvedHeightUnit, isMachine);
             const targetEntry = targets?.[name];
-            const rawTargetValue = mode === EXERCISE_HISTORY_DISPLAY_MODES.reps
+            const rawTargetValue = isRepsOnlyMetric(primaryMetric) || mode === EXERCISE_HISTORY_DISPLAY_MODES.reps
               ? targetEntry?.reps
               : targetEntry?.weight;
             const targetValue = Number.isFinite(rawTargetValue as number) && (rawTargetValue as number) > 0
               ? (rawTargetValue as number)
               : null;
+            const resolvedUnit = resolveMetricUnit(primaryMetric, metricUnit, resolvedWeightUnit, resolvedHeightUnit);
+            const secondaryLegendLabel = (isRepsOnlyMetric(primaryMetric) || mode === EXERCISE_HISTORY_DISPLAY_MODES.reps)
+              ? 'Total Reps'
+              : (isWeightMetric(primaryMetric)
+                ? `Volume (${resolvedUnit ?? resolvedWeightUnit})`
+                : 'Total Reps');
             return (
               <div key={name} className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
                 <div className="flex flex-wrap items-center justify-between mb-4 gap-2">
@@ -463,11 +552,11 @@ export default function ExerciseHistoryModal({
                   <div className="flex items-center gap-3 text-xs text-zinc-400">
                     <span className="flex items-center gap-2">
                       <span className="h-2 w-2 rounded-full bg-sky-400" />
-                      {mode === EXERCISE_HISTORY_DISPLAY_MODES.reps ? 'Reps' : 'Weight'}
+                      {primaryLegendLabel}
                     </span>
                     <span className="flex items-center gap-2">
                       <span className="h-2 w-2 rounded-full bg-green-400" />
-                      {mode === EXERCISE_HISTORY_DISPLAY_MODES.reps ? 'Total Reps' : 'Volume'}
+                      {secondaryLegendLabel}
                     </span>
                     {targetValue !== null && (
                       <span className="flex items-center gap-2">
@@ -486,7 +575,12 @@ export default function ExerciseHistoryModal({
                     points={points}
                     weightMode={weightMode}
                     mode={mode}
+                    primaryMetric={primaryMetric}
+                    metricUnit={metricUnit}
                     targetValue={targetValue}
+                    isMachine={isMachine}
+                    weightUnit={resolvedWeightUnit}
+                    heightUnit={resolvedHeightUnit}
                   />
                 )}
               </div>
