@@ -54,6 +54,12 @@ export default function EditRoutinePage() {
   const [cardio, setCardio] = useState<RoutineCardio | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPublic, setIsPublic] = useState(true);
+  const [draggingPreIndex, setDraggingPreIndex] = useState<number | null>(null);
+  const [draggingExerciseIndex, setDraggingExerciseIndex] = useState<number | null>(null);
+  const [draggingPostIndex, setDraggingPostIndex] = useState<number | null>(null);
+  const [dragOverPreIndex, setDragOverPreIndex] = useState<number | null>(null);
+  const [dragOverExerciseIndex, setDragOverExerciseIndex] = useState<number | null>(null);
+  const [dragOverPostIndex, setDragOverPostIndex] = useState<number | null>(null);
 
   // Modal states
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
@@ -77,6 +83,43 @@ export default function EditRoutinePage() {
   useEffect(() => {
     loadRoutine();
   }, [routineId]);
+
+  const reorderList = <T,>(list: T[], from: number, to: number): T[] => {
+    const next = list.slice();
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    return next;
+  };
+
+  const persistPreStretchOrder = async (items: RoutineStretch[]) => {
+    const order = items.map(s => s.stretch_id);
+    await fetch(`/api/routines/${routineId}/stretches`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'pre', order })
+    });
+    invalidateBootstrapCache();
+  };
+
+  const persistPostStretchOrder = async (items: RoutineStretch[]) => {
+    const order = items.map(s => s.stretch_id);
+    await fetch(`/api/routines/${routineId}/stretches`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'post', order })
+    });
+    invalidateBootstrapCache();
+  };
+
+  const persistExerciseOrder = async (items: RoutineExercise[]) => {
+    const order = items.map(e => e.id);
+    await fetch(`/api/routines/${routineId}/exercises`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order })
+    });
+    invalidateBootstrapCache();
+  };
 
   const loadRoutine = async () => {
     try {
@@ -436,6 +479,102 @@ export default function EditRoutinePage() {
     );
   }
 
+  const handleMovePreStretch = async (index: number, delta: number) => {
+    const targetIndex = index + delta;
+    if (targetIndex < 0 || targetIndex >= preStretches.length) return;
+    const previous = preStretches;
+    const next = reorderList(previous, index, targetIndex);
+    setPreStretches(next);
+    try {
+      await persistPreStretchOrder(next);
+    } catch (error) {
+      console.error('Error reordering pre-stretches:', error);
+      setPreStretches(previous);
+    }
+  };
+
+  const handleMovePostStretch = async (index: number, delta: number) => {
+    const targetIndex = index + delta;
+    if (targetIndex < 0 || targetIndex >= postStretches.length) return;
+    const previous = postStretches;
+    const next = reorderList(previous, index, targetIndex);
+    setPostStretches(next);
+    try {
+      await persistPostStretchOrder(next);
+    } catch (error) {
+      console.error('Error reordering post-stretches:', error);
+      setPostStretches(previous);
+    }
+  };
+
+  const handleMoveExercise = async (index: number, delta: number) => {
+    const targetIndex = index + delta;
+    if (targetIndex < 0 || targetIndex >= exercises.length) return;
+    const previous = exercises;
+    const next = reorderList(previous, index, targetIndex);
+    setExercises(next);
+    try {
+      await persistExerciseOrder(next);
+    } catch (error) {
+      console.error('Error reordering exercises:', error);
+      setExercises(previous);
+    }
+  };
+
+  const handlePreStretchDrop = async (index: number) => {
+    if (draggingPreIndex === null || draggingPreIndex === index) {
+      setDragOverPreIndex(null);
+      return;
+    }
+    const previous = preStretches;
+    const next = reorderList(previous, draggingPreIndex, index);
+    setPreStretches(next);
+    setDraggingPreIndex(null);
+    setDragOverPreIndex(null);
+    try {
+      await persistPreStretchOrder(next);
+    } catch (error) {
+      console.error('Error reordering pre-stretches:', error);
+      setPreStretches(previous);
+    }
+  };
+
+  const handlePostStretchDrop = async (index: number) => {
+    if (draggingPostIndex === null || draggingPostIndex === index) {
+      setDragOverPostIndex(null);
+      return;
+    }
+    const previous = postStretches;
+    const next = reorderList(previous, draggingPostIndex, index);
+    setPostStretches(next);
+    setDraggingPostIndex(null);
+    setDragOverPostIndex(null);
+    try {
+      await persistPostStretchOrder(next);
+    } catch (error) {
+      console.error('Error reordering post-stretches:', error);
+      setPostStretches(previous);
+    }
+  };
+
+  const handleExerciseDrop = async (index: number) => {
+    if (draggingExerciseIndex === null || draggingExerciseIndex === index) {
+      setDragOverExerciseIndex(null);
+      return;
+    }
+    const previous = exercises;
+    const next = reorderList(previous, draggingExerciseIndex, index);
+    setExercises(next);
+    setDraggingExerciseIndex(null);
+    setDragOverExerciseIndex(null);
+    try {
+      await persistExerciseOrder(next);
+    } catch (error) {
+      console.error('Error reordering exercises:', error);
+      setExercises(previous);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-900 p-4 pb-24">
       <div className="max-w-2xl mx-auto">
@@ -483,10 +622,37 @@ export default function EditRoutinePage() {
           <AddButton onClick={() => handleAddPreStretch(0)} label="Add Pre-Stretch" color="green" />
 
           {preStretches.map((stretch, index) => (
-            <div key={`pre-${index}`}>
+            <div
+              key={`pre-${stretch.id}`}
+              className={dragOverPreIndex === index ? 'ring-2 ring-green-500/70 rounded-lg' : ''}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragOverPreIndex(index);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                handlePreStretchDrop(index);
+              }}
+            >
               <StretchItem
                 stretch={stretch}
                 onDelete={() => handleDeletePreStretch(index)}
+                onMoveUp={() => handleMovePreStretch(index, -1)}
+                onMoveDown={() => handleMovePreStretch(index, 1)}
+                disableMoveUp={index === 0}
+                disableMoveDown={index === preStretches.length - 1}
+                dragHandleProps={{
+                  draggable: true,
+                  onDragStart: (event) => {
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', String(index));
+                    setDraggingPreIndex(index);
+                  },
+                  onDragEnd: () => {
+                    setDraggingPreIndex(null);
+                    setDragOverPreIndex(null);
+                  }
+                }}
               />
               <AddButton onClick={() => handleAddPreStretch(index + 1)} label="Add Pre-Stretch" color="green" />
             </div>
@@ -507,10 +673,37 @@ export default function EditRoutinePage() {
           />
 
           {exercises.map((exercise, index) => (
-            <div key={`ex-${index}`}>
+            <div
+              key={`ex-${exercise.id}`}
+              className={dragOverExerciseIndex === index ? 'ring-2 ring-orange-500/70 rounded-lg' : ''}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragOverExerciseIndex(index);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                handleExerciseDrop(index);
+              }}
+            >
               <ExerciseItem
                 exercise={exercise}
                 onDelete={() => handleDeleteExercise(index)}
+                onMoveUp={() => handleMoveExercise(index, -1)}
+                onMoveDown={() => handleMoveExercise(index, 1)}
+                disableMoveUp={index === 0}
+                disableMoveDown={index === exercises.length - 1}
+                dragHandleProps={{
+                  draggable: true,
+                  onDragStart: (event) => {
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', String(index));
+                    setDraggingExerciseIndex(index);
+                  },
+                  onDragEnd: () => {
+                    setDraggingExerciseIndex(null);
+                    setDragOverExerciseIndex(null);
+                  }
+                }}
               />
               <ExerciseAddRow
                 onAddExercise={() => handleAddExercise(index + 1)}
@@ -547,10 +740,37 @@ export default function EditRoutinePage() {
           <AddButton onClick={() => handleAddPostStretch(0)} label="Add Post-Stretch" color="blue" />
 
           {postStretches.map((stretch, index) => (
-            <div key={`post-${index}`}>
+            <div
+              key={`post-${stretch.id}`}
+              className={dragOverPostIndex === index ? 'ring-2 ring-blue-500/70 rounded-lg' : ''}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragOverPostIndex(index);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                handlePostStretchDrop(index);
+              }}
+            >
               <StretchItem
                 stretch={stretch}
                 onDelete={() => handleDeletePostStretch(index)}
+                onMoveUp={() => handleMovePostStretch(index, -1)}
+                onMoveDown={() => handleMovePostStretch(index, 1)}
+                disableMoveUp={index === 0}
+                disableMoveDown={index === postStretches.length - 1}
+                dragHandleProps={{
+                  draggable: true,
+                  onDragStart: (event) => {
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', String(index));
+                    setDraggingPostIndex(index);
+                  },
+                  onDragEnd: () => {
+                    setDraggingPostIndex(null);
+                    setDragOverPostIndex(null);
+                  }
+                }}
               />
               <AddButton onClick={() => handleAddPostStretch(index + 1)} label="Add Post-Stretch" color="blue" />
             </div>

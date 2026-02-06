@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import type { ButtonHTMLAttributes } from 'react';
 import { formatStretchTimer } from '@/lib/stretch-utils';
 
 export function AddButton({
@@ -55,45 +56,121 @@ export function ExerciseAddRow({
 
 export function StretchItem({
   stretch,
-  onDelete
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  disableMoveUp,
+  disableMoveDown,
+  dragHandleProps
 }: {
   stretch: { name: string; timerSeconds?: number | null };
   onDelete: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  disableMoveUp?: boolean;
+  disableMoveDown?: boolean;
+  dragHandleProps?: ButtonHTMLAttributes<HTMLButtonElement>;
 }) {
   return (
-    <div className="bg-zinc-800 rounded-lg p-4 border-2 border-zinc-700 mb-2 flex items-center justify-between">
-      <div>
+    <div className="bg-zinc-800 rounded-lg p-4 border-2 border-zinc-700 mb-2 flex items-center gap-3">
+      {dragHandleProps && (
+        <button
+          {...dragHandleProps}
+          type="button"
+          className={`p-2 rounded bg-zinc-700/60 text-zinc-200 hover:bg-zinc-600/70 cursor-grab active:cursor-grabbing ${dragHandleProps.className ?? ''}`}
+          aria-label="Drag to reorder"
+          title="Drag to reorder"
+        >
+          <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+            <path d="M7 4.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM7 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM7 15.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
+          </svg>
+        </button>
+      )}
+      <div className="flex-1">
         <div className="text-white font-semibold">{stretch.name}</div>
         <div className="text-zinc-400 text-sm">
           {formatStretchTimer(stretch.timerSeconds)}
         </div>
       </div>
-      <button
-        onClick={onDelete}
-        className="text-red-500 hover:text-red-400 p-2"
-        title="Delete"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-      </button>
+      <div className="flex items-center gap-1">
+        {onMoveUp && (
+          <button
+            onClick={onMoveUp}
+            className="p-2 rounded text-zinc-300 hover:text-white hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={disableMoveUp}
+            title="Move up"
+            aria-label="Move up"
+          >
+            <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+              <path d="M10 5l5 6H5l5-6Z" />
+            </svg>
+          </button>
+        )}
+        {onMoveDown && (
+          <button
+            onClick={onMoveDown}
+            className="p-2 rounded text-zinc-300 hover:text-white hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={disableMoveDown}
+            title="Move down"
+            aria-label="Move down"
+          >
+            <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+              <path d="M10 15l-5-6h10l-5 6Z" />
+            </svg>
+          </button>
+        )}
+        <button
+          onClick={onDelete}
+          className="text-red-500 hover:text-red-400 p-2"
+          title="Delete"
+          aria-label="Delete"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
+      </div>
     </div>
   );
 }
 
 export function ExerciseItem({
   exercise,
-  onDelete
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  disableMoveUp,
+  disableMoveDown,
+  dragHandleProps
 }: {
   exercise: { exercise_name: string; exercise_id2: number | null; exercise2_name: string | null };
   onDelete: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  disableMoveUp?: boolean;
+  disableMoveDown?: boolean;
+  dragHandleProps?: ButtonHTMLAttributes<HTMLButtonElement>;
 }) {
   const isSuperset = Boolean(exercise.exercise_id2);
 
   return (
-    <div className={`bg-zinc-800 rounded-lg p-4 border-2 ${isSuperset ? 'border-purple-700' : 'border-zinc-700'} mb-2`}>
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
+    <div className={`bg-zinc-800 rounded-lg p-4 border-2 ${isSuperset ? 'border-purple-700' : 'border-zinc-700'} mb-2 flex items-start gap-3`}>
+      {dragHandleProps && (
+        <button
+          {...dragHandleProps}
+          type="button"
+          className={`mt-1 p-2 rounded bg-zinc-700/60 text-zinc-200 hover:bg-zinc-600/70 cursor-grab active:cursor-grabbing ${dragHandleProps.className ?? ''}`}
+          aria-label="Drag to reorder"
+          title="Drag to reorder"
+        >
+          <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+            <path d="M7 4.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM7 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM7 15.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
+          </svg>
+        </button>
+      )}
+      <div className="flex-1">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1">
           {isSuperset && (
             <div className="text-purple-400 text-xs font-bold mb-2">SUPERSET</div>
           )}
@@ -104,16 +181,46 @@ export function ExerciseItem({
               <div className="text-white font-semibold">{exercise.exercise2_name}</div>
             </>
           )}
+          </div>
+          <div className="flex items-center gap-1">
+            {onMoveUp && (
+              <button
+                onClick={onMoveUp}
+                className="p-2 rounded text-zinc-300 hover:text-white hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={disableMoveUp}
+                title="Move up"
+                aria-label="Move up"
+              >
+                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                  <path d="M10 5l5 6H5l5-6Z" />
+                </svg>
+              </button>
+            )}
+            {onMoveDown && (
+              <button
+                onClick={onMoveDown}
+                className="p-2 rounded text-zinc-300 hover:text-white hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={disableMoveDown}
+                title="Move down"
+                aria-label="Move down"
+              >
+                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                  <path d="M10 15l-5-6h10l-5 6Z" />
+                </svg>
+              </button>
+            )}
+            <button
+              onClick={onDelete}
+              className="text-red-500 hover:text-red-400 p-2"
+              title="Delete"
+              aria-label="Delete"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          </div>
         </div>
-        <button
-          onClick={onDelete}
-          className="text-red-500 hover:text-red-400 p-2"
-          title="Delete"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
-        </button>
       </div>
     </div>
   );

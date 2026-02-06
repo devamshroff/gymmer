@@ -4,7 +4,13 @@ import { useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan, Exercise, SingleExercise, B2BExercise } from '@/lib/types';
-import { addExerciseToSession } from '@/lib/workout-session';
+import {
+  addExerciseToSession,
+  getInProgressExercise,
+  getWorkoutSession,
+  setInProgressExercise,
+  updateExerciseInSession,
+} from '@/lib/workout-session';
 import { autosaveWorkout } from '@/lib/workout-autosave';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
 import SupersetSelector from '@/app/components/SupersetSelector';
@@ -215,12 +221,92 @@ function ActiveWorkoutContent() {
     exerciseIndex: number;
     exerciseName: string;
     type: typeof EXERCISE_TYPES.single | typeof EXERCISE_TYPES.b2b;
+    sessionExerciseIndex?: number | null;
     completedSets?: SetData[];
     completedPairs?: Array<{ ex1: SetData; ex2: SetData }>;
     warmupCompleted?: boolean;
   };
   const [completedExercisesCache, setCompletedExercisesCache] = useState<CompletedExerciseCache[]>([]);
   const [viewingExerciseIndex, setViewingExerciseIndex] = useState(0); // Which exercise we're viewing (can be past/current)
+  const [showSetReview, setShowSetReview] = useState(false);
+
+  const buildCompletedCacheFromSession = (plan: WorkoutPlan, routineId: number | null) => {
+    const session = getWorkoutSession();
+    if (!session) {
+      return { cache: [], nextIndex: 0 };
+    }
+    if (session.workoutName !== plan.name) {
+      return { cache: [], nextIndex: 0 };
+    }
+    if ((session.routineId ?? null) !== (routineId ?? null)) {
+      return { cache: [], nextIndex: 0 };
+    }
+
+    const cache: CompletedExerciseCache[] = [];
+    let scanIndex = 0;
+    let lastMatchedIndex = -1;
+
+    for (let sessionIndex = 0; sessionIndex < session.exercises.length; sessionIndex += 1) {
+      const sessionExercise = session.exercises[sessionIndex];
+      let matchedIndex = -1;
+
+      for (let workoutIndex = scanIndex; workoutIndex < plan.exercises.length; workoutIndex += 1) {
+        const workoutExercise = plan.exercises[workoutIndex];
+        if (sessionExercise.type === EXERCISE_TYPES.single && workoutExercise.type === EXERCISE_TYPES.single) {
+          if (workoutExercise.name === sessionExercise.name) {
+            matchedIndex = workoutIndex;
+            break;
+          }
+        }
+        if (sessionExercise.type === EXERCISE_TYPES.b2b && workoutExercise.type === EXERCISE_TYPES.b2b) {
+          const [ex1, ex2] = workoutExercise.exercises;
+          const partnerName = sessionExercise.b2bPartner?.name;
+          if (ex1.name === sessionExercise.name && (!partnerName || ex2.name === partnerName)) {
+            matchedIndex = workoutIndex;
+            break;
+          }
+        }
+      }
+
+      if (matchedIndex === -1) continue;
+      scanIndex = matchedIndex + 1;
+      lastMatchedIndex = matchedIndex;
+
+      if (sessionExercise.type === EXERCISE_TYPES.single) {
+        const warmup = sessionExercise.warmup;
+        const completedSets = warmup
+          ? [warmup, ...(sessionExercise.sets || [])]
+          : [...(sessionExercise.sets || [])];
+        cache.push({
+          exerciseIndex: matchedIndex,
+          exerciseName: sessionExercise.name,
+          type: EXERCISE_TYPES.single,
+          sessionExerciseIndex: sessionIndex,
+          completedSets,
+          warmupCompleted: !!warmup,
+        });
+      } else {
+        const partnerSets = sessionExercise.b2bPartner?.sets || [];
+        const setCount = Math.max(sessionExercise.sets?.length ?? 0, partnerSets.length);
+        const completedPairs = Array.from({ length: setCount }, (_, pairIndex) => ({
+          ex1: sessionExercise.sets?.[pairIndex] ?? { weight: 0, reps: 0 },
+          ex2: partnerSets[pairIndex] ?? { weight: 0, reps: 0 },
+        }));
+        cache.push({
+          exerciseIndex: matchedIndex,
+          exerciseName: sessionExercise.name,
+          type: EXERCISE_TYPES.b2b,
+          sessionExerciseIndex: sessionIndex,
+          completedPairs,
+        });
+      }
+    }
+
+    return {
+      cache,
+      nextIndex: lastMatchedIndex + 1,
+    };
+  };
 
   const initSingleExerciseState = (exercise: SingleExercise) => {
     const hasWarmup = resolveHasWarmup(exercise);
@@ -256,6 +342,8 @@ function ActiveWorkoutContent() {
   useEffect(() => {
     async function fetchWorkout() {
       try {
+        const routineIdValue = routineIdParam ? Number(routineIdParam) : null;
+        const routineId = Number.isNaN(routineIdValue) ? null : routineIdValue;
         const decodedName = decodeURIComponent(params.name as string);
         const cached = loadWorkoutBootstrapCache({
           workoutName: decodedName,
@@ -329,48 +417,125 @@ function ActiveWorkoutContent() {
           setHeightUnit(normalizeHeightUnit(bootstrapSettings?.heightUnit));
         }
 
+        const { cache, nextIndex } = buildCompletedCacheFromSession(resolvedWorkout, routineId);
+        if (cache.length > 0) {
+          setCompletedExercisesCache(cache);
+        }
+
         // Check for index in URL (for navigation from other sections)
         const indexParam = searchParams.get('index');
+        const resumeIndexParam = searchParams.get('resumeIndex');
+        const reviewParam = searchParams.get('review');
         let startIndex = 0;
+
+        const exerciseCount = resolvedWorkout.exercises.length;
+        const inProgress = getInProgressExercise();
+        if (exerciseCount > 0) {
+          if (nextIndex > 0) {
+            startIndex = nextIndex >= exerciseCount ? exerciseCount - 1 : nextIndex;
+          }
+          if (inProgress && inProgress.exerciseIndex >= 0 && inProgress.exerciseIndex < exerciseCount) {
+            startIndex = Math.max(startIndex, inProgress.exerciseIndex);
+          }
+          if (resumeIndexParam && !Number.isNaN(Number(resumeIndexParam))) {
+            const resumeIndex = Math.min(
+              Math.max(0, Number(resumeIndexParam)),
+              exerciseCount - 1
+            );
+            startIndex = Math.max(startIndex, resumeIndex);
+          }
+        }
+
+        let viewingIndex = startIndex;
         if (indexParam && !initialIndexSet) {
           const idx = parseInt(indexParam, 10);
-          if (!isNaN(idx) && idx >= 0 && idx < resolvedWorkout.exercises.length) {
-            startIndex = idx;
-            setCurrentExerciseIndex(idx);
-            setViewingExerciseIndex(idx);
+          if (!Number.isNaN(idx) && idx >= 0 && idx < exerciseCount) {
+            viewingIndex = idx;
+            if (idx > startIndex) {
+              startIndex = idx;
+            }
           }
           setInitialIndexSet(true);
         }
 
+        if (reviewParam === '1' && cache.length > 0 && exerciseCount > 0) {
+          const firstCompletedIndex = cache.reduce((minIndex, entry) => (
+            entry.exerciseIndex < minIndex ? entry.exerciseIndex : minIndex
+          ), cache[0].exerciseIndex);
+          viewingIndex = Math.min(Math.max(firstCompletedIndex, 0), exerciseCount - 1);
+          setInitialIndexSet(true);
+        }
+
+        setCurrentExerciseIndex(startIndex);
+        setViewingExerciseIndex(viewingIndex);
+
         // Initialize exercise at startIndex
-        const exercise = resolvedWorkout.exercises[startIndex];
-        if (exercise.type === EXERCISE_TYPES.single) {
-          initSingleExerciseState(exercise);
-        } else {
-          // B2B exercise - no warmups, start at set 1
-          const b2bEx = exercise as B2BExercise;
-          const defaultMachineOnly1 = !!b2bEx.exercises[0].isMachine
-            && isExerciseWeightMetric(b2bEx.exercises[0])
-            && b2bEx.exercises[0].targetWeight <= 0;
-          const defaultMachineOnly2 = !!b2bEx.exercises[1].isMachine
-            && isExerciseWeightMetric(b2bEx.exercises[1])
-            && b2bEx.exercises[1].targetWeight <= 0;
-          setSetData1({
-            weight: defaultMachineOnly1 ? 0 : b2bEx.exercises[0].targetWeight,
-            reps: b2bEx.exercises[0].targetReps,
-          });
-          setSetData2({
-            weight: defaultMachineOnly2 ? 0 : b2bEx.exercises[1].targetWeight,
-            reps: b2bEx.exercises[1].targetReps,
-          });
-          setMachineOnly1(defaultMachineOnly1);
-          setMachineOnly2(defaultMachineOnly2);
-          setMachineOnlyHoldWeight1(b2bEx.exercises[0].targetWeight);
-          setMachineOnlyHoldWeight2(b2bEx.exercises[1].targetWeight);
-          setCurrentSetIndex(1);
-          setCurrentExerciseInPair(0); // Start with first exercise
-          setWarmupDecision('skip');
-          setWarmupCompleted(false);
+        if (exerciseCount > 0) {
+          const exercise = resolvedWorkout.exercises[startIndex];
+          if (exercise.type === EXERCISE_TYPES.single) {
+            initSingleExerciseState(exercise);
+            if (inProgress && inProgress.exerciseIndex === startIndex && inProgress.type === EXERCISE_TYPES.single) {
+              setCompletedSets(inProgress.completedSets ?? []);
+              setWarmupDecision(inProgress.warmupDecision ?? 'pending');
+              setWarmupCompleted(!!inProgress.warmupCompleted);
+              if (typeof inProgress.currentSetIndex === 'number') {
+                setCurrentSetIndex(inProgress.currentSetIndex);
+              }
+              if (inProgress.setData) {
+                setSetData(inProgress.setData);
+              }
+              if (typeof inProgress.machineOnly === 'boolean') {
+                setMachineOnly(inProgress.machineOnly);
+              }
+            }
+          } else {
+            // B2B exercise - no warmups, start at set 1
+            const b2bEx = exercise as B2BExercise;
+            const defaultMachineOnly1 = !!b2bEx.exercises[0].isMachine
+              && isExerciseWeightMetric(b2bEx.exercises[0])
+              && b2bEx.exercises[0].targetWeight <= 0;
+            const defaultMachineOnly2 = !!b2bEx.exercises[1].isMachine
+              && isExerciseWeightMetric(b2bEx.exercises[1])
+              && b2bEx.exercises[1].targetWeight <= 0;
+            setSetData1({
+              weight: defaultMachineOnly1 ? 0 : b2bEx.exercises[0].targetWeight,
+              reps: b2bEx.exercises[0].targetReps,
+            });
+            setSetData2({
+              weight: defaultMachineOnly2 ? 0 : b2bEx.exercises[1].targetWeight,
+              reps: b2bEx.exercises[1].targetReps,
+            });
+            setMachineOnly1(defaultMachineOnly1);
+            setMachineOnly2(defaultMachineOnly2);
+            setMachineOnlyHoldWeight1(b2bEx.exercises[0].targetWeight);
+            setMachineOnlyHoldWeight2(b2bEx.exercises[1].targetWeight);
+            setCurrentSetIndex(1);
+            setCurrentExerciseInPair(0); // Start with first exercise
+            setWarmupDecision('skip');
+            setWarmupCompleted(false);
+
+            if (inProgress && inProgress.exerciseIndex === startIndex && inProgress.type === EXERCISE_TYPES.b2b) {
+              setCompletedPairs(inProgress.completedPairs ?? []);
+              if (typeof inProgress.currentSetIndex === 'number') {
+                setCurrentSetIndex(inProgress.currentSetIndex);
+              }
+              if (typeof inProgress.currentExerciseInPair === 'number') {
+                setCurrentExerciseInPair(inProgress.currentExerciseInPair);
+              }
+              if (inProgress.setData1) {
+                setSetData1(inProgress.setData1);
+              }
+              if (inProgress.setData2) {
+                setSetData2(inProgress.setData2);
+              }
+              if (typeof inProgress.machineOnly1 === 'boolean') {
+                setMachineOnly1(inProgress.machineOnly1);
+              }
+              if (typeof inProgress.machineOnly2 === 'boolean') {
+                setMachineOnly2(inProgress.machineOnly2);
+              }
+            }
+          }
         }
       } catch (error) {
         console.error('Error fetching workout:', error);
@@ -462,6 +627,10 @@ function ActiveWorkoutContent() {
     setLastPartnerExerciseLog(lastSetSummaries[b2bExercise.exercises[1].name] ?? null);
   }, [workout, currentExerciseIndex, lastSetSummaries]);
 
+  useEffect(() => {
+    setShowSetReview(false);
+  }, [currentExerciseIndex, viewingExerciseIndex]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
@@ -487,6 +656,7 @@ function ActiveWorkoutContent() {
 
   // Review mode: determine if viewing a previous exercise
   const isReviewMode = viewingExerciseIndex < currentExerciseIndex;
+  const isSetReview = showSetReview && viewingExerciseIndex === currentExerciseIndex;
   const viewingExercise = workout.exercises[viewingExerciseIndex];
   const viewingCachedData = completedExercisesCache.find(cache => cache.exerciseIndex === viewingExerciseIndex);
   const lastExerciseDate = lastExerciseLog?.completed_at || lastExerciseLog?.created_at;
@@ -501,6 +671,11 @@ function ActiveWorkoutContent() {
   const currentProgress = workout.preWorkoutStretches.length + currentExerciseIndex + 1;
   const progressPercentage = (currentProgress / totalItems) * 100;
 
+  const reviewNextHandler = showSetReview
+    ? () => setShowSetReview(false)
+    : (isReviewMode ? () => setViewingExerciseIndex(viewingExerciseIndex + 1) : undefined);
+  const reviewNextLabel = showSetReview ? 'Back to Set' : 'Next';
+
   // B2B Exercise Handlers
   const handleCompleteB2BExercise = () => {
     const b2bExercise = currentExercise as B2BExercise;
@@ -509,6 +684,7 @@ function ActiveWorkoutContent() {
     if (currentExerciseInPair === 0) {
       // Just completed first exercise, immediately move to second
       setCurrentExerciseInPair(1);
+      persistB2BProgress(completedPairs);
     } else {
       // Completed both exercises in the pair
       const newCompletedPairs = [...completedPairs, { ex1: setData1, ex2: setData2 }];
@@ -538,6 +714,19 @@ function ActiveWorkoutContent() {
       });
 
       setCompletedPairs(newCompletedPairs);
+      const nextSetIndex = newCompletedPairs.length < totalSets ? currentSetIndex + 1 : currentSetIndex;
+      const nextExerciseInPair = newCompletedPairs.length < totalSets ? 0 : currentExerciseInPair;
+      setInProgressExercise({
+        exerciseIndex: currentExerciseIndex,
+        type: EXERCISE_TYPES.b2b,
+        completedPairs: newCompletedPairs,
+        currentSetIndex: nextSetIndex,
+        currentExerciseInPair: nextExerciseInPair,
+        setData1,
+        setData2,
+        machineOnly1,
+        machineOnly2,
+      });
 
       if (newCompletedPairs.length < totalSets) {
         // More sets to go - rest briefly before next set
@@ -553,7 +742,7 @@ function ActiveWorkoutContent() {
       } else {
         // All sets complete - save to session and show transition to next exercise
         console.log('Finishing B2B exercise');
-        addExerciseToSession({
+        const sessionExerciseIndex = addExerciseToSession({
           name: b2bExercise.exercises[0].name,
           type: EXERCISE_TYPES.b2b,
           isMachine: b2bExercise.exercises[0].isMachine,
@@ -574,8 +763,10 @@ function ActiveWorkoutContent() {
           exerciseIndex: currentExerciseIndex,
           exerciseName: b2bExercise.exercises[0].name,
           type: EXERCISE_TYPES.b2b,
+          sessionExerciseIndex,
           completedPairs: newCompletedPairs,
         }]);
+        setInProgressExercise(null);
 
         if (currentExerciseIndex < workout!.exercises.length - 1) {
           setIsResting(false);
@@ -630,9 +821,15 @@ function ActiveWorkoutContent() {
           reps: exercise.targetReps,
         });
       }
+      persistSingleProgress(newCompletedSets, currentSetIndex === 0
+        ? {
+            weight: exercise.isMachine && machineOnly ? 0 : exercise.targetWeight,
+            reps: exercise.targetReps,
+          }
+        : setData);
     } else {
       // Exercise complete - save to session
-      addExerciseToSession({
+      const sessionExerciseIndex = addExerciseToSession({
         name: exercise.name,
         type: EXERCISE_TYPES.single,
         isMachine: exercise.isMachine,
@@ -647,9 +844,11 @@ function ActiveWorkoutContent() {
         exerciseIndex: currentExerciseIndex,
         exerciseName: exercise.name,
         type: EXERCISE_TYPES.single,
+        sessionExerciseIndex,
         completedSets: newCompletedSets,
         warmupCompleted,
       }]);
+      setInProgressExercise(null);
 
       // Show transition to next exercise
       if (currentExerciseIndex < workout.exercises.length - 1) {
@@ -680,6 +879,19 @@ function ActiveWorkoutContent() {
       weight: suggestedWeight,
       reps: exercise.targetReps,
     });
+    setInProgressExercise({
+      exerciseIndex: currentExerciseIndex,
+      type: EXERCISE_TYPES.single,
+      completedSets,
+      warmupDecision: 'include',
+      warmupCompleted: false,
+      currentSetIndex: 0,
+      setData: {
+        weight: suggestedWeight,
+        reps: exercise.targetReps,
+      },
+      machineOnly,
+    });
   };
 
   const handleSkipWarmup = () => {
@@ -692,6 +904,19 @@ function ActiveWorkoutContent() {
       reps: exercise.targetReps,
     });
     setWarmupCompleted(false);
+    setInProgressExercise({
+      exerciseIndex: currentExerciseIndex,
+      type: EXERCISE_TYPES.single,
+      completedSets,
+      warmupDecision: 'skip',
+      warmupCompleted: false,
+      currentSetIndex: 1,
+      setData: {
+        weight: exercise.isMachine && machineOnly ? 0 : exercise.targetWeight,
+        reps: exercise.targetReps,
+      },
+      machineOnly,
+    });
   };
 
   const handleAddTime = () => {
@@ -729,7 +954,7 @@ function ActiveWorkoutContent() {
       const hasWarmup = resolveHasWarmup(exercise);
 
       if (completedSets.length > 0) {
-        addExerciseToSession({
+        const sessionExerciseIndex = addExerciseToSession({
           name: exercise.name,
           type: EXERCISE_TYPES.single,
           isMachine: exercise.isMachine,
@@ -744,9 +969,11 @@ function ActiveWorkoutContent() {
           exerciseIndex: currentExerciseIndex,
           exerciseName: exercise.name,
           type: EXERCISE_TYPES.single,
+          sessionExerciseIndex,
           completedSets: completedSets,
           warmupCompleted,
         }]);
+        setInProgressExercise(null);
       }
     } else {
       // B2B exercise
@@ -757,7 +984,7 @@ function ActiveWorkoutContent() {
       });
 
       if (completedPairs.length > 0) {
-        addExerciseToSession({
+        const sessionExerciseIndex = addExerciseToSession({
           name: b2bExercise.exercises[0].name,
           type: EXERCISE_TYPES.b2b,
           isMachine: b2bExercise.exercises[0].isMachine,
@@ -778,8 +1005,10 @@ function ActiveWorkoutContent() {
           exerciseIndex: currentExerciseIndex,
           exerciseName: b2bExercise.exercises[0].name,
           type: EXERCISE_TYPES.b2b,
+          sessionExerciseIndex,
           completedPairs: completedPairs,
         }]);
+        setInProgressExercise(null);
       }
     }
 
@@ -808,8 +1037,34 @@ function ActiveWorkoutContent() {
       // At the first exercise, go back to pre-stretches (if any) or exit
       const preStretchCount = workout.preWorkoutStretches?.length || 0;
       if (preStretchCount > 0) {
+        if (currentExercise.type === EXERCISE_TYPES.single) {
+          setInProgressExercise({
+            exerciseIndex: currentExerciseIndex,
+            type: EXERCISE_TYPES.single,
+            completedSets,
+            warmupDecision,
+            warmupCompleted,
+            currentSetIndex,
+            setData,
+            machineOnly,
+          });
+        } else {
+          setInProgressExercise({
+            exerciseIndex: currentExerciseIndex,
+            type: EXERCISE_TYPES.b2b,
+            completedPairs,
+            currentSetIndex,
+            currentExerciseInPair,
+            setData1,
+            setData2,
+            machineOnly1,
+            machineOnly2,
+          });
+        }
         const stretchParams = new URLSearchParams(routineQueryParams.toString());
         stretchParams.set('index', String(preStretchCount - 1));
+        stretchParams.set('from', 'active');
+        stretchParams.set('resumeIndex', String(currentExerciseIndex));
         router.push(`/stretches/${encodeURIComponent(workout.name)}?${stretchParams.toString()}`);
       } else {
         setShowExitConfirm(true);
@@ -821,14 +1076,55 @@ function ActiveWorkoutContent() {
   const handlePreviousSection = () => {
     if (!workout) return;
 
+    const isReview = viewingExerciseIndex < currentExerciseIndex;
+    if (!isReview && !showSetReview) {
+      const canReviewSets = currentExercise.type === EXERCISE_TYPES.single
+        ? completedSets.length > 0
+        : completedPairs.length > 0;
+      if (canReviewSets) {
+        setShowSetReview(true);
+        return;
+      }
+    }
+
+    if (showSetReview) {
+      setShowSetReview(false);
+    }
+
     if (viewingExerciseIndex > 0) {
       setViewingExerciseIndex(viewingExerciseIndex - 1);
     } else {
       // Go to last pre-stretch
       const preStretchCount = workout.preWorkoutStretches?.length || 0;
       if (preStretchCount > 0) {
+        if (currentExercise.type === EXERCISE_TYPES.single) {
+          setInProgressExercise({
+            exerciseIndex: currentExerciseIndex,
+            type: EXERCISE_TYPES.single,
+            completedSets,
+            warmupDecision,
+            warmupCompleted,
+            currentSetIndex,
+            setData,
+            machineOnly,
+          });
+        } else {
+          setInProgressExercise({
+            exerciseIndex: currentExerciseIndex,
+            type: EXERCISE_TYPES.b2b,
+            completedPairs,
+            currentSetIndex,
+            currentExerciseInPair,
+            setData1,
+            setData2,
+            machineOnly1,
+            machineOnly2,
+          });
+        }
         const stretchParams = new URLSearchParams(routineQueryParams.toString());
         stretchParams.set('index', String(preStretchCount - 1));
+        stretchParams.set('from', 'active');
+        stretchParams.set('resumeIndex', String(currentExerciseIndex));
         router.push(`/stretches/${encodeURIComponent(workout.name)}?${stretchParams.toString()}`);
       }
     }
@@ -924,6 +1220,7 @@ function ActiveWorkoutContent() {
     setCurrentExerciseInPair(0);
     setLastExerciseLog(null);
     setLastPartnerExerciseLog(null);
+    setShowSetReview(false);
 
     if (exercise.type === EXERCISE_TYPES.single) {
       initSingleExerciseState(exercise);
@@ -953,6 +1250,85 @@ function ActiveWorkoutContent() {
     }
 
     setViewingExerciseIndex(currentExerciseIndex);
+  };
+
+  const updateReviewSingleSet = (setIndex: number, updates: Partial<SetData>) => {
+    setCompletedExercisesCache((prev) => prev.map((cache) => {
+      if (cache.exerciseIndex !== viewingExerciseIndex) return cache;
+      const nextSets = cache.completedSets ? [...cache.completedSets] : [];
+      if (!nextSets[setIndex]) return cache;
+      nextSets[setIndex] = { ...nextSets[setIndex], ...updates };
+      return { ...cache, completedSets: nextSets };
+    }));
+  };
+
+  const updateReviewPair = (
+    pairIndex: number,
+    updates: { ex1?: Partial<SetData>; ex2?: Partial<SetData> }
+  ) => {
+    setCompletedExercisesCache((prev) => prev.map((cache) => {
+      if (cache.exerciseIndex !== viewingExerciseIndex) return cache;
+      const nextPairs = cache.completedPairs ? [...cache.completedPairs] : [];
+      if (!nextPairs[pairIndex]) return cache;
+      const currentPair = nextPairs[pairIndex];
+      nextPairs[pairIndex] = {
+        ex1: { ...currentPair.ex1, ...(updates.ex1 ?? {}) },
+        ex2: { ...currentPair.ex2, ...(updates.ex2 ?? {}) },
+      };
+      return { ...cache, completedPairs: nextPairs };
+    }));
+  };
+
+  const updateActiveSingleSet = (setIndex: number, updates: Partial<SetData>) => {
+    setCompletedSets((prev) => {
+      if (!prev[setIndex]) return prev;
+      const nextSets = [...prev];
+      nextSets[setIndex] = { ...nextSets[setIndex], ...updates };
+      return nextSets;
+    });
+  };
+
+  const persistSingleProgress = (nextCompletedSets: SetData[], nextSetData?: SetData) => {
+    setInProgressExercise({
+      exerciseIndex: currentExerciseIndex,
+      type: EXERCISE_TYPES.single,
+      completedSets: nextCompletedSets,
+      warmupDecision,
+      warmupCompleted,
+      currentSetIndex,
+      setData: nextSetData ?? setData,
+      machineOnly,
+    });
+  };
+
+  const updateActivePair = (
+    pairIndex: number,
+    updates: { ex1?: Partial<SetData>; ex2?: Partial<SetData> }
+  ) => {
+    setCompletedPairs((prev) => {
+      if (!prev[pairIndex]) return prev;
+      const nextPairs = [...prev];
+      const currentPair = nextPairs[pairIndex];
+      nextPairs[pairIndex] = {
+        ex1: { ...currentPair.ex1, ...(updates.ex1 ?? {}) },
+        ex2: { ...currentPair.ex2, ...(updates.ex2 ?? {}) },
+      };
+      return nextPairs;
+    });
+  };
+
+  const persistB2BProgress = (nextCompletedPairs: Array<{ ex1: SetData; ex2: SetData }>) => {
+    setInProgressExercise({
+      exerciseIndex: currentExerciseIndex,
+      type: EXERCISE_TYPES.b2b,
+      completedPairs: nextCompletedPairs,
+      currentSetIndex,
+      currentExerciseInPair,
+      setData1,
+      setData2,
+      machineOnly1,
+      machineOnly2,
+    });
   };
 
   const fetchLastSetSummary = async (exerciseName: string): Promise<LastSetSummary> => {
@@ -1200,6 +1576,343 @@ function ActiveWorkoutContent() {
       ? viewingCachedData.completedPairs || []
       : completedPairs;
 
+    const commitReviewPair = (pairIndex: number) => {
+      if (!viewingCachedData?.completedPairs) return;
+      const pair = viewingCachedData.completedPairs[pairIndex];
+      if (!pair) return;
+      const sessionExerciseIndex = viewingCachedData.sessionExerciseIndex;
+      if (sessionExerciseIndex === null || sessionExerciseIndex === undefined) return;
+
+      updateExerciseInSession(sessionExerciseIndex, (exercise) => {
+        const nextSets = [...(exercise.sets || [])];
+        nextSets[pairIndex] = {
+          weight: pair.ex1.weight,
+          reps: pair.ex1.reps,
+        };
+        const nextPartner = exercise.b2bPartner
+          ? { ...exercise.b2bPartner, sets: [...(exercise.b2bPartner.sets || [])] }
+          : {
+              name: ex2.name,
+              sets: [],
+            };
+        nextPartner.sets[pairIndex] = {
+          weight: pair.ex2.weight,
+          reps: pair.ex2.reps,
+        };
+        return {
+          ...exercise,
+          sets: nextSets,
+          b2bPartner: nextPartner,
+        };
+      });
+
+      void autosaveWorkout({
+        type: 'b2b_set',
+        exerciseName: ex1.name,
+        partnerName: ex2.name,
+        setIndex: pairIndex + 1,
+        weight: pair.ex1.weight,
+        reps: pair.ex1.reps,
+        partnerWeight: pair.ex2.weight,
+        partnerReps: pair.ex2.reps,
+      });
+    };
+
+    const commitActivePair = (pairIndex: number) => {
+      const pair = completedPairs[pairIndex];
+      if (!pair) return;
+      void autosaveWorkout({
+        type: 'b2b_set',
+        exerciseName: ex1.name,
+        partnerName: ex2.name,
+        setIndex: pairIndex + 1,
+        weight: pair.ex1.weight,
+        reps: pair.ex1.reps,
+        partnerWeight: pair.ex2.weight,
+        partnerReps: pair.ex2.reps,
+      });
+      setInProgressExercise({
+        exerciseIndex: currentExerciseIndex,
+        type: EXERCISE_TYPES.b2b,
+        completedPairs,
+        currentSetIndex,
+        currentExerciseInPair,
+        setData1,
+        setData2,
+        machineOnly1,
+        machineOnly2,
+      });
+    };
+
+    if (isSetReview) {
+      return (
+        <div className="min-h-screen bg-zinc-900 p-4 pb-32">
+          <div className="max-w-2xl mx-auto">
+            <WorkoutNavHeader
+              exitUrl={`/workout/${encodeURIComponent(workout.name)}${routineQuery}`}
+              previousUrl={null}
+              onPrevious={handlePreviousSection}
+              onNext={reviewNextHandler}
+              nextLabel={reviewNextLabel}
+            />
+            <div className="flex justify-end mb-2">
+              <AutosaveBadge />
+            </div>
+            <div className="text-zinc-400 text-right mb-4 -mt-4">
+              Exercise {viewingExerciseIndex + 1}/{workout.exercises.length}
+            </div>
+
+            <div className="bg-zinc-800 rounded-lg p-4 mb-6 border border-purple-700">
+              <div className="text-purple-300 text-xs mb-2">COMPLETED SETS</div>
+              <div className="text-white text-lg font-semibold mb-1">
+                {ex1.name} + {ex2.name}
+              </div>
+              <div className="text-zinc-400 text-sm">
+                Review completed sets for this superset.
+              </div>
+            </div>
+
+            {displayCompletedPairs.length === 0 ? (
+              <div className="bg-zinc-800 rounded-lg p-4 text-zinc-400 text-sm">
+                No completed sets logged for this superset yet.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {displayCompletedPairs.map((pair, index) => (
+                  <div key={index} className="bg-zinc-800 rounded-lg p-4 border border-zinc-700">
+                    <div className="text-zinc-400 text-xs mb-3">Set {index + 1}</div>
+                    <div className="space-y-3">
+                      <div className="bg-zinc-900 rounded-lg p-3">
+                        <div className="text-purple-300 text-xs mb-2">{ex1.name}</div>
+                        <div className={`grid ${ex1RepsOnly ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
+                          {!ex1RepsOnly && (
+                            <div>
+                              <label className="text-zinc-500 text-xs block mb-1">
+                                {getMetricLabelText(ex1MetricInfo, ex1Machine)}
+                              </label>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={formatMetricValueInput(pair.ex1.weight, ex1MetricInfo)}
+                                onChange={(e) => {
+                                  const nextValue = parseMetricValueInput(e.target.value, ex1MetricInfo);
+                                  if (nextValue !== null) {
+                                    updateActivePair(index, { ex1: { weight: nextValue } });
+                                  }
+                                }}
+                                onBlur={() => commitActivePair(index)}
+                                className="w-full bg-zinc-800 text-white text-xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+                          )}
+                          <div>
+                            <label className="text-zinc-500 text-xs block mb-1">Reps</label>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={pair.ex1.reps ?? ''}
+                              onChange={(e) => {
+                                const reps = parseInt(e.target.value, 10) || 0;
+                                updateActivePair(index, { ex1: { reps } });
+                              }}
+                              onBlur={() => commitActivePair(index)}
+                              className="w-full bg-zinc-800 text-white text-xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-zinc-900 rounded-lg p-3">
+                        <div className="text-purple-300 text-xs mb-2">{ex2.name}</div>
+                        <div className={`grid ${ex2RepsOnly ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
+                          {!ex2RepsOnly && (
+                            <div>
+                              <label className="text-zinc-500 text-xs block mb-1">
+                                {getMetricLabelText(ex2MetricInfo, ex2Machine)}
+                              </label>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={formatMetricValueInput(pair.ex2.weight, ex2MetricInfo)}
+                                onChange={(e) => {
+                                  const nextValue = parseMetricValueInput(e.target.value, ex2MetricInfo);
+                                  if (nextValue !== null) {
+                                    updateActivePair(index, { ex2: { weight: nextValue } });
+                                  }
+                                }}
+                                onBlur={() => commitActivePair(index)}
+                                className="w-full bg-zinc-800 text-white text-xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+                          )}
+                          <div>
+                            <label className="text-zinc-500 text-xs block mb-1">Reps</label>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={pair.ex2.reps ?? ''}
+                              onChange={(e) => {
+                                const reps = parseInt(e.target.value, 10) || 0;
+                                updateActivePair(index, { ex2: { reps } });
+                              }}
+                              onBlur={() => commitActivePair(index)}
+                              className="w-full bg-zinc-800 text-white text-xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {exerciseModals}
+          </div>
+        </div>
+      );
+    }
+
+    if (isReviewMode) {
+      const reviewMetricInput1 = !ex1RepsOnly;
+      const reviewMetricInput2 = !ex2RepsOnly;
+      return (
+        <div className="min-h-screen bg-zinc-900 p-4 pb-32">
+          <div className="max-w-2xl mx-auto">
+            <WorkoutNavHeader
+              exitUrl={`/workout/${encodeURIComponent(workout.name)}${routineQuery}`}
+              previousUrl={null}
+              onPrevious={handlePreviousSection}
+              onNext={reviewNextHandler}
+              nextLabel={reviewNextLabel}
+            />
+            <div className="flex justify-end mb-2">
+              <AutosaveBadge />
+            </div>
+            <div className="text-zinc-400 text-right mb-4 -mt-4">
+              Exercise {viewingExerciseIndex + 1}/{workout.exercises.length}
+            </div>
+
+            <div className="bg-zinc-800 rounded-lg p-4 mb-6 border border-purple-700">
+              <div className="text-purple-300 text-xs mb-2">EDIT COMPLETED SETS</div>
+              <div className="text-white text-lg font-semibold mb-1">
+                {ex1.name} + {ex2.name}
+              </div>
+              <div className="text-zinc-400 text-sm">
+                Update any set values from earlier in today&apos;s workout.
+              </div>
+            </div>
+
+            {displayCompletedPairs.length === 0 ? (
+              <div className="bg-zinc-800 rounded-lg p-4 text-zinc-400 text-sm">
+                No completed sets logged for this superset yet.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {displayCompletedPairs.map((pair, index) => (
+                  <div key={index} className="bg-zinc-800 rounded-lg p-4 border border-zinc-700">
+                    <div className="text-zinc-400 text-xs mb-3">Set {index + 1}</div>
+                    <div className="space-y-3">
+                      <div className="bg-zinc-900 rounded-lg p-3">
+                        <div className="text-purple-300 text-xs mb-2">{ex1.name}</div>
+                        <div className={`grid ${reviewMetricInput1 ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
+                          {reviewMetricInput1 && (
+                            <div>
+                              <label className="text-zinc-500 text-xs block mb-1">
+                                {getMetricLabelText(ex1MetricInfo, ex1Machine)}
+                              </label>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={formatMetricValueInput(pair.ex1.weight, ex1MetricInfo)}
+                                onChange={(e) => {
+                                  const nextValue = parseMetricValueInput(e.target.value, ex1MetricInfo);
+                                  if (nextValue !== null) {
+                                    updateReviewPair(index, { ex1: { weight: nextValue } });
+                                  }
+                                }}
+                                onBlur={() => commitReviewPair(index)}
+                                className="w-full bg-zinc-800 text-white text-xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+                          )}
+                          <div>
+                            <label className="text-zinc-500 text-xs block mb-1">Reps</label>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={pair.ex1.reps ?? ''}
+                              onChange={(e) => {
+                                const reps = parseInt(e.target.value, 10) || 0;
+                                updateReviewPair(index, { ex1: { reps } });
+                              }}
+                              onBlur={() => commitReviewPair(index)}
+                              className="w-full bg-zinc-800 text-white text-xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-zinc-900 rounded-lg p-3">
+                        <div className="text-purple-300 text-xs mb-2">{ex2.name}</div>
+                        <div className={`grid ${reviewMetricInput2 ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
+                          {reviewMetricInput2 && (
+                            <div>
+                              <label className="text-zinc-500 text-xs block mb-1">
+                                {getMetricLabelText(ex2MetricInfo, ex2Machine)}
+                              </label>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={formatMetricValueInput(pair.ex2.weight, ex2MetricInfo)}
+                                onChange={(e) => {
+                                  const nextValue = parseMetricValueInput(e.target.value, ex2MetricInfo);
+                                  if (nextValue !== null) {
+                                    updateReviewPair(index, { ex2: { weight: nextValue } });
+                                  }
+                                }}
+                                onBlur={() => commitReviewPair(index)}
+                                className="w-full bg-zinc-800 text-white text-xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+                          )}
+                          <div>
+                            <label className="text-zinc-500 text-xs block mb-1">Reps</label>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={pair.ex2.reps ?? ''}
+                              onChange={(e) => {
+                                const reps = parseInt(e.target.value, 10) || 0;
+                                updateReviewPair(index, { ex2: { reps } });
+                              }}
+                              onBlur={() => commitReviewPair(index)}
+                              className="w-full bg-zinc-800 text-white text-xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 mt-6">
+              <button
+                onClick={() => openHistory([ex1.name, ex2.name])}
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+              >
+                📈 History
+              </button>
+            </div>
+
+            {exerciseModals}
+          </div>
+        </div>
+      );
+    }
+
     // Transition Screen (for B2B)
     if (isTransitioning) {
       return (
@@ -1328,7 +2041,8 @@ function ActiveWorkoutContent() {
             exitUrl={`/workout/${encodeURIComponent(workout.name)}${routineQuery}`}
             previousUrl={null}
             onPrevious={handlePreviousSection}
-            onNext={isReviewMode ? () => setViewingExerciseIndex(viewingExerciseIndex + 1) : undefined}
+            onNext={reviewNextHandler}
+            nextLabel={reviewNextLabel}
           />
           <div className="flex justify-end mb-2">
             <AutosaveBadge />
@@ -1821,6 +2535,253 @@ function ActiveWorkoutContent() {
     ? ''
     : formatMetricValueInput(setData.weight, metricInfo);
 
+  const commitReviewSingleSet = (setIndex: number) => {
+    if (!viewingCachedData?.completedSets) return;
+    const set = viewingCachedData.completedSets[setIndex];
+    if (!set) return;
+    const sessionExerciseIndex = viewingCachedData.sessionExerciseIndex;
+    if (sessionExerciseIndex === null || sessionExerciseIndex === undefined) return;
+
+    const isWarmupEdit = displayWarmupCompleted && setIndex === 0;
+    const workingSetIndex = displayWarmupCompleted ? setIndex - 1 : setIndex;
+
+    updateExerciseInSession(sessionExerciseIndex, (sessionExercise) => {
+      if (isWarmupEdit) {
+        return {
+          ...sessionExercise,
+          warmup: { weight: set.weight, reps: set.reps },
+        };
+      }
+      const nextSets = [...(sessionExercise.sets || [])];
+      nextSets[workingSetIndex] = { weight: set.weight, reps: set.reps };
+      return {
+        ...sessionExercise,
+        sets: nextSets,
+      };
+    });
+
+    void autosaveWorkout({
+      type: 'single_set',
+      exerciseName: exercise.name,
+      setIndex: isWarmupEdit ? 0 : (displayWarmupCompleted ? setIndex : setIndex + 1),
+      weight: set.weight,
+      reps: set.reps,
+      ...(isWarmupEdit ? { isWarmup: true } : {}),
+    });
+  };
+
+  const commitActiveSingleSet = (setIndex: number) => {
+    const set = completedSets[setIndex];
+    if (!set) return;
+    const isWarmupEdit = displayWarmupCompleted && setIndex === 0;
+    const setIndexForAutosave = isWarmupEdit
+      ? 0
+      : (displayWarmupCompleted ? setIndex : setIndex + 1);
+
+    void autosaveWorkout({
+      type: 'single_set',
+      exerciseName: exercise.name,
+      setIndex: setIndexForAutosave,
+      weight: set.weight,
+      reps: set.reps,
+      ...(isWarmupEdit ? { isWarmup: true } : {}),
+    });
+    setInProgressExercise({
+      exerciseIndex: currentExerciseIndex,
+      type: EXERCISE_TYPES.single,
+      completedSets,
+      warmupDecision,
+      warmupCompleted,
+      currentSetIndex,
+      setData,
+      machineOnly,
+    });
+  };
+
+  if (isSetReview) {
+    return (
+      <div className="min-h-screen bg-zinc-900 p-4 pb-32">
+        <div className="max-w-2xl mx-auto">
+          <WorkoutNavHeader
+            exitUrl={`/workout/${encodeURIComponent(workout.name)}${routineQuery}`}
+            previousUrl={null}
+            onPrevious={handlePreviousSection}
+            onNext={reviewNextHandler}
+            nextLabel={reviewNextLabel}
+          />
+          <div className="flex justify-end mb-2">
+            <AutosaveBadge />
+          </div>
+          <div className="text-zinc-400 text-right mb-4 -mt-4">
+            Exercise {viewingExerciseIndex + 1}/{workout.exercises.length}
+          </div>
+
+          <div className="bg-zinc-800 rounded-lg p-4 mb-6 border border-rose-700">
+            <div className="text-rose-300 text-xs mb-2">COMPLETED SETS</div>
+            <div className="text-white text-lg font-semibold mb-1">{exercise.name}</div>
+            <div className="text-zinc-400 text-sm">
+              Review completed sets for this exercise.
+            </div>
+          </div>
+
+          {displayCompletedSets.length === 0 ? (
+            <div className="bg-zinc-800 rounded-lg p-4 text-zinc-400 text-sm">
+              No completed sets logged for this exercise yet.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {displayCompletedSets.map((set, index) => {
+                const label = displayWarmupCompleted
+                  ? (index === 0 ? 'Warmup' : `Set ${index}`)
+                  : `Set ${index + 1}`;
+                return (
+                  <div key={index} className="bg-zinc-800 rounded-lg p-4 border border-zinc-700">
+                    <div className="text-zinc-400 text-xs mb-2">{label}</div>
+                    <div className={`grid ${isRepsOnly ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
+                      {!isRepsOnly && (
+                        <div>
+                          <label className="text-zinc-500 text-xs block mb-1">
+                            {getMetricLabelText(metricInfo, isMachine)}
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={formatMetricValueInput(set.weight, metricInfo)}
+                            onChange={(e) => {
+                              const nextValue = parseMetricValueInput(e.target.value, metricInfo);
+                              if (nextValue !== null) {
+                                updateActiveSingleSet(index, { weight: nextValue });
+                              }
+                            }}
+                            onBlur={() => commitActiveSingleSet(index)}
+                            className="w-full bg-zinc-800 text-white text-xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-rose-600"
+                          />
+                        </div>
+                      )}
+                      <div>
+                        <label className="text-zinc-500 text-xs block mb-1">Reps</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={set.reps ?? ''}
+                          onChange={(e) => {
+                            const reps = parseInt(e.target.value, 10) || 0;
+                            updateActiveSingleSet(index, { reps });
+                          }}
+                          onBlur={() => commitActiveSingleSet(index)}
+                          className="w-full bg-zinc-800 text-white text-xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-rose-600"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {exerciseModals}
+        </div>
+      </div>
+    );
+  }
+
+  if (isReviewMode) {
+    const reviewMetricInput = !isRepsOnly;
+    return (
+      <div className="min-h-screen bg-zinc-900 p-4 pb-32">
+        <div className="max-w-2xl mx-auto">
+          <WorkoutNavHeader
+            exitUrl={`/workout/${encodeURIComponent(workout.name)}${routineQuery}`}
+            previousUrl={null}
+            onPrevious={handlePreviousSection}
+            onNext={reviewNextHandler}
+            nextLabel={reviewNextLabel}
+          />
+          <div className="flex justify-end mb-2">
+            <AutosaveBadge />
+          </div>
+          <div className="text-zinc-400 text-right mb-4 -mt-4">
+            Exercise {viewingExerciseIndex + 1}/{workout.exercises.length}
+          </div>
+
+          <div className="bg-zinc-800 rounded-lg p-4 mb-6 border border-rose-700">
+            <div className="text-rose-300 text-xs mb-2">EDIT COMPLETED SETS</div>
+            <div className="text-white text-lg font-semibold mb-1">{exercise.name}</div>
+            <div className="text-zinc-400 text-sm">
+              Update any set values from earlier in today&apos;s workout.
+            </div>
+          </div>
+
+          {displayCompletedSets.length === 0 ? (
+            <div className="bg-zinc-800 rounded-lg p-4 text-zinc-400 text-sm">
+              No completed sets logged for this exercise yet.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {displayCompletedSets.map((set, index) => {
+                const label = displayWarmupCompleted
+                  ? (index === 0 ? 'Warmup' : `Set ${index}`)
+                  : `Set ${index + 1}`;
+                return (
+                  <div key={index} className="bg-zinc-800 rounded-lg p-4 border border-zinc-700">
+                    <div className="text-zinc-400 text-xs mb-3">{label}</div>
+                    <div className={`grid ${reviewMetricInput ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
+                      {reviewMetricInput && (
+                        <div>
+                          <label className="text-zinc-500 text-xs block mb-1">
+                            {getMetricLabelText(metricInfo, isMachine)}
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={formatMetricValueInput(set.weight, metricInfo)}
+                            onChange={(e) => {
+                              const nextValue = parseMetricValueInput(e.target.value, metricInfo);
+                              if (nextValue !== null) {
+                                updateReviewSingleSet(index, { weight: nextValue });
+                              }
+                            }}
+                            onBlur={() => commitReviewSingleSet(index)}
+                            className="w-full bg-zinc-800 text-white text-xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-rose-600"
+                          />
+                        </div>
+                      )}
+                      <div>
+                        <label className="text-zinc-500 text-xs block mb-1">Reps</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={set.reps ?? ''}
+                          onChange={(e) => {
+                            const reps = parseInt(e.target.value, 10) || 0;
+                            updateReviewSingleSet(index, { reps });
+                          }}
+                          onBlur={() => commitReviewSingleSet(index)}
+                          className="w-full bg-zinc-800 text-white text-xl font-bold text-center rounded p-2 focus:outline-none focus:ring-2 focus:ring-rose-600"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 mt-6">
+            <button
+              onClick={() => openHistory([exercise.name])}
+              className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            >
+              📈 History
+            </button>
+          </div>
+
+          {exerciseModals}
+        </div>
+      </div>
+    );
+  }
+
   // Transition Screen (between exercises)
   if (isTransitioning) {
     const nextExercise = workout.exercises[currentExerciseIndex + 1];
@@ -1970,7 +2931,8 @@ function ActiveWorkoutContent() {
           exitUrl={`/workout/${encodeURIComponent(workout.name)}${routineQuery}`}
           previousUrl={null}
           onPrevious={handlePreviousSection}
-          onNext={isReviewMode ? () => setViewingExerciseIndex(viewingExerciseIndex + 1) : undefined}
+          onNext={reviewNextHandler}
+          nextLabel={reviewNextLabel}
         />
         <div className="flex justify-end mb-2">
           <AutosaveBadge />

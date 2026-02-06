@@ -125,6 +125,24 @@ function StretchesContent() {
   const routineQueryParams = new URLSearchParams();
   if (routineIdParam) routineQueryParams.set('routineId', routineIdParam);
   const routineQuery = routineQueryParams.toString() ? `?${routineQueryParams.toString()}` : '';
+  const resumeIndexParam = searchParams.get('resumeIndex');
+  const resumeIndex = resumeIndexParam ? Number(resumeIndexParam) : null;
+  const cameFromActive = searchParams.get('from') === 'active';
+  const isResumeFlow = cameFromActive && Number.isFinite(resumeIndex);
+
+  const resumeExercises = () => {
+    const resumeParams = new URLSearchParams(routineQueryParams.toString());
+    if (Number.isFinite(resumeIndex)) {
+      resumeParams.set('index', String(resumeIndex));
+    }
+    resumeParams.set('review', '1');
+    if (Number.isFinite(resumeIndex)) {
+      resumeParams.set('resumeIndex', String(resumeIndex));
+    }
+    const query = resumeParams.toString();
+    const suffix = query ? `?${query}` : '';
+    router.push(`/workout/${workoutName}/active${suffix}`);
+  };
 
   const runWithChangeWarning = (action: () => void) => {
     if (hasChangeWarningAck(workout.name, routineIdParam)) {
@@ -258,7 +276,11 @@ function StretchesContent() {
       setCurrentIndex(currentIndex + 1);
     } else {
       // Move to exercises
-      router.push(`/workout/${workoutName}/active${routineQuery}`);
+      if (isResumeFlow) {
+        resumeExercises();
+      } else {
+        router.push(`/workout/${workoutName}/active${routineQuery}`);
+      }
     }
   };
 
@@ -270,6 +292,10 @@ function StretchesContent() {
   };
 
   const handleSkipAll = () => {
+    if (isResumeFlow) {
+      resumeExercises();
+      return;
+    }
     router.push(`/workout/${workoutName}/active${routineQuery}`);
   };
 
@@ -281,8 +307,10 @@ function StretchesContent() {
           exitUrl={`/workout/${workoutName}${routineQuery}`}
           previousUrl={null} // Handle internally
           onPrevious={currentIndex > 0 ? handlePrevious : undefined}
+          onNext={isResumeFlow ? handleNext : undefined}
+          nextLabel="Next"
           skipLabel="Skip All"
-          onSkip={handleSkipAll}
+          onSkip={isResumeFlow ? undefined : handleSkipAll}
         />
         <div className="flex justify-end mb-4">
           <AutosaveBadge />

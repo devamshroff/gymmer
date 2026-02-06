@@ -21,12 +21,32 @@ export interface SessionExerciseData {
   };
 }
 
+type SessionSetData = { weight: number; reps: number };
+
+export interface InProgressExerciseState {
+  exerciseIndex: number;
+  type: typeof EXERCISE_TYPES.single | typeof EXERCISE_TYPES.b2b;
+  completedSets?: SessionSetData[];
+  completedPairs?: Array<{ ex1: SessionSetData; ex2: SessionSetData }>;
+  warmupDecision?: 'pending' | 'include' | 'skip';
+  warmupCompleted?: boolean;
+  currentSetIndex?: number;
+  currentExerciseInPair?: number;
+  setData?: SessionSetData;
+  setData1?: SessionSetData;
+  setData2?: SessionSetData;
+  machineOnly?: boolean;
+  machineOnly1?: boolean;
+  machineOnly2?: boolean;
+}
+
 export interface WorkoutSessionData {
   workoutName: string;
   routineId?: number | null;
   sessionId?: number | null;
   startTime: string;
   exercises: SessionExerciseData[];
+  inProgress?: InProgressExerciseState | null;
   cardio?: {
     type: string;
     time: string;
@@ -104,11 +124,45 @@ export function setWorkoutSessionId(sessionId: number): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
 }
 
-export function addExerciseToSession(exercise: SessionExerciseData): void {
+export function addExerciseToSession(exercise: SessionExerciseData): number | null {
+  const session = getWorkoutSession();
+  if (!session) return null;
+
+  session.exercises.push(exercise);
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  }
+
+  return session.exercises.length - 1;
+}
+
+export function setInProgressExercise(state: InProgressExerciseState | null): void {
   const session = getWorkoutSession();
   if (!session) return;
 
-  session.exercises.push(exercise);
+  session.inProgress = state;
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  }
+}
+
+export function getInProgressExercise(): InProgressExerciseState | null {
+  const session = getWorkoutSession();
+  if (!session) return null;
+  return session.inProgress ?? null;
+}
+
+export function updateExerciseInSession(
+  sessionIndex: number,
+  updater: (exercise: SessionExerciseData) => SessionExerciseData
+): void {
+  const session = getWorkoutSession();
+  if (!session) return;
+  if (!Number.isFinite(sessionIndex)) return;
+  if (sessionIndex < 0 || sessionIndex >= session.exercises.length) return;
+
+  const updatedExercise = updater(session.exercises[sessionIndex]);
+  session.exercises[sessionIndex] = updatedExercise;
   if (typeof window !== 'undefined') {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   }
