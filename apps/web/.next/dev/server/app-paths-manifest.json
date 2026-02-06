@@ -1,0 +1,10 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
+  "/api/routines/favorites/route": "app/api/routines/favorites/route.js",
+  "/api/routines/public/route": "app/api/routines/public/route.js",
+  "/api/routines/route": "app/api/routines/route.js",
+  "/api/user/route": "app/api/user/route.js",
+  "/page": "app/page.js",
+  "/routines/page": "app/routines/page.js"
+}

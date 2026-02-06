@@ -1,0 +1,375 @@
+{
+  "version": 3,
+  "pages404": true,
+  "appType": "app",
+  "caseSensitive": false,
+  "basePath": "",
+  "redirects": [
+    {
+      "source": "/:path+/",
+      "destination": "/:path+",
+      "internal": true,
+      "priority": true,
+      "statusCode": 308,
+      "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))/$"
+    }
+  ],
+  "headers": [],
+  "rewrites": {
+    "beforeFiles": [],
+    "afterFiles": [],
+    "fallback": []
+  },
+  "dynamicRoutes": [
+    {
+      "page": "/api/auth/[...nextauth]",
+      "regex": "^/api/auth/(.+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPnextauth": "nxtPnextauth"
+      },
+      "namedRegex": "^/api/auth/(?<nxtPnextauth>.+?)(?:/)?$"
+    },
+    {
+      "page": "/api/routines/[id]",
+      "regex": "^/api/routines/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/routines/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/api/routines/[id]/cardio",
+      "regex": "^/api/routines/([^/]+?)/cardio(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/routines/(?<nxtPid>[^/]+?)/cardio(?:/)?$"
+    },
+    {
+      "page": "/api/routines/[id]/clone",
+      "regex": "^/api/routines/([^/]+?)/clone(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/routines/(?<nxtPid>[^/]+?)/clone(?:/)?$"
+    },
+    {
+      "page": "/api/routines/[id]/exercises",
+      "regex": "^/api/routines/([^/]+?)/exercises(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/routines/(?<nxtPid>[^/]+?)/exercises(?:/)?$"
+    },
+    {
+      "page": "/api/routines/[id]/favorite",
+      "regex": "^/api/routines/([^/]+?)/favorite(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/routines/(?<nxtPid>[^/]+?)/favorite(?:/)?$"
+    },
+    {
+      "page": "/api/routines/[id]/stretch-recommendations",
+      "regex": "^/api/routines/([^/]+?)/stretch\\-recommendations(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/routines/(?<nxtPid>[^/]+?)/stretch\\-recommendations(?:/)?$"
+    },
+    {
+      "page": "/api/routines/[id]/stretches",
+      "regex": "^/api/routines/([^/]+?)/stretches(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/routines/(?<nxtPid>[^/]+?)/stretches(?:/)?$"
+    },
+    {
+      "page": "/api/workout/[name]",
+      "regex": "^/api/workout/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPname": "nxtPname"
+      },
+      "namedRegex": "^/api/workout/(?<nxtPname>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/routines/[id]/edit",
+      "regex": "^/routines/([^/]+?)/edit(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/routines/(?<nxtPid>[^/]+?)/edit(?:/)?$"
+    },
+    {
+      "page": "/routines/[id]/stretches",
+      "regex": "^/routines/([^/]+?)/stretches(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/routines/(?<nxtPid>[^/]+?)/stretches(?:/)?$"
+    },
+    {
+      "page": "/stretches/[workoutName]",
+      "regex": "^/stretches/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPworkoutName": "nxtPworkoutName"
+      },
+      "namedRegex": "^/stretches/(?<nxtPworkoutName>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/workout/[name]",
+      "regex": "^/workout/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPname": "nxtPname"
+      },
+      "namedRegex": "^/workout/(?<nxtPname>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/workout/[name]/active",
+      "regex": "^/workout/([^/]+?)/active(?:/)?$",
+      "routeKeys": {
+        "nxtPname": "nxtPname"
+      },
+      "namedRegex": "^/workout/(?<nxtPname>[^/]+?)/active(?:/)?$"
+    },
+    {
+      "page": "/workout/[name]/cardio",
+      "regex": "^/workout/([^/]+?)/cardio(?:/)?$",
+      "routeKeys": {
+        "nxtPname": "nxtPname"
+      },
+      "namedRegex": "^/workout/(?<nxtPname>[^/]+?)/cardio(?:/)?$"
+    },
+    {
+      "page": "/workout/[name]/post-stretches",
+      "regex": "^/workout/([^/]+?)/post\\-stretches(?:/)?$",
+      "routeKeys": {
+        "nxtPname": "nxtPname"
+      },
+      "namedRegex": "^/workout/(?<nxtPname>[^/]+?)/post\\-stretches(?:/)?$"
+    },
+    {
+      "page": "/workout/[name]/stats",
+      "regex": "^/workout/([^/]+?)/stats(?:/)?$",
+      "routeKeys": {
+        "nxtPname": "nxtPname"
+      },
+      "namedRegex": "^/workout/(?<nxtPname>[^/]+?)/stats(?:/)?$"
+    },
+    {
+      "page": "/workout/[name]/summary",
+      "regex": "^/workout/([^/]+?)/summary(?:/)?$",
+      "routeKeys": {
+        "nxtPname": "nxtPname"
+      },
+      "namedRegex": "^/workout/(?<nxtPname>[^/]+?)/summary(?:/)?$"
+    }
+  ],
+  "staticRoutes": [
+    {
+      "page": "/",
+      "regex": "^/(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/(?:/)?$"
+    },
+    {
+      "page": "/_global-error",
+      "regex": "^/_global\\-error(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_global\\-error(?:/)?$"
+    },
+    {
+      "page": "/_not-found",
+      "regex": "^/_not\\-found(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_not\\-found(?:/)?$"
+    },
+    {
+      "page": "/api/exercise-history",
+      "regex": "^/api/exercise\\-history(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/exercise\\-history(?:/)?$"
+    },
+    {
+      "page": "/api/exercises",
+      "regex": "^/api/exercises(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/exercises(?:/)?$"
+    },
+    {
+      "page": "/api/goals",
+      "regex": "^/api/goals(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/goals(?:/)?$"
+    },
+    {
+      "page": "/api/last-exercise",
+      "regex": "^/api/last\\-exercise(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/last\\-exercise(?:/)?$"
+    },
+    {
+      "page": "/api/report-bug",
+      "regex": "^/api/report\\-bug(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/report\\-bug(?:/)?$"
+    },
+    {
+      "page": "/api/routines",
+      "regex": "^/api/routines(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/routines(?:/)?$"
+    },
+    {
+      "page": "/api/routines/ai-generate",
+      "regex": "^/api/routines/ai\\-generate(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/routines/ai\\-generate(?:/)?$"
+    },
+    {
+      "page": "/api/routines/favorites",
+      "regex": "^/api/routines/favorites(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/routines/favorites(?:/)?$"
+    },
+    {
+      "page": "/api/routines/import",
+      "regex": "^/api/routines/import(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/routines/import(?:/)?$"
+    },
+    {
+      "page": "/api/routines/public",
+      "regex": "^/api/routines/public(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/routines/public(?:/)?$"
+    },
+    {
+      "page": "/api/save-workout",
+      "regex": "^/api/save\\-workout(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/save\\-workout(?:/)?$"
+    },
+    {
+      "page": "/api/stretches",
+      "regex": "^/api/stretches(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/stretches(?:/)?$"
+    },
+    {
+      "page": "/api/user",
+      "regex": "^/api/user(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/user(?:/)?$"
+    },
+    {
+      "page": "/api/user/settings",
+      "regex": "^/api/user/settings(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/user/settings(?:/)?$"
+    },
+    {
+      "page": "/api/workout-autosave",
+      "regex": "^/api/workout\\-autosave(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/workout\\-autosave(?:/)?$"
+    },
+    {
+      "page": "/api/workout-report",
+      "regex": "^/api/workout\\-report(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/workout\\-report(?:/)?$"
+    },
+    {
+      "page": "/api/workout-targets",
+      "regex": "^/api/workout\\-targets(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/workout\\-targets(?:/)?$"
+    },
+    {
+      "page": "/favicon.ico",
+      "regex": "^/favicon\\.ico(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/favicon\\.ico(?:/)?$"
+    },
+    {
+      "page": "/login",
+      "regex": "^/login(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/login(?:/)?$"
+    },
+    {
+      "page": "/profile",
+      "regex": "^/profile(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/profile(?:/)?$"
+    },
+    {
+      "page": "/report-bug",
+      "regex": "^/report\\-bug(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/report\\-bug(?:/)?$"
+    },
+    {
+      "page": "/routines",
+      "regex": "^/routines(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/routines(?:/)?$"
+    },
+    {
+      "page": "/routines/ai",
+      "regex": "^/routines/ai(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/routines/ai(?:/)?$"
+    },
+    {
+      "page": "/routines/ai/preview",
+      "regex": "^/routines/ai/preview(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/routines/ai/preview(?:/)?$"
+    },
+    {
+      "page": "/routines/browse",
+      "regex": "^/routines/browse(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/routines/browse(?:/)?$"
+    },
+    {
+      "page": "/routines/builder",
+      "regex": "^/routines/builder(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/routines/builder(?:/)?$"
+    },
+    {
+      "page": "/routines/import",
+      "regex": "^/routines/import(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/routines/import(?:/)?$"
+    },
+    {
+      "page": "/what-is-gymmer",
+      "regex": "^/what\\-is\\-gymmer(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/what\\-is\\-gymmer(?:/)?$"
+    }
+  ],
+  "dataRoutes": [],
+  "rsc": {
+    "header": "rsc",
+    "varyHeader": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "prefetchHeader": "next-router-prefetch",
+    "didPostponeHeader": "x-nextjs-postponed",
+    "contentTypeHeader": "text/x-component",
+    "suffix": ".rsc",
+    "prefetchSegmentHeader": "next-router-segment-prefetch",
+    "prefetchSegmentSuffix": ".segment.rsc",
+    "prefetchSegmentDirSuffix": ".segments",
+    "clientParamParsing": false,
+    "dynamicRSCPrerender": false
+  },
+  "rewriteHeaders": {
+    "pathHeader": "x-nextjs-rewritten-path",
+    "queryHeader": "x-nextjs-rewritten-query"
+  }
+}

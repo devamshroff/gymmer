@@ -1,0 +1,15 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/what-is-gymmer/layout,_N_T_/what-is-gymmer/page,_N_T_/what-is-gymmer"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/what-is-gymmer/__PAGE__",
+    "/what-is-gymmer",
+    "/_index",
+    "/_head"
+  ]
+}

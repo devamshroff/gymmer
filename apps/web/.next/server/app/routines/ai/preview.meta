@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/routines/layout,_N_T_/routines/ai/layout,_N_T_/routines/ai/preview/layout,_N_T_/routines/ai/preview/page,_N_T_/routines/ai/preview"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/routines/ai/preview/__PAGE__",
+    "/routines/ai/preview",
+    "/routines/ai",
+    "/routines",
+    "/_index",
+    "/_head"
+  ]
+}

@@ -1,0 +1,3 @@
+{
+  "/api/routines/[id]/favorite/route": "app/api/routines/[id]/favorite/route.js"
+}
