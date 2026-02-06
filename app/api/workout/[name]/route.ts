@@ -1,9 +1,20 @@
 // app/api/workout/[name]/route.ts
 import { NextResponse } from 'next/server';
+import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { B2BExercise, WorkoutPlan } from '@/lib/types';
-import { getRoutineByName, getRoutineExercises, getRoutineStretches, getDatabase, getRoutineById, isFavorited, getUserSettings } from '@/lib/database';
+import {
+  getRoutineByName,
+  getRoutineExercises,
+  getRoutineStretches,
+  getDatabase,
+  getRoutineById,
+  isFavorited,
+  getUserSettings,
+  getLastExerciseLog,
+  getLatestWorkoutReportForWorkoutName,
+} from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 import { EXERCISE_PRIMARY_METRICS, EXERCISE_TYPES } from '@/lib/constants';
 
@@ -48,6 +59,33 @@ function normalizeStretches(stretches: Array<any> | undefined): WorkoutPlan['pre
   }));
 }
 
+type RoutineMeta = {
+  id?: number | null;
+  name: string;
+  updatedAt?: string | null;
+  isPublic?: boolean | null;
+  checksum?: string | null;
+};
+
+function collectExerciseNames(workout: WorkoutPlan): string[] {
+  const names = new Set<string>();
+  for (const exercise of workout.exercises) {
+    if (exercise.type === EXERCISE_TYPES.single) {
+      names.add(exercise.name);
+    } else {
+      const [ex1, ex2] = exercise.exercises;
+      names.add(ex1.name);
+      names.add(ex2.name);
+    }
+  }
+  return Array.from(names);
+}
+
+function computeWorkoutChecksum(workout: WorkoutPlan): string {
+  const payload = JSON.stringify(workout);
+  return createHash('sha256').update(payload).digest('hex');
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ name: string }> }
@@ -63,6 +101,38 @@ export async function GET(
     // Check for routineId query param (used when starting public/favorited routines)
     const url = new URL(request.url);
     const routineIdParam = url.searchParams.get('routineId');
+    const isBootstrap = url.searchParams.get('bootstrap') === '1';
+
+    const buildResponse = async (workout: WorkoutPlan, routineMeta?: RoutineMeta) => {
+      if (!isBootstrap) {
+        return NextResponse.json({ workout });
+      }
+
+      const settings = await getUserSettings(user.id);
+      const exerciseNames = collectExerciseNames(workout);
+      const lastSetEntries = await Promise.all(
+        exerciseNames.map(async (exerciseName) => [
+          exerciseName,
+          await getLastExerciseLog(exerciseName, user.id),
+        ] as const)
+      );
+      const lastSetSummaries = Object.fromEntries(lastSetEntries);
+      const lastWorkoutReport = await getLatestWorkoutReportForWorkoutName(user.id, workout.name);
+      const checksum = computeWorkoutChecksum(workout);
+      const resolvedMeta: RoutineMeta = {
+        name: workout.name,
+        ...routineMeta,
+        checksum,
+      };
+
+      return NextResponse.json({
+        workout,
+        settings,
+        lastSetSummaries,
+        lastWorkoutReport: lastWorkoutReport || null,
+        routineMeta: resolvedMeta,
+      });
+    };
 
     if (routineIdParam) {
       const routineId = parseInt(routineIdParam);
@@ -76,7 +146,12 @@ export async function GET(
 
           if (isOwner || isPublic || hasFavorited) {
             const workout = await loadRoutineFromDatabase(routine.id, routine.name, user.id);
-            return NextResponse.json({ workout });
+            return buildResponse(workout, {
+              id: routine.id,
+              name: routine.name,
+              updatedAt: routine.updated_at ?? null,
+              isPublic: routine.is_public ?? null,
+            });
           }
         }
       }
@@ -88,7 +163,12 @@ export async function GET(
     if (routine) {
       // Load from database
       const workout = await loadRoutineFromDatabase(routine.id, workoutName, user.id);
-      return NextResponse.json({ workout });
+      return buildResponse(workout, {
+        id: routine.id,
+        name: routine.name,
+        updatedAt: routine.updated_at ?? null,
+        isPublic: routine.is_public ?? null,
+      });
     }
 
     // Check if it's a favorited routine by name
@@ -103,7 +183,12 @@ export async function GET(
     if (favoritedRoutine.rows.length > 0) {
       const routine = favoritedRoutine.rows[0] as any;
       const workout = await loadRoutineFromDatabase(routine.id, workoutName, user.id);
-      return NextResponse.json({ workout });
+      return buildResponse(workout, {
+        id: routine.id,
+        name: routine.name,
+        updatedAt: routine.updated_at ?? null,
+        isPublic: routine.is_public ?? null,
+      });
     }
 
     // Fall back to JSON files (for backwards compatibility during migration)
@@ -123,7 +208,12 @@ export async function GET(
           postWorkoutStretches: normalizeStretches(workout.postWorkoutStretches),
           ...(workout.cardio ? { cardio: workout.cardio } : {})
         };
-        return NextResponse.json({ workout: withWarmupFlags(normalizedWorkout) });
+        return buildResponse(withWarmupFlags(normalizedWorkout), {
+          id: null,
+          name: workout.name,
+          updatedAt: null,
+          isPublic: null,
+        });
       }
     }
 

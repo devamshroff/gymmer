@@ -12,6 +12,11 @@ import LoadingScreen from '@/app/components/LoadingScreen';
 import ErrorScreen from '@/app/components/ErrorScreen';
 import AutosaveBadge from '@/app/components/AutosaveBadge';
 import { acknowledgeChangeWarning, hasChangeWarningAck, loadSessionWorkout, saveSessionWorkout } from '@/lib/session-workout';
+import {
+  loadWorkoutBootstrapCache,
+  saveWorkoutBootstrapCache,
+  type WorkoutBootstrapPayload,
+} from '@/lib/workout-bootstrap';
 
 type StretchOption = {
   id: number;
@@ -42,16 +47,44 @@ function StretchesContent() {
       try {
         const routineIdValue = routineIdParam ? Number(routineIdParam) : null;
         const routineId = Number.isNaN(routineIdValue) ? null : routineIdValue;
-        let apiUrl = `/api/workout/${params.workoutName}`;
-        if (routineIdParam) {
-          apiUrl += `?routineId=${routineIdParam}`;
+        const decodedName = decodeURIComponent(params.workoutName as string);
+        const cached = loadWorkoutBootstrapCache({
+          workoutName: decodedName,
+          routineId: routineIdParam,
+        });
+
+        let baseWorkout: WorkoutPlan | null = null;
+
+        if (cached) {
+          baseWorkout = cached.workout;
+        } else {
+          let apiUrl = `/api/workout/${params.workoutName}?bootstrap=1`;
+          if (routineIdParam) {
+            apiUrl += `&routineId=${routineIdParam}`;
+          }
+          const response = await fetch(apiUrl);
+          if (!response.ok) {
+            throw new Error('Workout not found');
+          }
+          const data = await response.json();
+          baseWorkout = data.workout as WorkoutPlan;
+          const payload: WorkoutBootstrapPayload = {
+            workout: baseWorkout,
+            settings: data.settings,
+            lastSetSummaries: data.lastSetSummaries || {},
+            lastWorkoutReport: data.lastWorkoutReport || null,
+            routineMeta: data.routineMeta,
+          };
+          saveWorkoutBootstrapCache({
+            workoutName: decodedName,
+            routineId: routineIdParam ?? (payload.routineMeta?.id ? String(payload.routineMeta.id) : null),
+            payload,
+          });
         }
-        const response = await fetch(apiUrl);
-        if (!response.ok) {
+
+        if (!baseWorkout) {
           throw new Error('Workout not found');
         }
-        const data = await response.json();
-        const baseWorkout = data.workout as WorkoutPlan;
         const sessionWorkout = loadSessionWorkout(baseWorkout.name, routineIdParam);
         const resolvedWorkout = sessionWorkout || baseWorkout;
         setWorkout(resolvedWorkout);

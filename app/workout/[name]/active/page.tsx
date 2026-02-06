@@ -30,6 +30,12 @@ import {
   parseMetricInput,
   resolvePrimaryMetric,
 } from '@/lib/metric-utils';
+import {
+  loadWorkoutBootstrapCache,
+  saveWorkoutBootstrapCache,
+  type LastSetSummary,
+  type WorkoutBootstrapPayload,
+} from '@/lib/workout-bootstrap';
 
 interface SetData {
   weight: number;
@@ -45,6 +51,18 @@ type ExerciseOption = {
   is_bodyweight?: number | null;
   is_machine?: number | null;
 };
+
+type LastSetSummaries = Record<string, LastSetSummary>;
+
+type SetIndex = 1 | 2 | 3 | 4;
+type SetField = 'weight' | 'reps';
+type SetKey = `set${SetIndex}_${SetField}`;
+
+function getLogSetValue(log: LastSetSummary, setNum: SetIndex, field: SetField): number | null {
+  if (!log) return null;
+  const key = `set${setNum}_${field}` as SetKey;
+  return log[key] as number | null;
+}
 
 function normalizeDateString(value: string): string {
   if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(value)) {
@@ -188,8 +206,9 @@ function ActiveWorkoutContent() {
   const [historyExerciseNames, setHistoryExerciseNames] = useState<string[]>([]);
 
   // Last exercise log from database
-  const [lastExerciseLog, setLastExerciseLog] = useState<any>(null);
-  const [lastPartnerExerciseLog, setLastPartnerExerciseLog] = useState<any>(null);
+  const [lastSetSummaries, setLastSetSummaries] = useState<LastSetSummaries>({});
+  const [lastExerciseLog, setLastExerciseLog] = useState<LastSetSummary>(null);
+  const [lastPartnerExerciseLog, setLastPartnerExerciseLog] = useState<LastSetSummary>(null);
 
   // Review mode: cache completed exercises and track viewing
   type CompletedExerciseCache = {
@@ -237,19 +256,78 @@ function ActiveWorkoutContent() {
   useEffect(() => {
     async function fetchWorkout() {
       try {
-        let apiUrl = `/api/workout/${params.name}`;
-        if (routineIdParam) {
-          apiUrl += `?routineId=${routineIdParam}`;
+        const decodedName = decodeURIComponent(params.name as string);
+        const cached = loadWorkoutBootstrapCache({
+          workoutName: decodedName,
+          routineId: routineIdParam,
+        });
+
+        let baseWorkout: WorkoutPlan | null = null;
+        let bootstrapSettings: WorkoutBootstrapPayload['settings'] | null = null;
+        let bootstrapSummaries: LastSetSummaries = {};
+
+        if (cached) {
+          baseWorkout = cached.workout;
+          bootstrapSettings = cached.settings;
+          bootstrapSummaries = cached.lastSetSummaries || {};
+        } else {
+          let apiUrl = `/api/workout/${params.name}?bootstrap=1`;
+          if (routineIdParam) {
+            apiUrl += `&routineId=${routineIdParam}`;
+          }
+          const response = await fetch(apiUrl);
+          if (!response.ok) {
+            throw new Error('Workout not found');
+          }
+          const data = await response.json();
+          baseWorkout = data.workout as WorkoutPlan;
+          bootstrapSettings = data.settings;
+          bootstrapSummaries = data.lastSetSummaries || {};
+          const payload: WorkoutBootstrapPayload = {
+            workout: baseWorkout,
+            settings: data.settings,
+            lastSetSummaries: bootstrapSummaries,
+            lastWorkoutReport: data.lastWorkoutReport || null,
+            routineMeta: data.routineMeta,
+          };
+          saveWorkoutBootstrapCache({
+            workoutName: decodedName,
+            routineId: routineIdParam ?? (payload.routineMeta?.id ? String(payload.routineMeta.id) : null),
+            payload,
+          });
         }
-        const response = await fetch(apiUrl);
-        if (!response.ok) {
+
+        if (!baseWorkout) {
           throw new Error('Workout not found');
         }
-        const data = await response.json();
-        const baseWorkout = data.workout as WorkoutPlan;
+
         const sessionWorkout = loadSessionWorkout(baseWorkout.name, routineIdParam);
         const resolvedWorkout = sessionWorkout || baseWorkout;
         setWorkout(resolvedWorkout);
+        setLastSetSummaries(bootstrapSummaries);
+
+        const missingNames: string[] = [];
+        for (const exercise of resolvedWorkout.exercises) {
+          if (exercise.type === EXERCISE_TYPES.single) {
+            if (!(exercise.name in bootstrapSummaries)) missingNames.push(exercise.name);
+          } else {
+            const [ex1, ex2] = exercise.exercises;
+            if (!(ex1.name in bootstrapSummaries)) missingNames.push(ex1.name);
+            if (!(ex2.name in bootstrapSummaries)) missingNames.push(ex2.name);
+          }
+        }
+        if (missingNames.length > 0) {
+          void refreshLastSetSummaries(missingNames);
+        }
+
+        if (bootstrapSettings) {
+          const restSeconds = Number(bootstrapSettings?.restTimeSeconds);
+          const supersetSeconds = Number(bootstrapSettings?.supersetRestSeconds);
+          setRestTimeSeconds(Number.isFinite(restSeconds) ? restSeconds : 60);
+          setSupersetRestSeconds(Number.isFinite(supersetSeconds) ? supersetSeconds : 15);
+          setWeightUnit(normalizeWeightUnit(bootstrapSettings?.weightUnit));
+          setHeightUnit(normalizeHeightUnit(bootstrapSettings?.heightUnit));
+        }
 
         // Check for index in URL (for navigation from other sections)
         const indexParam = searchParams.get('index');
@@ -303,31 +381,6 @@ function ActiveWorkoutContent() {
 
     fetchWorkout();
   }, [params.name, searchParams, routineIdParam, initialIndexSet]);
-
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchUserSettings() {
-      try {
-        const response = await fetch('/api/user/settings');
-        if (!response.ok) return;
-        const data = await response.json();
-        if (!isMounted) return;
-        const restSeconds = Number(data?.restTimeSeconds);
-        const supersetSeconds = Number(data?.supersetRestSeconds);
-        setRestTimeSeconds(Number.isFinite(restSeconds) ? restSeconds : 60);
-        setSupersetRestSeconds(Number.isFinite(supersetSeconds) ? supersetSeconds : 15);
-        setWeightUnit(normalizeWeightUnit(data?.weightUnit));
-        setHeightUnit(normalizeHeightUnit(data?.heightUnit));
-      } catch (error) {
-        console.error('Error fetching user settings:', error);
-      }
-    }
-
-    fetchUserSettings();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   // Rest timer countdown
   useEffect(() => {
@@ -395,44 +448,19 @@ function ActiveWorkoutContent() {
     }
   }, [isTransitioning, transitionTimeRemaining, workout, currentExerciseIndex]);
 
-  // Fetch last exercise log(s) from database when exercise changes
+  // Resolve last-set summaries from bootstrap cache
   useEffect(() => {
-    async function fetchLastExerciseLog() {
-      if (!workout) return;
-
-      const currentExercise = workout.exercises[currentExerciseIndex];
-
-      const fetchLog = async (exerciseName: string) => {
-        try {
-          const response = await fetch(
-            `/api/last-exercise?exerciseName=${encodeURIComponent(exerciseName)}`
-          );
-          if (!response.ok) return null;
-          const data = await response.json();
-          return data.lastLog;
-        } catch (error) {
-          console.error('Error fetching last exercise log:', error);
-          return null;
-        }
-      };
-
-      if (currentExercise.type === EXERCISE_TYPES.single) {
-        const log = await fetchLog(currentExercise.name);
-        setLastExerciseLog(log);
-        setLastPartnerExerciseLog(null);
-      } else {
-        const b2bExercise = currentExercise as B2BExercise;
-        const [log1, log2] = await Promise.all([
-          fetchLog(b2bExercise.exercises[0].name),
-          fetchLog(b2bExercise.exercises[1].name),
-        ]);
-        setLastExerciseLog(log1);
-        setLastPartnerExerciseLog(log2);
-      }
+    if (!workout) return;
+    const currentExercise = workout.exercises[currentExerciseIndex];
+    if (currentExercise.type === EXERCISE_TYPES.single) {
+      setLastExerciseLog(lastSetSummaries[currentExercise.name] ?? null);
+      setLastPartnerExerciseLog(null);
+      return;
     }
-
-    fetchLastExerciseLog();
-  }, [workout, currentExerciseIndex]);
+    const b2bExercise = currentExercise as B2BExercise;
+    setLastExerciseLog(lastSetSummaries[b2bExercise.exercises[0].name] ?? null);
+    setLastPartnerExerciseLog(lastSetSummaries[b2bExercise.exercises[1].name] ?? null);
+  }, [workout, currentExerciseIndex, lastSetSummaries]);
 
   if (loading) {
     return (
@@ -927,6 +955,30 @@ function ActiveWorkoutContent() {
     setViewingExerciseIndex(currentExerciseIndex);
   };
 
+  const fetchLastSetSummary = async (exerciseName: string): Promise<LastSetSummary> => {
+    try {
+      const response = await fetch(
+        `/api/last-exercise?exerciseName=${encodeURIComponent(exerciseName)}`
+      );
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data.lastLog ?? null;
+    } catch (error) {
+      console.error('Error fetching last exercise log:', error);
+      return null;
+    }
+  };
+
+  const refreshLastSetSummaries = async (exerciseNames: string[]) => {
+    const entries = await Promise.all(
+      exerciseNames.map(async (name) => [name, await fetchLastSetSummary(name)] as const)
+    );
+    setLastSetSummaries((prev) => ({
+      ...prev,
+      ...Object.fromEntries(entries),
+    }));
+  };
+
   const runWithChangeWarning = (action: () => void) => {
     if (!workout) return;
     if (hasChangeWarningAck(workout.name, routineIdParam)) {
@@ -978,6 +1030,7 @@ function ActiveWorkoutContent() {
     applyWorkoutUpdate({ ...workout, exercises: updatedExercises });
     setExerciseActionMode(null);
     setShowExerciseSelector(false);
+    void refreshLastSetSummaries([exercise.name]);
   };
 
   const handleSelectSuperset = (exercise1: ExerciseOption, exercise2: ExerciseOption) => {
@@ -997,6 +1050,7 @@ function ActiveWorkoutContent() {
     applyWorkoutUpdate({ ...workout, exercises: updatedExercises });
     setExerciseActionMode(null);
     setShowSupersetSelector(false);
+    void refreshLastSetSummaries([exercise1.name, exercise2.name]);
   };
 
   const handleExerciseTypeCancel = () => {
@@ -1335,9 +1389,9 @@ function ActiveWorkoutContent() {
                         {formatLocalDate(lastExerciseDate)}
                       </div>
                       <div className="space-y-1">
-                        {[1, 2, 3, 4].map((setNum) => {
-                          const weight = lastExerciseLog[`set${setNum}_weight`];
-                          const reps = lastExerciseLog[`set${setNum}_reps`];
+                        {([1, 2, 3, 4] as const).map((setNum) => {
+                          const weight = getLogSetValue(lastExerciseLog, setNum, 'weight');
+                          const reps = getLogSetValue(lastExerciseLog, setNum, 'reps');
                           if (weight !== null && reps !== null) {
                             return (
                               <div key={setNum} className="text-zinc-300 text-xs">
@@ -1364,9 +1418,9 @@ function ActiveWorkoutContent() {
                         {formatLocalDate(lastPartnerExerciseDate)}
                       </div>
                       <div className="space-y-1">
-                        {[1, 2, 3, 4].map((setNum) => {
-                          const weight = lastPartnerExerciseLog[`set${setNum}_weight`];
-                          const reps = lastPartnerExerciseLog[`set${setNum}_reps`];
+                        {([1, 2, 3, 4] as const).map((setNum) => {
+                          const weight = getLogSetValue(lastPartnerExerciseLog, setNum, 'weight');
+                          const reps = getLogSetValue(lastPartnerExerciseLog, setNum, 'reps');
                           if (weight !== null && reps !== null) {
                             return (
                               <div key={setNum} className="text-zinc-300 text-xs">
@@ -1970,9 +2024,9 @@ function ActiveWorkoutContent() {
                     : `Warmup: ${formatMetric(lastExerciseLog.warmup_weight, metricInfo, isMachine)} × ${lastExerciseLog.warmup_reps} reps`}
                 </div>
               )}
-              {[1, 2, 3, 4].map((setNum) => {
-                const weight = lastExerciseLog[`set${setNum}_weight`];
-                const reps = lastExerciseLog[`set${setNum}_reps`];
+              {([1, 2, 3, 4] as const).map((setNum) => {
+                const weight = getLogSetValue(lastExerciseLog, setNum, 'weight');
+                const reps = getLogSetValue(lastExerciseLog, setNum, 'reps');
                 if (weight !== null && reps !== null) {
                   return (
                     <div key={setNum} className="text-zinc-300 text-sm">

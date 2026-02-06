@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { WorkoutPlan, Exercise, Stretch, Cardio, SingleExercise } from '@/lib/types';
+import { WorkoutPlan, Exercise, Stretch, Cardio, SingleExercise, WorkoutExerciseLog } from '@/lib/types';
 import { getFormTips, getVideoUrl } from '@/lib/workout-media';
 import { formatStretchTimer } from '@/lib/stretch-utils';
 import { initWorkoutSession, isSessionMode, resolveSessionMode } from '@/lib/workout-session';
@@ -12,7 +12,6 @@ import ExerciseHistoryModal from '@/app/components/ExerciseHistoryModal';
 import { saveSessionTargetsMeta, saveSessionWorkout } from '@/lib/session-workout';
 import {
   EXERCISE_TYPES,
-  ExerciseHistoryDisplayMode,
   type ExercisePrimaryMetric,
   SESSION_MODE_DESCRIPTIONS,
   SESSION_MODE_LABELS,
@@ -32,6 +31,12 @@ import {
   isRepsOnlyMetric,
   resolvePrimaryMetric,
 } from '@/lib/metric-utils';
+import {
+  loadWorkoutBootstrapCache,
+  saveWorkoutBootstrapCache,
+  type LastSetSummary,
+  type WorkoutBootstrapPayload,
+} from '@/lib/workout-bootstrap';
 
 type ExerciseTarget = {
   suggestedWeight?: number | null;
@@ -39,16 +44,16 @@ type ExerciseTarget = {
   rationale?: string | null;
 };
 
-type ExerciseHistoryPoint = {
-  weight_max: number | null;
-  reps_max: number | null;
-};
+type LastSetSummaries = Record<string, LastSetSummary>;
 
-type ExerciseHistorySeries = {
-  display_mode: ExerciseHistoryDisplayMode;
-  is_machine?: boolean;
-  points: ExerciseHistoryPoint[];
-};
+type SetIndex = 1 | 2 | 3 | 4;
+type SetField = 'weight' | 'reps';
+type SetKey = `set${SetIndex}_${SetField}`;
+
+function getLogSetValue(log: WorkoutExerciseLog, setNum: SetIndex, field: SetField): number | null {
+  const key = `set${setNum}_${field}` as SetKey;
+  return log[key] as number | null;
+}
 
 type TargetsNarrative = {
   encouragement: string | null;
@@ -88,24 +93,30 @@ function roundUpWhole(value: number) {
   return Math.ceil(value);
 }
 
-function getMaxWeightAndReps(points: ExerciseHistoryPoint[]) {
+function getMaxesFromLastLog(log: LastSetSummary): {
+  maxWeight: number | null;
+  repsAtMax: number | null;
+  maxReps: number | null;
+} {
+  if (!log) {
+    return { maxWeight: null, repsAtMax: null, maxReps: null };
+  }
   let maxWeight: number | null = null;
   let repsAtMax: number | null = null;
   let maxReps: number | null = null;
 
-  for (const point of points) {
-    if (point.reps_max !== null) {
-      maxReps = maxReps === null ? point.reps_max : Math.max(maxReps, point.reps_max);
+  for (const i of [1, 2, 3, 4] as const) {
+    const weight = getLogSetValue(log, i, 'weight');
+    const reps = getLogSetValue(log, i, 'reps');
+    if (typeof reps === 'number' && Number.isFinite(reps)) {
+      maxReps = maxReps === null ? reps : Math.max(maxReps, reps);
     }
-
-    if (point.weight_max === null) continue;
-    if (maxWeight === null || point.weight_max > maxWeight) {
-      maxWeight = point.weight_max;
-      repsAtMax = point.reps_max ?? null;
-      continue;
-    }
-    if (point.weight_max === maxWeight && point.reps_max !== null) {
-      repsAtMax = repsAtMax === null ? point.reps_max : Math.max(repsAtMax, point.reps_max);
+    if (typeof weight !== 'number' || !Number.isFinite(weight)) continue;
+    if (maxWeight === null || weight > maxWeight) {
+      maxWeight = weight;
+      repsAtMax = typeof reps === 'number' && Number.isFinite(reps) ? reps : null;
+    } else if (weight === maxWeight && typeof reps === 'number' && Number.isFinite(reps)) {
+      repsAtMax = repsAtMax === null ? reps : Math.max(repsAtMax, reps);
     }
   }
 
@@ -124,23 +135,11 @@ function normalizeNarrativeField(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function computeLastSessionMaxes(history: Record<string, ExerciseHistorySeries>) {
+function computeLastSessionMaxes(summaries: LastSetSummaries) {
   const lastMaxes: Record<string, LastSessionMax> = {};
-  for (const [name, series] of Object.entries(history)) {
-    const points = series?.points || [];
-    let lastWeight: number | null = null;
-    let lastReps: number | null = null;
-    for (let i = points.length - 1; i >= 0; i -= 1) {
-      const point = points[i];
-      if (lastWeight === null && point.weight_max !== null) {
-        lastWeight = point.weight_max;
-      }
-      if (lastReps === null && point.reps_max !== null) {
-        lastReps = point.reps_max;
-      }
-      if (lastWeight !== null && lastReps !== null) break;
-    }
-    lastMaxes[name] = { weight: lastWeight, reps: lastReps };
+  for (const [name, log] of Object.entries(summaries)) {
+    const { maxWeight, maxReps } = getMaxesFromLastLog(log);
+    lastMaxes[name] = { weight: maxWeight, reps: maxReps };
   }
   return lastMaxes;
 }
@@ -169,8 +168,8 @@ function buildFallbackNarrative(
   if (trendCounts.down) trendParts.push(`${trendCounts.down} trending down`);
   if (trendCounts.newData) trendParts.push(`${trendCounts.newData} without recent data`);
   const trendSummary = trendParts.length > 0
-    ? `Last 30 days: ${trendParts.join(', ')}.`
-    : 'Last 30 days: not enough history yet.';
+    ? `Recent sessions: ${trendParts.join(', ')}.`
+    : 'Recent sessions: not enough history yet.';
 
   return { encouragement, goalSummary, trendSummary };
 }
@@ -248,13 +247,17 @@ export default function WorkoutDetailPage() {
     trendSummary: null,
   });
   const [targetsSource, setTargetsSource] = useState<TargetsSource>(null);
+  const [lastSetSummaries, setLastSetSummaries] = useState<LastSetSummaries>({});
   const [lastSessionMaxes, setLastSessionMaxes] = useState<Record<string, LastSessionMax>>({});
   const [lastWorkoutReport, setLastWorkoutReport] = useState<string | null>(null);
-  const [lastWorkoutReportLoading, setLastWorkoutReportLoading] = useState(false);
   const [showLastWorkoutReport, setShowLastWorkoutReport] = useState(false);
   const [loadingDots, setLoadingDots] = useState('...');
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(DEFAULT_WEIGHT_UNIT);
   const [heightUnit, setHeightUnit] = useState<HeightUnit>(DEFAULT_HEIGHT_UNIT);
+
+  useEffect(() => {
+    setLastSessionMaxes(computeLastSessionMaxes(lastSetSummaries));
+  }, [lastSetSummaries]);
 
   const cacheTargetsForSession = useCallback(
     (nextTargets: Record<string, ExerciseTarget>) => {
@@ -321,13 +324,34 @@ export default function WorkoutDetailPage() {
   useEffect(() => {
     async function fetchWorkout() {
       try {
-        // Check for routineId in query params (for public/favorited routines)
         const routineIdParam = searchParams.get('routineId');
+        const decodedName = decodeURIComponent(params.name as string);
 
-        // Build API URL with routineId if present
-        let apiUrl = `/api/workout/${params.name}`;
+        const cached = loadWorkoutBootstrapCache({
+          workoutName: decodedName,
+          routineId: routineIdParam,
+        });
+
+        if (cached) {
+          setWorkout(cached.workout);
+          setLastSetSummaries(cached.lastSetSummaries || {});
+          setLastSessionMaxes(computeLastSessionMaxes(cached.lastSetSummaries || {}));
+          setLastWorkoutReport(cached.lastWorkoutReport ?? null);
+          setWeightUnit(normalizeWeightUnit(cached.settings?.weightUnit));
+          setHeightUnit(normalizeHeightUnit(cached.settings?.heightUnit));
+          if (routineIdParam) {
+            setRoutineId(parseInt(routineIdParam));
+            setIsPublicRoutine(true);
+          } else if (cached.routineMeta?.id) {
+            setRoutineId(cached.routineMeta.id ?? null);
+          }
+          setLoading(false);
+          return;
+        }
+
+        let apiUrl = `/api/workout/${params.name}?bootstrap=1`;
         if (routineIdParam) {
-          apiUrl += `?routineId=${routineIdParam}`;
+          apiUrl += `&routineId=${routineIdParam}`;
           setRoutineId(parseInt(routineIdParam));
           setIsPublicRoutine(true);
         }
@@ -337,13 +361,32 @@ export default function WorkoutDetailPage() {
           throw new Error('Workout not found');
         }
         const data = await response.json();
-        setWorkout(data.workout);
+        const payload: WorkoutBootstrapPayload = {
+          workout: data.workout,
+          settings: data.settings,
+          lastSetSummaries: data.lastSetSummaries || {},
+          lastWorkoutReport: data.lastWorkoutReport || null,
+          routineMeta: data.routineMeta,
+        };
+        setWorkout(payload.workout);
+        setLastSetSummaries(payload.lastSetSummaries);
+        setLastSessionMaxes(computeLastSessionMaxes(payload.lastSetSummaries));
+        setLastWorkoutReport(payload.lastWorkoutReport);
+        setWeightUnit(normalizeWeightUnit(payload.settings?.weightUnit));
+        setHeightUnit(normalizeHeightUnit(payload.settings?.heightUnit));
+        if (!routineIdParam && payload.routineMeta?.id) {
+          setRoutineId(payload.routineMeta.id ?? null);
+        }
 
-        // Only fetch routine ID from user's routines if not a public routine
-        if (!routineIdParam) {
+        saveWorkoutBootstrapCache({
+          workoutName: decodedName,
+          routineId: routineIdParam ?? (payload.routineMeta?.id ? String(payload.routineMeta.id) : null),
+          payload,
+        });
+
+        if (!routineIdParam && !payload.routineMeta?.id) {
           const routinesResponse = await fetch('/api/routines');
           const routinesData = await routinesResponse.json();
-          const decodedName = decodeURIComponent(params.name as string);
           const routine = routinesData.routines.find((r: any) => r.name === decodedName);
           if (routine) {
             setRoutineId(routine.id);
@@ -359,118 +402,34 @@ export default function WorkoutDetailPage() {
     fetchWorkout();
   }, [params.name, searchParams]);
 
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchUserSettings() {
-      try {
-        const response = await fetch('/api/user/settings');
-        if (!response.ok) return;
-        const data = await response.json();
-        if (!isMounted) return;
-        setWeightUnit(normalizeWeightUnit(data?.weightUnit));
-        setHeightUnit(normalizeHeightUnit(data?.heightUnit));
-      } catch (error) {
-        console.error('Error fetching user settings:', error);
-      }
-    }
-
-    fetchUserSettings();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const fetchExerciseHistory = async (
-    signal: AbortSignal
-  ): Promise<Record<string, ExerciseHistorySeries>> => {
-    if (!workout) return {};
-    const params = new URLSearchParams({ range: 'month' });
-    for (const name of allExerciseNames) {
-      params.append('name', name);
-    }
-    const response = await fetch(`/api/exercise-history?${params.toString()}`, { signal });
-    if (!response.ok) {
-      throw new Error('Failed to load exercise history');
-    }
-    const data = await response.json();
-    return data.history || {};
-  };
-
-  const computeFallbackTargets = async (
-    signal: AbortSignal,
-    historyOverride?: Record<string, ExerciseHistorySeries>
-  ): Promise<FallbackTargetsResult> => {
+  const computeFallbackTargets = async (): Promise<FallbackTargetsResult> => {
     if (!workout) {
       return {
         targets: {},
         narrative: { encouragement: null, goalSummary: null, trendSummary: null }
       };
     }
-    const history: Record<string, ExerciseHistorySeries> = historyOverride
-      ? historyOverride
-      : await fetchExerciseHistory(signal);
     const fallback: Record<string, ExerciseTarget> = {};
     const { weight: weightFactor, reps: repsFactor } = getSessionFactors(sessionMode as SessionMode);
     const trendCounts: TrendCounts = { up: 0, down: 0, flat: 0, newData: 0 };
 
-    const getLatestValues = (
-      points: ExerciseHistoryPoint[],
-      primaryKey: 'weight_max' | 'reps_max',
-      fallbackKey?: 'reps_max'
-    ) => {
-      const values: number[] = [];
-      for (let i = points.length - 1; i >= 0 && values.length < 2; i -= 1) {
-        const primary = points[i][primaryKey];
-        if (primary !== null && primary !== undefined) {
-          values.push(primary);
-          continue;
-        }
-        if (fallbackKey) {
-          const fallbackValue = points[i][fallbackKey];
-          if (fallbackValue !== null && fallbackValue !== undefined) {
-            values.push(fallbackValue);
-          }
-        }
-      }
-      return {
-        latest: values[0] ?? null,
-        previous: values[1] ?? null,
-      };
-    };
-
     const updateTrendCounts = (exercise: TargetExercise) => {
-      const series = history[exercise.name];
-      const points = series?.points || [];
-      if (points.length === 0) {
+      const log = lastSetSummaries[exercise.name];
+      if (!log) {
         trendCounts.newData += 1;
         return;
       }
-      const metricKey: 'weight_max' | 'reps_max' = exercise.isBodyweight ? 'reps_max' : 'weight_max';
-      const fallbackKey = exercise.isBodyweight ? undefined : 'reps_max';
-      const { latest, previous } = getLatestValues(points, metricKey, fallbackKey);
-      if (latest === null || previous === null) {
-        trendCounts.newData += 1;
-        return;
-      }
-      const delta = latest - previous;
-      if (Math.abs(delta) < 0.1) {
-        trendCounts.flat += 1;
-      } else if (delta > 0) {
-        trendCounts.up += 1;
-      } else {
-        trendCounts.down += 1;
-      }
+      trendCounts.flat += 1;
     };
 
     const buildTarget = (exercise: TargetExercise) => {
-      const series = history[exercise.name];
-      const points = series?.points || [];
-      const { maxWeight, repsAtMax, maxReps } = getMaxWeightAndReps(points);
+      const log = lastSetSummaries[exercise.name];
+      const { maxWeight, repsAtMax, maxReps } = getMaxesFromLastLog(log);
       const baseWeight = exercise.targetWeight;
       const baseReps = exercise.targetReps;
       const isBodyweight = !!exercise.isBodyweight;
       const isMachine = !!exercise.isMachine;
-      const usesHistory = points.length > 0 && (maxWeight !== null || maxReps !== null);
+      const usesHistory = !!log && (maxWeight !== null || maxReps !== null);
       let suggestedWeight: number | null = null;
       let suggestedReps: number | null = null;
       let rationale: string | null = null;
@@ -480,7 +439,7 @@ export default function WorkoutDetailPage() {
         const scaledReps = roundUpWhole(sourceReps * repsFactor);
         suggestedReps = Math.max(1, scaledReps);
         rationale = usesHistory
-          ? `Default target uses ${Math.round(repsFactor * 100)}% of your last 30-day max reps.`
+          ? `Default target uses ${Math.round(repsFactor * 100)}% of your latest session max reps.`
           : 'Default target uses your routine baseline until more history is logged.';
       } else {
         const sourceWeight = maxWeight ?? baseWeight;
@@ -496,7 +455,7 @@ export default function WorkoutDetailPage() {
           : `${Math.round(repsFactor * 100)}% of your max reps`;
         if (usesHistory) {
           rationale = hasAddedWeight
-            ? `Default target uses ${Math.round(weightFactor * 100)}% of your last 30-day max weight and ${repNote}.`
+            ? `Default target uses ${Math.round(weightFactor * 100)}% of your latest session max weight and ${repNote}.`
             : `Default target uses ${repNote}; add weight when you feel ready.`;
         } else {
           rationale = 'Default target uses your routine baseline until more history is logged.';
@@ -556,45 +515,6 @@ export default function WorkoutDetailPage() {
 
   useEffect(() => {
     if (!isPreview || !workout) return;
-    let isActive = true;
-    const controller = new AbortController();
-
-    const fetchLastReport = async () => {
-      setLastWorkoutReportLoading(true);
-      try {
-        const params = new URLSearchParams({ workoutName: workout.name });
-        const response = await fetch(`/api/workout-report?${params.toString()}`, {
-          signal: controller.signal,
-        });
-        if (!response.ok) {
-          if (!isActive) return;
-          setLastWorkoutReport(null);
-          return;
-        }
-        const data = await response.json();
-        if (!isActive) return;
-        const reportText = typeof data?.report === 'string' ? data.report.trim() : '';
-        setLastWorkoutReport(reportText.length > 0 ? reportText : null);
-      } catch (error) {
-        if (!isActive) return;
-        setLastWorkoutReport(null);
-      } finally {
-        if (isActive) {
-          setLastWorkoutReportLoading(false);
-        }
-      }
-    };
-
-    fetchLastReport();
-
-    return () => {
-      isActive = false;
-      controller.abort();
-    };
-  }, [isPreview, workout?.name]);
-
-  useEffect(() => {
-    if (!isPreview || !workout) return;
     if (Object.keys(targets).length === 0) return;
     cacheTargetsForSession(targets);
   }, [cacheTargetsForSession, isPreview, targets, workout]);
@@ -611,7 +531,6 @@ export default function WorkoutDetailPage() {
       setTargets({});
       setTargetsNarrative({ encouragement: null, goalSummary: null, trendSummary: null });
       setTargetsSource(null);
-      setLastSessionMaxes({});
       const sessionRoutineId = routineIdParam ?? (routineId !== null ? String(routineId) : null);
       saveSessionTargetsMeta(workout.name, sessionRoutineId, null);
 
@@ -662,14 +581,6 @@ export default function WorkoutDetailPage() {
           });
         }
       }
-
-      const historyPromise = fetchExerciseHistory(controller.signal)
-        .then((historyData) => {
-          if (!isActive) return null;
-          setLastSessionMaxes(computeLastSessionMaxes(historyData));
-          return historyData;
-        })
-        .catch(() => null);
 
       try {
         const targetsResponse = await fetch('/api/workout-targets', {
@@ -728,14 +639,12 @@ export default function WorkoutDetailPage() {
           sessionMode
         });
         setTargetsLoading(false);
-        await historyPromise;
       } catch (error: any) {
         if (!isActive) return;
         console.error('AI-trainer targets failed:', error);
         const aiErrorMessage = error instanceof Error ? error.message : 'AI-trainer request failed.';
         try {
-          const historyData = await historyPromise;
-          const fallbackResult = await computeFallbackTargets(controller.signal, historyData || undefined);
+          const fallbackResult = await computeFallbackTargets();
           if (!isActive) return;
           setTargets(fallbackResult.targets);
           setTargetsNarrative(fallbackResult.narrative);
@@ -970,7 +879,7 @@ export default function WorkoutDetailPage() {
                 )
               )}
             </Card>
-            {!targetsLoading && !lastWorkoutReportLoading && lastWorkoutReport && (
+            {!targetsLoading && lastWorkoutReport && (
               <div className="mt-4">
                 <button
                   type="button"

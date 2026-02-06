@@ -14,6 +14,7 @@ import {
   StretchItem
 } from '@/app/components/RoutineEditParts';
 import { BottomActionBar, Card, EmptyState, SectionHeader } from '@/app/components/SharedUi';
+import { invalidateWorkoutBootstrapCache } from '@/lib/workout-bootstrap';
 
 interface RoutineStretch {
   id: number;
@@ -65,6 +66,13 @@ export default function EditRoutinePage() {
   const [insertExerciseAt, setInsertExerciseAt] = useState<number | null>(null);
   const [insertPreStretchAt, setInsertPreStretchAt] = useState<number | null>(null);
   const [insertPostStretchAt, setInsertPostStretchAt] = useState<number | null>(null);
+
+  const invalidateBootstrapCache = (nameOverride?: string) => {
+    invalidateWorkoutBootstrapCache({
+      routineId,
+      routineName: nameOverride ?? routineName,
+    });
+  };
 
   useEffect(() => {
     loadRoutine();
@@ -141,6 +149,7 @@ export default function EditRoutinePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'pre', order: newOrder })
       });
+      invalidateBootstrapCache();
     } catch (error) {
       console.error('Error deleting stretch:', error);
     }
@@ -162,6 +171,7 @@ export default function EditRoutinePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'post', order: newOrder })
       });
+      invalidateBootstrapCache();
     } catch (error) {
       console.error('Error deleting stretch:', error);
     }
@@ -183,6 +193,7 @@ export default function EditRoutinePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ order: newOrder })
       });
+      invalidateBootstrapCache();
     } catch (error) {
       console.error('Error deleting exercise:', error);
     }
@@ -194,6 +205,7 @@ export default function EditRoutinePage() {
         method: 'DELETE'
       });
       setCardio(null);
+      invalidateBootstrapCache();
     } catch (error) {
       console.error('Error deleting cardio:', error);
     }
@@ -245,6 +257,7 @@ export default function EditRoutinePage() {
     newStretches.splice(insertAt, 0, newStretch);
     setPreStretches(newStretches);
     setInsertPreStretchAt(null);
+    invalidateBootstrapCache();
   };
 
   const handleSelectPostStretch = async (stretch: any) => {
@@ -271,6 +284,7 @@ export default function EditRoutinePage() {
     newStretches.splice(insertAt, 0, newStretch);
     setPostStretches(newStretches);
     setInsertPostStretchAt(null);
+    invalidateBootstrapCache();
   };
 
   const handleSelectExercise = async (exercise: any) => {
@@ -301,14 +315,15 @@ export default function EditRoutinePage() {
       setExercises(newExercises);
 
       const newOrder = newExercises.map(e => e.id);
-      await fetch(`/api/routines/${routineId}/exercises`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: newOrder })
-      });
-    } catch (error) {
-      console.error('Error adding exercise:', error);
-    }
+    await fetch(`/api/routines/${routineId}/exercises`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: newOrder })
+    });
+    invalidateBootstrapCache();
+  } catch (error) {
+    console.error('Error adding exercise:', error);
+  }
 
     setInsertExerciseAt(null);
   };
@@ -342,14 +357,15 @@ export default function EditRoutinePage() {
       setExercises(newExercises);
 
       const newOrder = newExercises.map(e => e.id);
-      await fetch(`/api/routines/${routineId}/exercises`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: newOrder })
-      });
-    } catch (error) {
-      console.error('Error adding superset:', error);
-    }
+    await fetch(`/api/routines/${routineId}/exercises`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: newOrder })
+    });
+    invalidateBootstrapCache();
+  } catch (error) {
+    console.error('Error adding superset:', error);
+  }
 
     setInsertExerciseAt(null);
   };
@@ -363,6 +379,7 @@ export default function EditRoutinePage() {
       });
       setCardio(cardioData);
       setShowCardioForm(false);
+      invalidateBootstrapCache();
     } catch (error) {
       console.error('Error saving cardio:', error);
     }
@@ -399,6 +416,8 @@ export default function EditRoutinePage() {
         throw new Error(data.error || 'Failed to update routine name');
       }
 
+      invalidateBootstrapCache(routineName);
+      invalidateBootstrapCache(nextName);
       setRoutineName(nextName);
       setRoutineNameDraft(nextName);
     } catch (error) {
