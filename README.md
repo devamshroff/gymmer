@@ -3,8 +3,6 @@
 Structure:
 
 - apps/web: Next.js web app
-- apps/ios: iOS app (Xcode project lives here)
-- packages/shared: shared contracts/docs (optional)
 
 ## Requirements
 

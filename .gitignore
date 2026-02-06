@@ -43,27 +43,3 @@ next-env.d.ts
 
 # Vercel
 **/.vercel/
-
-# iOS / Xcode
-**/DerivedData/
-**/xcuserdata/
-**/*.xcuserstate
-**/*.xccheckout
-**/*.xcscmblueprint
-**/*.moved-aside
-**/*.xcodeproj/project.xcworkspace/
-**/*.xcodeproj/xcuserdata/
-**/*.xcworkspace/xcuserdata/
-
-# SwiftPM
-**/.swiftpm/
-
-# CocoaPods / Carthage
-**/Pods/
-**/Carthage/Build/
-
-# Fastlane
-**/fastlane/report.xml
-**/fastlane/Preview.html
-**/fastlane/screenshots/
-**/fastlane/test_output/
