@@ -4,6 +4,7 @@ import {
   getWorkoutSession,
   initWorkoutSession,
   updateExerciseInSession,
+  updateWorkoutFlowState,
 } from '@/lib/workout-session';
 import { EXERCISE_TYPES } from '@/lib/constants';
 
@@ -46,5 +47,28 @@ describe('workout-session', () => {
     const session = getWorkoutSession();
     expect(session?.exercises[0].warmup).toEqual({ weight: 65, reps: 8 });
     expect(session?.exercises[0].sets[0]).toEqual({ weight: 155, reps: 6 });
+  });
+
+  it('returns a stable snapshot when storage does not change', () => {
+    initWorkoutSession('Core Day', null);
+
+    const first = getWorkoutSession();
+    const second = getWorkoutSession();
+
+    expect(first).toBe(second);
+  });
+
+  it('returns a new snapshot after flow updates', () => {
+    initWorkoutSession('Core Day', null);
+
+    const first = getWorkoutSession();
+    updateWorkoutFlowState((state) => ({
+      ...state,
+      currentExerciseIndex: state.currentExerciseIndex + 1,
+    }));
+    const second = getWorkoutSession();
+
+    expect(first).not.toBe(second);
+    expect(second?.flow?.currentExerciseIndex).toBe(1);
   });
 });

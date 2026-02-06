@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const port = process.env.PLAYWRIGHT_PORT || '3100';
+const port = process.env.PLAYWRIGHT_PORT || '3000';
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || `http://localhost:${port}`;
 const useExternalServer = process.env.PLAYWRIGHT_EXTERNAL === '1';
 

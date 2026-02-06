@@ -6,11 +6,14 @@ import Link from 'next/link';
 import { WorkoutPlan, Exercise, SingleExercise, B2BExercise } from '@/lib/types';
 import {
   addExerciseToSession,
-  getInProgressExercise,
+  ensureWorkoutSession,
   getWorkoutSession,
-  setInProgressExercise,
   updateExerciseInSession,
+  updateWorkoutFlowState,
+  DEFAULT_WORKOUT_FLOW_STATE,
+  type WorkoutFlowState,
 } from '@/lib/workout-session';
+import { useWorkoutSessionStore } from '@/lib/use-workout-session';
 import { autosaveWorkout } from '@/lib/workout-autosave';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
 import SupersetSelector from '@/app/components/SupersetSelector';
@@ -111,36 +114,17 @@ function ActiveWorkoutContent() {
   const searchParams = useSearchParams();
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
   const [initialIndexSet, setInitialIndexSet] = useState(false);
-  const [currentSetIndex, setCurrentSetIndex] = useState(0);
-  const [isResting, setIsResting] = useState(false);
-  const [restTimeRemaining, setRestTimeRemaining] = useState(0);
-  const [restTimeSeconds, setRestTimeSeconds] = useState(60);
-  const [supersetRestSeconds, setSupersetRestSeconds] = useState(15);
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(DEFAULT_WEIGHT_UNIT);
   const [heightUnit, setHeightUnit] = useState<HeightUnit>(DEFAULT_HEIGHT_UNIT);
 
   // Single exercise state
-  const [setData, setSetData] = useState<SetData>({ weight: 0, reps: 0 });
-  const [completedSets, setCompletedSets] = useState<SetData[]>([]);
-  const [warmupCompleted, setWarmupCompleted] = useState(false);
-  const [warmupDecision, setWarmupDecision] = useState<'pending' | 'include' | 'skip'>('pending');
-  const [machineOnly, setMachineOnly] = useState(false);
   const [machineOnlyHoldWeight, setMachineOnlyHoldWeight] = useState(0);
 
   // B2B/Superset state
-  const [currentExerciseInPair, setCurrentExerciseInPair] = useState(0); // 0 or 1
-  const [setData1, setSetData1] = useState<SetData>({ weight: 0, reps: 0 });
-  const [setData2, setSetData2] = useState<SetData>({ weight: 0, reps: 0 });
-  const [completedPairs, setCompletedPairs] = useState<Array<{ ex1: SetData; ex2: SetData }>>([]);
-  const [machineOnly1, setMachineOnly1] = useState(false);
-  const [machineOnly2, setMachineOnly2] = useState(false);
   const [machineOnlyHoldWeight1, setMachineOnlyHoldWeight1] = useState(0);
   const [machineOnlyHoldWeight2, setMachineOnlyHoldWeight2] = useState(0);
 
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [transitionTimeRemaining, setTransitionTimeRemaining] = useState(60);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showExerciseTypePicker, setShowExerciseTypePicker] = useState(false);
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
@@ -227,8 +211,95 @@ function ActiveWorkoutContent() {
     warmupCompleted?: boolean;
   };
   const [completedExercisesCache, setCompletedExercisesCache] = useState<CompletedExerciseCache[]>([]);
-  const [viewingExerciseIndex, setViewingExerciseIndex] = useState(0); // Which exercise we're viewing (can be past/current)
-  const [showSetReview, setShowSetReview] = useState(false);
+  const sessionSnapshot = useWorkoutSessionStore();
+  const flow = sessionSnapshot?.flow ?? DEFAULT_WORKOUT_FLOW_STATE;
+  const {
+    initialized,
+    currentExerciseIndex,
+    viewingExerciseIndex,
+    showSetReview,
+    currentSetIndex,
+    currentExerciseInPair,
+    completedSets,
+    completedPairs,
+    setData,
+    setData1,
+    setData2,
+    warmupDecision,
+    warmupCompleted,
+    machineOnly,
+    machineOnly1,
+    machineOnly2,
+    isResting,
+    restTimeRemaining,
+    restTimeSeconds,
+    supersetRestSeconds,
+    isTransitioning,
+    transitionTimeRemaining,
+  } = flow;
+
+  const applyFlowUpdate = <T,>(value: T | ((prev: T) => T), prev: T): T => (
+    typeof value === 'function' ? (value as (prev: T) => T)(prev) : value
+  );
+
+  const setFlowField = <K extends keyof WorkoutFlowState>(
+    key: K,
+    value: WorkoutFlowState[K] | ((prev: WorkoutFlowState[K]) => WorkoutFlowState[K])
+  ) => {
+    updateWorkoutFlowState((state) => ({
+      ...state,
+      [key]: applyFlowUpdate(value, state[key]),
+    }));
+  };
+
+  const setCurrentExerciseIndex = (value: number | ((prev: number) => number)) => (
+    setFlowField('currentExerciseIndex', value)
+  );
+  const setInitialized = (value: boolean) => setFlowField('initialized', value);
+  const setViewingExerciseIndex = (value: number | ((prev: number) => number)) => (
+    setFlowField('viewingExerciseIndex', value)
+  );
+  const setShowSetReview = (value: boolean) => setFlowField('showSetReview', value);
+  const setCurrentSetIndex = (value: number | ((prev: number) => number)) => (
+    setFlowField('currentSetIndex', value)
+  );
+  const setCurrentExerciseInPair = (value: number | ((prev: number) => number)) => (
+    setFlowField('currentExerciseInPair', value)
+  );
+  const setCompletedSets = (value: SetData[] | ((prev: SetData[]) => SetData[])) => (
+    setFlowField('completedSets', value)
+  );
+  const setCompletedPairs = (
+    value: Array<{ ex1: SetData; ex2: SetData }> | ((
+      prev: Array<{ ex1: SetData; ex2: SetData }>
+    ) => Array<{ ex1: SetData; ex2: SetData }>)
+  ) => setFlowField('completedPairs', value);
+  const setSetData = (value: SetData | ((prev: SetData) => SetData)) => (
+    setFlowField('setData', value)
+  );
+  const setSetData1 = (value: SetData | ((prev: SetData) => SetData)) => (
+    setFlowField('setData1', value)
+  );
+  const setSetData2 = (value: SetData | ((prev: SetData) => SetData)) => (
+    setFlowField('setData2', value)
+  );
+  const setWarmupDecision = (value: 'pending' | 'include' | 'skip') => (
+    setFlowField('warmupDecision', value)
+  );
+  const setWarmupCompleted = (value: boolean) => setFlowField('warmupCompleted', value);
+  const setMachineOnly = (value: boolean) => setFlowField('machineOnly', value);
+  const setMachineOnly1 = (value: boolean) => setFlowField('machineOnly1', value);
+  const setMachineOnly2 = (value: boolean) => setFlowField('machineOnly2', value);
+  const setIsResting = (value: boolean) => setFlowField('isResting', value);
+  const setRestTimeRemaining = (value: number | ((prev: number) => number)) => (
+    setFlowField('restTimeRemaining', value)
+  );
+  const setRestTimeSeconds = (value: number) => setFlowField('restTimeSeconds', value);
+  const setSupersetRestSeconds = (value: number) => setFlowField('supersetRestSeconds', value);
+  const setIsTransitioning = (value: boolean) => setFlowField('isTransitioning', value);
+  const setTransitionTimeRemaining = (value: number | ((prev: number) => number)) => (
+    setFlowField('transitionTimeRemaining', value)
+  );
 
   const buildCompletedCacheFromSession = (plan: WorkoutPlan, routineId: number | null) => {
     const session = getWorkoutSession();
@@ -393,6 +464,7 @@ function ActiveWorkoutContent() {
         const resolvedWorkout = sessionWorkout || baseWorkout;
         setWorkout(resolvedWorkout);
         setLastSetSummaries(bootstrapSummaries);
+        ensureWorkoutSession(resolvedWorkout.name, routineId);
 
         const missingNames: string[] = [];
         for (const exercise of resolvedWorkout.exercises) {
@@ -429,13 +501,13 @@ function ActiveWorkoutContent() {
         let startIndex = 0;
 
         const exerciseCount = resolvedWorkout.exercises.length;
-        const inProgress = getInProgressExercise();
+        const flowState = getWorkoutSession()?.flow ?? DEFAULT_WORKOUT_FLOW_STATE;
         if (exerciseCount > 0) {
           if (nextIndex > 0) {
             startIndex = nextIndex >= exerciseCount ? exerciseCount - 1 : nextIndex;
           }
-          if (inProgress && inProgress.exerciseIndex >= 0 && inProgress.exerciseIndex < exerciseCount) {
-            startIndex = Math.max(startIndex, inProgress.exerciseIndex);
+          if (Number.isFinite(flowState.currentExerciseIndex)) {
+            startIndex = Math.max(startIndex, Math.min(flowState.currentExerciseIndex, exerciseCount - 1));
           }
           if (resumeIndexParam && !Number.isNaN(Number(resumeIndexParam))) {
             const resumeIndex = Math.min(
@@ -466,27 +538,25 @@ function ActiveWorkoutContent() {
           setInitialIndexSet(true);
         }
 
+        if (!indexParam && Number.isFinite(flowState.viewingExerciseIndex)) {
+          viewingIndex = Math.min(Math.max(flowState.viewingExerciseIndex, 0), exerciseCount - 1);
+        }
+
         setCurrentExerciseIndex(startIndex);
         setViewingExerciseIndex(viewingIndex);
+        setShowSetReview(flowState.showSetReview);
 
         // Initialize exercise at startIndex
         if (exerciseCount > 0) {
           const exercise = resolvedWorkout.exercises[startIndex];
+          const shouldInit = !flowState.initialized || flowState.currentExerciseIndex !== startIndex;
           if (exercise.type === EXERCISE_TYPES.single) {
-            initSingleExerciseState(exercise);
-            if (inProgress && inProgress.exerciseIndex === startIndex && inProgress.type === EXERCISE_TYPES.single) {
-              setCompletedSets(inProgress.completedSets ?? []);
-              setWarmupDecision(inProgress.warmupDecision ?? 'pending');
-              setWarmupCompleted(!!inProgress.warmupCompleted);
-              if (typeof inProgress.currentSetIndex === 'number') {
-                setCurrentSetIndex(inProgress.currentSetIndex);
-              }
-              if (inProgress.setData) {
-                setSetData(inProgress.setData);
-              }
-              if (typeof inProgress.machineOnly === 'boolean') {
-                setMachineOnly(inProgress.machineOnly);
-              }
+            if (shouldInit) {
+              setCompletedSets([]);
+              setCompletedPairs([]);
+              setCurrentExerciseInPair(0);
+              initSingleExerciseState(exercise);
+              setInitialized(true);
             }
           } else {
             // B2B exercise - no warmups, start at set 1
@@ -497,43 +567,25 @@ function ActiveWorkoutContent() {
             const defaultMachineOnly2 = !!b2bEx.exercises[1].isMachine
               && isExerciseWeightMetric(b2bEx.exercises[1])
               && b2bEx.exercises[1].targetWeight <= 0;
-            setSetData1({
-              weight: defaultMachineOnly1 ? 0 : b2bEx.exercises[0].targetWeight,
-              reps: b2bEx.exercises[0].targetReps,
-            });
-            setSetData2({
-              weight: defaultMachineOnly2 ? 0 : b2bEx.exercises[1].targetWeight,
-              reps: b2bEx.exercises[1].targetReps,
-            });
-            setMachineOnly1(defaultMachineOnly1);
-            setMachineOnly2(defaultMachineOnly2);
             setMachineOnlyHoldWeight1(b2bEx.exercises[0].targetWeight);
             setMachineOnlyHoldWeight2(b2bEx.exercises[1].targetWeight);
-            setCurrentSetIndex(1);
-            setCurrentExerciseInPair(0); // Start with first exercise
-            setWarmupDecision('skip');
-            setWarmupCompleted(false);
-
-            if (inProgress && inProgress.exerciseIndex === startIndex && inProgress.type === EXERCISE_TYPES.b2b) {
-              setCompletedPairs(inProgress.completedPairs ?? []);
-              if (typeof inProgress.currentSetIndex === 'number') {
-                setCurrentSetIndex(inProgress.currentSetIndex);
-              }
-              if (typeof inProgress.currentExerciseInPair === 'number') {
-                setCurrentExerciseInPair(inProgress.currentExerciseInPair);
-              }
-              if (inProgress.setData1) {
-                setSetData1(inProgress.setData1);
-              }
-              if (inProgress.setData2) {
-                setSetData2(inProgress.setData2);
-              }
-              if (typeof inProgress.machineOnly1 === 'boolean') {
-                setMachineOnly1(inProgress.machineOnly1);
-              }
-              if (typeof inProgress.machineOnly2 === 'boolean') {
-                setMachineOnly2(inProgress.machineOnly2);
-              }
+            if (shouldInit) {
+              setSetData1({
+                weight: defaultMachineOnly1 ? 0 : b2bEx.exercises[0].targetWeight,
+                reps: b2bEx.exercises[0].targetReps,
+              });
+              setSetData2({
+                weight: defaultMachineOnly2 ? 0 : b2bEx.exercises[1].targetWeight,
+                reps: b2bEx.exercises[1].targetReps,
+              });
+              setMachineOnly1(defaultMachineOnly1);
+              setMachineOnly2(defaultMachineOnly2);
+              setCurrentSetIndex(1);
+              setCurrentExerciseInPair(0); // Start with first exercise
+              setWarmupDecision('skip');
+              setWarmupCompleted(false);
+              setCompletedPairs([]);
+              setInitialized(true);
             }
           }
         }
@@ -627,10 +679,6 @@ function ActiveWorkoutContent() {
     setLastPartnerExerciseLog(lastSetSummaries[b2bExercise.exercises[1].name] ?? null);
   }, [workout, currentExerciseIndex, lastSetSummaries]);
 
-  useEffect(() => {
-    setShowSetReview(false);
-  }, [currentExerciseIndex, viewingExerciseIndex]);
-
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
@@ -684,7 +732,6 @@ function ActiveWorkoutContent() {
     if (currentExerciseInPair === 0) {
       // Just completed first exercise, immediately move to second
       setCurrentExerciseInPair(1);
-      persistB2BProgress(completedPairs);
     } else {
       // Completed both exercises in the pair
       const newCompletedPairs = [...completedPairs, { ex1: setData1, ex2: setData2 }];
@@ -714,19 +761,6 @@ function ActiveWorkoutContent() {
       });
 
       setCompletedPairs(newCompletedPairs);
-      const nextSetIndex = newCompletedPairs.length < totalSets ? currentSetIndex + 1 : currentSetIndex;
-      const nextExerciseInPair = newCompletedPairs.length < totalSets ? 0 : currentExerciseInPair;
-      setInProgressExercise({
-        exerciseIndex: currentExerciseIndex,
-        type: EXERCISE_TYPES.b2b,
-        completedPairs: newCompletedPairs,
-        currentSetIndex: nextSetIndex,
-        currentExerciseInPair: nextExerciseInPair,
-        setData1,
-        setData2,
-        machineOnly1,
-        machineOnly2,
-      });
 
       if (newCompletedPairs.length < totalSets) {
         // More sets to go - rest briefly before next set
@@ -766,7 +800,6 @@ function ActiveWorkoutContent() {
           sessionExerciseIndex,
           completedPairs: newCompletedPairs,
         }]);
-        setInProgressExercise(null);
 
         if (currentExerciseIndex < workout!.exercises.length - 1) {
           setIsResting(false);
@@ -821,12 +854,6 @@ function ActiveWorkoutContent() {
           reps: exercise.targetReps,
         });
       }
-      persistSingleProgress(newCompletedSets, currentSetIndex === 0
-        ? {
-            weight: exercise.isMachine && machineOnly ? 0 : exercise.targetWeight,
-            reps: exercise.targetReps,
-          }
-        : setData);
     } else {
       // Exercise complete - save to session
       const sessionExerciseIndex = addExerciseToSession({
@@ -848,7 +875,6 @@ function ActiveWorkoutContent() {
         completedSets: newCompletedSets,
         warmupCompleted,
       }]);
-      setInProgressExercise(null);
 
       // Show transition to next exercise
       if (currentExerciseIndex < workout.exercises.length - 1) {
@@ -879,19 +905,6 @@ function ActiveWorkoutContent() {
       weight: suggestedWeight,
       reps: exercise.targetReps,
     });
-    setInProgressExercise({
-      exerciseIndex: currentExerciseIndex,
-      type: EXERCISE_TYPES.single,
-      completedSets,
-      warmupDecision: 'include',
-      warmupCompleted: false,
-      currentSetIndex: 0,
-      setData: {
-        weight: suggestedWeight,
-        reps: exercise.targetReps,
-      },
-      machineOnly,
-    });
   };
 
   const handleSkipWarmup = () => {
@@ -904,19 +917,6 @@ function ActiveWorkoutContent() {
       reps: exercise.targetReps,
     });
     setWarmupCompleted(false);
-    setInProgressExercise({
-      exerciseIndex: currentExerciseIndex,
-      type: EXERCISE_TYPES.single,
-      completedSets,
-      warmupDecision: 'skip',
-      warmupCompleted: false,
-      currentSetIndex: 1,
-      setData: {
-        weight: exercise.isMachine && machineOnly ? 0 : exercise.targetWeight,
-        reps: exercise.targetReps,
-      },
-      machineOnly,
-    });
   };
 
   const handleAddTime = () => {
@@ -973,7 +973,6 @@ function ActiveWorkoutContent() {
           completedSets: completedSets,
           warmupCompleted,
         }]);
-        setInProgressExercise(null);
       }
     } else {
       // B2B exercise
@@ -1008,7 +1007,6 @@ function ActiveWorkoutContent() {
           sessionExerciseIndex,
           completedPairs: completedPairs,
         }]);
-        setInProgressExercise(null);
       }
     }
 
@@ -1037,30 +1035,6 @@ function ActiveWorkoutContent() {
       // At the first exercise, go back to pre-stretches (if any) or exit
       const preStretchCount = workout.preWorkoutStretches?.length || 0;
       if (preStretchCount > 0) {
-        if (currentExercise.type === EXERCISE_TYPES.single) {
-          setInProgressExercise({
-            exerciseIndex: currentExerciseIndex,
-            type: EXERCISE_TYPES.single,
-            completedSets,
-            warmupDecision,
-            warmupCompleted,
-            currentSetIndex,
-            setData,
-            machineOnly,
-          });
-        } else {
-          setInProgressExercise({
-            exerciseIndex: currentExerciseIndex,
-            type: EXERCISE_TYPES.b2b,
-            completedPairs,
-            currentSetIndex,
-            currentExerciseInPair,
-            setData1,
-            setData2,
-            machineOnly1,
-            machineOnly2,
-          });
-        }
         const stretchParams = new URLSearchParams(routineQueryParams.toString());
         stretchParams.set('index', String(preStretchCount - 1));
         stretchParams.set('from', 'active');
@@ -1097,30 +1071,6 @@ function ActiveWorkoutContent() {
       // Go to last pre-stretch
       const preStretchCount = workout.preWorkoutStretches?.length || 0;
       if (preStretchCount > 0) {
-        if (currentExercise.type === EXERCISE_TYPES.single) {
-          setInProgressExercise({
-            exerciseIndex: currentExerciseIndex,
-            type: EXERCISE_TYPES.single,
-            completedSets,
-            warmupDecision,
-            warmupCompleted,
-            currentSetIndex,
-            setData,
-            machineOnly,
-          });
-        } else {
-          setInProgressExercise({
-            exerciseIndex: currentExerciseIndex,
-            type: EXERCISE_TYPES.b2b,
-            completedPairs,
-            currentSetIndex,
-            currentExerciseInPair,
-            setData1,
-            setData2,
-            machineOnly1,
-            machineOnly2,
-          });
-        }
         const stretchParams = new URLSearchParams(routineQueryParams.toString());
         stretchParams.set('index', String(preStretchCount - 1));
         stretchParams.set('from', 'active');
@@ -1288,19 +1238,6 @@ function ActiveWorkoutContent() {
     });
   };
 
-  const persistSingleProgress = (nextCompletedSets: SetData[], nextSetData?: SetData) => {
-    setInProgressExercise({
-      exerciseIndex: currentExerciseIndex,
-      type: EXERCISE_TYPES.single,
-      completedSets: nextCompletedSets,
-      warmupDecision,
-      warmupCompleted,
-      currentSetIndex,
-      setData: nextSetData ?? setData,
-      machineOnly,
-    });
-  };
-
   const updateActivePair = (
     pairIndex: number,
     updates: { ex1?: Partial<SetData>; ex2?: Partial<SetData> }
@@ -1314,20 +1251,6 @@ function ActiveWorkoutContent() {
         ex2: { ...currentPair.ex2, ...(updates.ex2 ?? {}) },
       };
       return nextPairs;
-    });
-  };
-
-  const persistB2BProgress = (nextCompletedPairs: Array<{ ex1: SetData; ex2: SetData }>) => {
-    setInProgressExercise({
-      exerciseIndex: currentExerciseIndex,
-      type: EXERCISE_TYPES.b2b,
-      completedPairs: nextCompletedPairs,
-      currentSetIndex,
-      currentExerciseInPair,
-      setData1,
-      setData2,
-      machineOnly1,
-      machineOnly2,
     });
   };
 
@@ -1621,28 +1544,17 @@ function ActiveWorkoutContent() {
     const commitActivePair = (pairIndex: number) => {
       const pair = completedPairs[pairIndex];
       if (!pair) return;
-      void autosaveWorkout({
-        type: 'b2b_set',
-        exerciseName: ex1.name,
-        partnerName: ex2.name,
-        setIndex: pairIndex + 1,
-        weight: pair.ex1.weight,
-        reps: pair.ex1.reps,
-        partnerWeight: pair.ex2.weight,
-        partnerReps: pair.ex2.reps,
-      });
-      setInProgressExercise({
-        exerciseIndex: currentExerciseIndex,
-        type: EXERCISE_TYPES.b2b,
-        completedPairs,
-        currentSetIndex,
-        currentExerciseInPair,
-        setData1,
-        setData2,
-        machineOnly1,
-        machineOnly2,
-      });
-    };
+    void autosaveWorkout({
+      type: 'b2b_set',
+      exerciseName: ex1.name,
+      partnerName: ex2.name,
+      setIndex: pairIndex + 1,
+      weight: pair.ex1.weight,
+      reps: pair.ex1.reps,
+      partnerWeight: pair.ex2.weight,
+      partnerReps: pair.ex2.reps,
+    });
+  };
 
     if (isSetReview) {
       return (
@@ -2585,16 +2497,6 @@ function ActiveWorkoutContent() {
       weight: set.weight,
       reps: set.reps,
       ...(isWarmupEdit ? { isWarmup: true } : {}),
-    });
-    setInProgressExercise({
-      exerciseIndex: currentExerciseIndex,
-      type: EXERCISE_TYPES.single,
-      completedSets,
-      warmupDecision,
-      warmupCompleted,
-      currentSetIndex,
-      setData,
-      machineOnly,
     });
   };
 
