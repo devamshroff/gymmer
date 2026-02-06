@@ -14,6 +14,8 @@ interface PublicRoutine {
   creator_name: string | null;
   created_at: string;
   last_workout_date?: string | null;
+  like_count?: number | null;
+  clone_count?: number | null;
 }
 
 function normalizeDateString(value: string): string {
@@ -34,6 +36,20 @@ function formatLocalDate(value?: string | null): string {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+  });
+}
+
+function getPopularityScore(routine: PublicRoutine): number {
+  return (routine.like_count ?? 0) + (routine.clone_count ?? 0);
+}
+
+function sortRoutinesByPopularity(list: PublicRoutine[]): PublicRoutine[] {
+  return [...list].sort((a, b) => {
+    const scoreDiff = getPopularityScore(b) - getPopularityScore(a);
+    if (scoreDiff !== 0) return scoreDiff;
+    const aDate = new Date(normalizeDateString(a.created_at)).getTime();
+    const bDate = new Date(normalizeDateString(b.created_at)).getTime();
+    return bDate - aDate;
   });
 }
 
@@ -62,7 +78,7 @@ export default function BrowseRoutinesPage() {
       if (response.ok) {
         const data = await response.json();
         const publicRoutines = data.routines || [];
-        setRoutines(publicRoutines);
+        setRoutines(sortRoutinesByPopularity(publicRoutines));
 
         // Check which ones are already favorited
         const favResponse = await fetch('/api/routines/favorites');
@@ -97,6 +113,17 @@ export default function BrowseRoutinesPage() {
           newFavorites.add(routineId);
         }
         setFavoritedIds(newFavorites);
+        setRoutines((prev) => {
+          const next = prev.map((routine) => {
+            if (routine.id !== routineId) return routine;
+            const delta = isFavorited ? -1 : 1;
+            return {
+              ...routine,
+              like_count: Math.max(0, (routine.like_count ?? 0) + delta),
+            };
+          });
+          return sortRoutinesByPopularity(next);
+        });
       }
     } catch (error) {
       console.error('Error toggling favorite:', error);
@@ -117,6 +144,16 @@ export default function BrowseRoutinesPage() {
 
       if (response.ok) {
         setToast({ message: 'Saved to your routines!', type: 'success' });
+        setRoutines((prev) => {
+          const next = prev.map((routine) => {
+            if (routine.id !== routineId) return routine;
+            return {
+              ...routine,
+              clone_count: (routine.clone_count ?? 0) + 1,
+            };
+          });
+          return sortRoutinesByPopularity(next);
+        });
       } else {
         const data = await response.json();
         setToast({ message: data.error || 'Failed to clone routine', type: 'error' });
@@ -215,6 +252,31 @@ export default function BrowseRoutinesPage() {
                   {routine.description && (
                     <p className="text-zinc-400 text-sm mb-4">{routine.description}</p>
                   )}
+
+                  <div className="flex flex-wrap items-center gap-4 text-sm text-zinc-400 mb-4">
+                    <div className="flex items-center gap-2">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4 text-red-400"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                      </svg>
+                      <span>{routine.like_count ?? 0} Likes</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4 text-blue-300"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path d="M16 1H6a2 2 0 00-2 2v10h2V3h10V1zm3 4H10a2 2 0 00-2 2v14a2 2 0 002 2h9a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H10V7h9v14z" />
+                      </svg>
+                      <span>{routine.clone_count ?? 0} Clones</span>
+                    </div>
+                  </div>
 
                   <div className="flex flex-wrap gap-3">
                     {/* Favorite Button */}

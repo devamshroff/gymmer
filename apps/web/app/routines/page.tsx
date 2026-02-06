@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ButtonHTMLAttributes } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import UsernameSetup from '@/app/components/UsernameSetup';
@@ -17,6 +17,8 @@ interface Routine {
   last_workout_date?: string | null;
   created_at: string;
   updated_at: string;
+  like_count?: number | null;
+  clone_count?: number | null;
 }
 
 interface UserInfo {
@@ -52,6 +54,8 @@ export default function RoutinesPage() {
   const [favoritedRoutines, setFavoritedRoutines] = useState<Routine[]>([]);
   const [publicRoutinesPreview, setPublicRoutinesPreview] = useState<Routine[]>([]);
   const [loading, setLoading] = useState(true);
+  const [draggingRoutineIndex, setDraggingRoutineIndex] = useState<number | null>(null);
+  const [dragOverRoutineIndex, setDragOverRoutineIndex] = useState<number | null>(null);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [showUsernameSetup, setShowUsernameSetup] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -151,6 +155,57 @@ export default function RoutinesPage() {
     setDeleteTarget(null);
   }
 
+  const reorderList = <T,>(list: T[], from: number, to: number): T[] => {
+    const next = list.slice();
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    return next;
+  };
+
+  async function persistRoutineOrder(items: Routine[]) {
+    const order = items.map((routine) => routine.id);
+    const response = await fetch('/api/routines/reorder', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to reorder routines');
+    }
+  }
+
+  async function handleMoveRoutine(index: number, delta: number) {
+    const targetIndex = index + delta;
+    if (targetIndex < 0 || targetIndex >= myRoutines.length) return;
+    const previous = myRoutines;
+    const next = reorderList(previous, index, targetIndex);
+    setMyRoutines(next);
+    try {
+      await persistRoutineOrder(next);
+    } catch (error) {
+      console.error('Error reordering routines:', error);
+      setMyRoutines(previous);
+    }
+  }
+
+  async function handleRoutineDrop(index: number) {
+    if (draggingRoutineIndex === null || draggingRoutineIndex === index) {
+      setDragOverRoutineIndex(null);
+      return;
+    }
+    const previous = myRoutines;
+    const next = reorderList(previous, draggingRoutineIndex, index);
+    setMyRoutines(next);
+    setDraggingRoutineIndex(null);
+    setDragOverRoutineIndex(null);
+    try {
+      await persistRoutineOrder(next);
+    } catch (error) {
+      console.error('Error reordering routines:', error);
+      setMyRoutines(previous);
+    }
+  }
+
   if (showUsernameSetup) {
     return <UsernameSetup onComplete={handleUsernameComplete} />;
   }
@@ -163,7 +218,17 @@ export default function RoutinesPage() {
     );
   }
 
-  const renderRoutineCard = (routine: Routine, isOwned: boolean) => {
+  const renderRoutineCard = (
+    routine: Routine,
+    isOwned: boolean,
+    reorderControls?: {
+      onMoveUp?: () => void;
+      onMoveDown?: () => void;
+      disableMoveUp?: boolean;
+      disableMoveDown?: boolean;
+      dragHandleProps?: ButtonHTMLAttributes<HTMLButtonElement>;
+    }
+  ) => {
     const lastDate = routine.last_workout_date || null;
     const formattedDate = formatLocalDate(lastDate);
     const encodedName = encodeURIComponent(routine.name);
@@ -174,21 +239,76 @@ export default function RoutinesPage() {
         key={`routine-${routine.id}`}
         className="bg-zinc-800 hover:bg-zinc-700 transition-colors rounded-lg p-6 border-2 border-zinc-700"
       >
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div>
-            <h3 className="text-2xl font-semibold text-white">{routine.name}</h3>
-            <div className="text-zinc-400 text-sm">
-              {!isOwned && routine.creator_username && (
-                <span>by @{routine.creator_username}</span>
+        <div className="grid grid-cols-[1fr_auto] grid-rows-[auto_auto] gap-x-4 gap-y-2">
+          <div className="col-span-1 row-span-2 grid grid-cols-[auto_1fr] grid-rows-[auto_auto] gap-x-6 gap-y-2 items-start">
+            {reorderControls?.dragHandleProps && (
+              <button
+                {...reorderControls.dragHandleProps}
+                type="button"
+                className={`self-center row-span-2 p-2 rounded bg-zinc-700/60 text-zinc-200 hover:bg-zinc-600/70 cursor-grab active:cursor-grabbing ${reorderControls.dragHandleProps.className ?? ''}`}
+                aria-label="Drag to reorder"
+                title="Drag to reorder"
+              >
+                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                  <path d="M7 4.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM7 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM7 15.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
+                </svg>
+              </button>
+            )}
+            <div className="col-start-2 row-start-1">
+              <h3 className="text-2xl font-semibold text-white">{routine.name}</h3>
+              {(!isOwned && (routine.creator_username || routine.creator_name)) || (isOwned && routine.description) ? (
+                <div className="text-zinc-400 text-sm mt-1">
+                  {!isOwned && routine.creator_username && (
+                    <span>by @{routine.creator_username}</span>
+                  )}
+                  {!isOwned && !routine.creator_username && routine.creator_name && (
+                    <span>by {routine.creator_name}</span>
+                  )}
+                  {isOwned && routine.description && routine.description}
+                </div>
+              ) : null}
+              {isOwned && (
+                <div className="text-xs text-zinc-500 mt-1">
+                  {routine.like_count ?? 0} Likes | {routine.clone_count ?? 0} Clones
+                </div>
               )}
-              {!isOwned && !routine.creator_username && routine.creator_name && (
-                <span>by {routine.creator_name}</span>
+            </div>
+            <div className="col-start-2 row-start-2 flex flex-wrap items-center gap-2">
+              <Link
+                href={startHref}
+                className="px-4 py-2 rounded-lg font-medium bg-red-900 hover:bg-red-800 text-red-100 transition-colors inline-flex items-center gap-2"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M6.5 4.8a1 1 0 0 1 1 0l10 6a1 1 0 0 1 0 1.8l-10 6A1 1 0 0 1 6 17.8V6.2a1 1 0 0 1 .5-1.4z" />
+                </svg>
+                Start
+              </Link>
+              {isOwned && (
+                <Link
+                  href={`/routines/${routine.id}/edit`}
+                  className="px-4 py-2 rounded-lg font-medium bg-blue-800 hover:bg-blue-700 text-white transition-colors inline-flex items-center gap-2"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d="M4 17.3V20h2.7l8-8-2.7-2.7-8 8zm15.7-9.6a1 1 0 0 0 0-1.4l-2-2a1 1 0 0 0-1.4 0l-1.6 1.6L18.1 9l1.6-1.3z" />
+                  </svg>
+                  Edit
+                </Link>
               )}
-              {isOwned && routine.description && routine.description}
-              {isOwned && !routine.description && '\u00A0'}
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="col-start-2 row-start-1 flex items-center gap-2 justify-end">
             <div className="text-sm text-zinc-500 whitespace-nowrap shrink-0">
               Last:{' '}
               <span className={lastDate ? "text-blue-300" : "text-zinc-600"}>
@@ -207,49 +327,17 @@ export default function RoutinesPage() {
               </button>
             )}
           </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href={startHref}
-            className="px-4 py-2 rounded-lg font-medium bg-red-900 hover:bg-red-800 text-red-100 transition-colors inline-flex items-center gap-2"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path d="M6.5 4.8a1 1 0 0 1 1 0l10 6a1 1 0 0 1 0 1.8l-10 6A1 1 0 0 1 6 17.8V6.2a1 1 0 0 1 .5-1.4z" />
-            </svg>
-            Start
-          </Link>
           {isOwned && (
-            <>
-              <Link
-                href={`/routines/${routine.id}/edit`}
-                className="px-4 py-2 rounded-lg font-medium bg-blue-800 hover:bg-blue-700 text-white transition-colors inline-flex items-center gap-2"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path d="M4 17.3V20h2.7l8-8-2.7-2.7-8 8zm15.7-9.6a1 1 0 0 0 0-1.4l-2-2a1 1 0 0 0-1.4 0l-1.6 1.6L18.1 9l1.6-1.3z" />
-                </svg>
-                Edit
-              </Link>
+            <div className="col-start-2 row-start-2 flex items-center justify-end self-center">
               <button
                 onClick={() => setDeleteTarget(routine)}
-                className="ml-auto p-2.5 text-red-700 hover:text-red-600"
+                className="p-2 text-red-700 hover:text-red-600 translate-y-2"
                 aria-label="Delete routine"
                 title="Delete routine"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  className="h-6 w-6"
+                  className="h-5.5 w-5.5"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -265,7 +353,7 @@ export default function RoutinesPage() {
                   <path d="M14 11v6" />
                 </svg>
               </button>
-            </>
+            </div>
           )}
         </div>
       </div>
@@ -325,16 +413,48 @@ export default function RoutinesPage() {
         {/* My Routines Section */}
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-zinc-300 mb-4">My Routines</h2>
-          <div className="space-y-4">
-            {myRoutines.length === 0 ? (
-              <div className="text-center text-zinc-500 text-lg py-4">
-                No routines yet. Create one above or browse public routines.
+        <div className="space-y-4">
+          {myRoutines.length === 0 ? (
+            <div className="text-center text-zinc-500 text-lg py-4">
+              No routines yet. Create one above or browse public routines.
+            </div>
+          ) : (
+            myRoutines.map((routine, index) => (
+              <div
+                key={`routine-${routine.id}`}
+                className={dragOverRoutineIndex === index ? 'ring-2 ring-emerald-500/70 rounded-lg' : ''}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDragOverRoutineIndex(index);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  handleRoutineDrop(index);
+                }}
+              >
+                {renderRoutineCard(routine, true, {
+                  onMoveUp: () => handleMoveRoutine(index, -1),
+                  onMoveDown: () => handleMoveRoutine(index, 1),
+                  disableMoveUp: index === 0,
+                  disableMoveDown: index === myRoutines.length - 1,
+                  dragHandleProps: {
+                    draggable: true,
+                    onDragStart: (event) => {
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData('text/plain', String(index));
+                      setDraggingRoutineIndex(index);
+                    },
+                    onDragEnd: () => {
+                      setDraggingRoutineIndex(null);
+                      setDragOverRoutineIndex(null);
+                    },
+                  },
+                })}
               </div>
-            ) : (
-              myRoutines.map((routine) => renderRoutineCard(routine, true))
-            )}
-          </div>
+            ))
+          )}
         </div>
+      </div>
 
         {/* Favorited Routines Section */}
         {favoritedRoutines.length > 0 && (
@@ -372,6 +492,9 @@ export default function RoutinesPage() {
                       <h3 className="text-lg font-semibold text-white">{routine.name}</h3>
                       <p className="text-sm text-zinc-400">
                         by <span className="text-purple-300">@{routine.creator_username || routine.creator_name || 'Anonymous'}</span>
+                      </p>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        {routine.like_count ?? 0} Likes | {routine.clone_count ?? 0} Clones
                       </p>
                     </div>
                   </div>

@@ -32,6 +32,7 @@ export interface WorkoutFlowState {
   currentExerciseInPair: number;
   completedSets: SessionSetData[];
   completedPairs: Array<{ ex1: SessionSetData; ex2: SessionSetData }>;
+  extraSetsByExerciseIndex: Record<number, number>;
   setData: SessionSetData;
   setData1: SessionSetData;
   setData2: SessionSetData;
@@ -77,6 +78,7 @@ export const DEFAULT_WORKOUT_FLOW_STATE: WorkoutFlowState = {
   currentExerciseInPair: 0,
   completedSets: [],
   completedPairs: [],
+  extraSetsByExerciseIndex: {},
   setData: { weight: 0, reps: 0 },
   setData1: { weight: 0, reps: 0 },
   setData2: { weight: 0, reps: 0 },
@@ -169,6 +171,8 @@ export function getWorkoutSession(): WorkoutSessionData | null {
   parsed.sessionId = Number.isFinite(nextSessionId) ? nextSessionId : null;
   if (!parsed.flow) {
     parsed.flow = { ...DEFAULT_WORKOUT_FLOW_STATE };
+  } else {
+    parsed.flow = { ...DEFAULT_WORKOUT_FLOW_STATE, ...parsed.flow };
   }
   cachedSession = parsed;
   cachedSessionRaw = data;

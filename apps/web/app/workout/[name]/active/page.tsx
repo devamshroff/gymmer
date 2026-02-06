@@ -222,6 +222,7 @@ function ActiveWorkoutContent() {
     currentExerciseInPair,
     completedSets,
     completedPairs,
+    extraSetsByExerciseIndex,
     setData,
     setData1,
     setData2,
@@ -274,6 +275,9 @@ function ActiveWorkoutContent() {
       prev: Array<{ ex1: SetData; ex2: SetData }>
     ) => Array<{ ex1: SetData; ex2: SetData }>)
   ) => setFlowField('completedPairs', value);
+  const setExtraSetsByExerciseIndex = (
+    value: Record<number, number> | ((prev: Record<number, number>) => Record<number, number>)
+  ) => setFlowField('extraSetsByExerciseIndex', value);
   const setSetData = (value: SetData | ((prev: SetData) => SetData)) => (
     setFlowField('setData', value)
   );
@@ -300,6 +304,57 @@ function ActiveWorkoutContent() {
   const setTransitionTimeRemaining = (value: number | ((prev: number) => number)) => (
     setFlowField('transitionTimeRemaining', value)
   );
+
+  const getExtraSetsForExercise = (exerciseIndex: number) => (
+    extraSetsByExerciseIndex?.[exerciseIndex] ?? 0
+  );
+  const getTargetSetCount = (exerciseIndex: number, baseSetCount: number) => (
+    baseSetCount + getExtraSetsForExercise(exerciseIndex)
+  );
+  const incrementExtraSetsForExercise = (exerciseIndex: number) => {
+    setExtraSetsByExerciseIndex((prev) => ({
+      ...prev,
+      [exerciseIndex]: (prev?.[exerciseIndex] ?? 0) + 1,
+    }));
+  };
+
+  const shiftExtraSetsForInsert = (insertIndex: number) => {
+    setExtraSetsByExerciseIndex((prev) => {
+      if (!prev) return prev;
+      const next: Record<number, number> = {};
+      for (const [key, value] of Object.entries(prev)) {
+        const index = Number(key);
+        if (!Number.isFinite(index)) continue;
+        if (index >= insertIndex) {
+          next[index + 1] = value;
+        } else {
+          next[index] = value;
+        }
+      }
+      return next;
+    });
+  };
+
+  const shiftCompletedCacheForInsert = (insertIndex: number) => {
+    setCompletedExercisesCache((prev) => prev.map((entry) => (
+      entry.exerciseIndex >= insertIndex
+        ? { ...entry, exerciseIndex: entry.exerciseIndex + 1 }
+        : entry
+    )));
+  };
+
+  const clearCompletedCacheForIndex = (exerciseIndex: number) => {
+    setCompletedExercisesCache((prev) => prev.filter((entry) => entry.exerciseIndex !== exerciseIndex));
+  };
+
+  const clearExtraSetsForIndex = (exerciseIndex: number) => {
+    setExtraSetsByExerciseIndex((prev) => {
+      if (!prev || prev[exerciseIndex] === undefined) return prev;
+      const next = { ...prev };
+      delete next[exerciseIndex];
+      return next;
+    });
+  };
 
   const buildCompletedCacheFromSession = (plan: WorkoutPlan, routineId: number | null) => {
     const session = getWorkoutSession();
@@ -546,16 +601,45 @@ function ActiveWorkoutContent() {
         setViewingExerciseIndex(viewingIndex);
         setShowSetReview(flowState.showSetReview);
 
+        const cachedEntry = cache.find((entry) => entry.exerciseIndex === startIndex);
+
         // Initialize exercise at startIndex
         if (exerciseCount > 0) {
           const exercise = resolvedWorkout.exercises[startIndex];
-          const shouldInit = !flowState.initialized || flowState.currentExerciseIndex !== startIndex;
+          const baseShouldInit = !flowState.initialized || flowState.currentExerciseIndex !== startIndex;
+          const shouldInitSingle = exercise.type === EXERCISE_TYPES.single
+            && !resolveHasWarmup(exercise as SingleExercise)
+            && flowState.currentSetIndex === 0
+            && (flowState.completedSets?.length ?? 0) === 0;
+          const shouldInitB2B = exercise.type === EXERCISE_TYPES.b2b
+            && flowState.currentSetIndex === 0
+            && (flowState.completedPairs?.length ?? 0) === 0;
+          const shouldInit = baseShouldInit || shouldInitSingle || shouldInitB2B;
+
           if (exercise.type === EXERCISE_TYPES.single) {
             if (shouldInit) {
-              setCompletedSets([]);
+              const cachedSingle = cachedEntry?.type === EXERCISE_TYPES.single ? cachedEntry : null;
+              const cachedSets = cachedSingle?.completedSets ?? [];
+              const hasCachedSets = cachedSets.length > 0;
+              setCompletedSets(hasCachedSets ? cachedSets : []);
               setCompletedPairs([]);
               setCurrentExerciseInPair(0);
               initSingleExerciseState(exercise);
+              if (hasCachedSets) {
+                const warmupWasCompleted = !!cachedSingle?.warmupCompleted;
+                const workingCount = warmupWasCompleted
+                  ? Math.max(cachedSets.length - 1, 0)
+                  : cachedSets.length;
+                setWarmupCompleted(warmupWasCompleted);
+                setWarmupDecision(resolveHasWarmup(exercise) && warmupWasCompleted ? 'include' : 'skip');
+                setCurrentSetIndex(Math.max(1, workingCount + 1));
+                if (workingCount > exercise.sets) {
+                  setExtraSetsByExerciseIndex((prev) => ({
+                    ...prev,
+                    [startIndex]: Math.max(prev?.[startIndex] ?? 0, workingCount - exercise.sets),
+                  }));
+                }
+              }
               setInitialized(true);
             }
           } else {
@@ -570,6 +654,9 @@ function ActiveWorkoutContent() {
             setMachineOnlyHoldWeight1(b2bEx.exercises[0].targetWeight);
             setMachineOnlyHoldWeight2(b2bEx.exercises[1].targetWeight);
             if (shouldInit) {
+              const cachedB2B = cachedEntry?.type === EXERCISE_TYPES.b2b ? cachedEntry : null;
+              const cachedPairs = cachedB2B?.completedPairs ?? [];
+              const hasCachedPairs = cachedPairs.length > 0;
               setSetData1({
                 weight: defaultMachineOnly1 ? 0 : b2bEx.exercises[0].targetWeight,
                 reps: b2bEx.exercises[0].targetReps,
@@ -580,11 +667,17 @@ function ActiveWorkoutContent() {
               });
               setMachineOnly1(defaultMachineOnly1);
               setMachineOnly2(defaultMachineOnly2);
-              setCurrentSetIndex(1);
+              setCompletedPairs(hasCachedPairs ? cachedPairs : []);
+              setCurrentSetIndex(hasCachedPairs ? cachedPairs.length + 1 : 1);
               setCurrentExerciseInPair(0); // Start with first exercise
               setWarmupDecision('skip');
               setWarmupCompleted(false);
-              setCompletedPairs([]);
+              if (cachedPairs.length > b2bEx.exercises[0].sets) {
+                setExtraSetsByExerciseIndex((prev) => ({
+                  ...prev,
+                  [startIndex]: Math.max(prev?.[startIndex] ?? 0, cachedPairs.length - b2bEx.exercises[0].sets),
+                }));
+              }
               setInitialized(true);
             }
           }
@@ -725,7 +818,7 @@ function ActiveWorkoutContent() {
   const reviewNextLabel = showSetReview ? 'Back to Set' : 'Next';
 
   // B2B Exercise Handlers
-  const handleCompleteB2BExercise = () => {
+  const handleCompleteB2BExercise = (addExtraSet = false) => {
     const b2bExercise = currentExercise as B2BExercise;
     const b2bRestSeconds = Math.max(0, supersetRestSeconds);
 
@@ -735,7 +828,8 @@ function ActiveWorkoutContent() {
     } else {
       // Completed both exercises in the pair
       const newCompletedPairs = [...completedPairs, { ex1: setData1, ex2: setData2 }];
-      const totalSets = b2bExercise.exercises[0].sets;
+      const totalSets = getTargetSetCount(currentExerciseIndex, b2bExercise.exercises[0].sets)
+        + (addExtraSet ? 1 : 0);
 
       console.log('B2B Completion Check:', {
         newCompletedPairsLength: newCompletedPairs.length,
@@ -747,6 +841,10 @@ function ActiveWorkoutContent() {
       if (newCompletedPairs.length > totalSets) {
         console.log('Already completed all sets, ignoring duplicate click');
         return;
+      }
+
+      if (addExtraSet) {
+        incrementExtraSetsForExercise(currentExerciseIndex);
       }
 
       void autosaveWorkout({
@@ -814,14 +912,20 @@ function ActiveWorkoutContent() {
   };
 
   // Single Exercise Handlers
-  const handleCompleteSet = () => {
+  const handleCompleteSet = (addExtraSet = false) => {
     const newCompletedSets = [...completedSets, setData];
     setCompletedSets(newCompletedSets);
 
     const exercise = currentExercise as SingleExercise;
     const hasWarmup = resolveHasWarmup(exercise);
+    const targetSetCount = getTargetSetCount(currentExerciseIndex, exercise.sets)
+      + (addExtraSet ? 1 : 0);
     const restSeconds = Math.max(0, restTimeSeconds);
     const isWarmupSet = hasWarmup && warmupDecision === 'include' && currentSetIndex === 0;
+
+    if (addExtraSet) {
+      incrementExtraSetsForExercise(currentExerciseIndex);
+    }
 
     void autosaveWorkout({
       type: 'single_set',
@@ -836,7 +940,7 @@ function ActiveWorkoutContent() {
       setWarmupCompleted(true);
     }
 
-    if (currentSetIndex < exercise.sets) {
+    if (currentSetIndex < targetSetCount) {
       // More sets to go - start rest timer
       setCurrentSetIndex(currentSetIndex + 1);
       if (restSeconds > 0) {
@@ -1171,6 +1275,7 @@ function ActiveWorkoutContent() {
     setLastExerciseLog(null);
     setLastPartnerExerciseLog(null);
     setShowSetReview(false);
+    clearExtraSetsForIndex(currentExerciseIndex);
 
     if (exercise.type === EXERCISE_TYPES.single) {
       initSingleExerciseState(exercise);
@@ -1254,7 +1359,7 @@ function ActiveWorkoutContent() {
     });
   };
 
-  const fetchLastSetSummary = async (exerciseName: string): Promise<LastSetSummary> => {
+  async function fetchLastSetSummary(exerciseName: string): Promise<LastSetSummary> {
     try {
       const response = await fetch(
         `/api/last-exercise?exerciseName=${encodeURIComponent(exerciseName)}`
@@ -1266,9 +1371,9 @@ function ActiveWorkoutContent() {
       console.error('Error fetching last exercise log:', error);
       return null;
     }
-  };
+  }
 
-  const refreshLastSetSummaries = async (exerciseNames: string[]) => {
+  async function refreshLastSetSummaries(exerciseNames: string[]) {
     const entries = await Promise.all(
       exerciseNames.map(async (name) => [name, await fetchLastSetSummary(name)] as const)
     );
@@ -1276,7 +1381,7 @@ function ActiveWorkoutContent() {
       ...prev,
       ...Object.fromEntries(entries),
     }));
-  };
+  }
 
   const runWithChangeWarning = (action: () => void) => {
     if (!workout) return;
@@ -1319,9 +1424,12 @@ function ActiveWorkoutContent() {
     const insertIndex = currentExerciseIndex;
 
     if (exerciseActionMode === 'add') {
+      shiftExtraSetsForInsert(insertIndex);
+      shiftCompletedCacheForInsert(insertIndex);
       updatedExercises.splice(insertIndex, 0, nextExercise);
       resetExerciseStateFor(nextExercise);
     } else {
+      clearCompletedCacheForIndex(currentExerciseIndex);
       updatedExercises[currentExerciseIndex] = nextExercise;
       resetExerciseStateFor(nextExercise);
     }
@@ -1339,9 +1447,12 @@ function ActiveWorkoutContent() {
     const insertIndex = currentExerciseIndex;
 
     if (exerciseActionMode === 'add') {
+      shiftExtraSetsForInsert(insertIndex);
+      shiftCompletedCacheForInsert(insertIndex);
       updatedExercises.splice(insertIndex, 0, nextExercise);
       resetExerciseStateFor(nextExercise);
     } else {
+      clearCompletedCacheForIndex(currentExerciseIndex);
       updatedExercises[currentExerciseIndex] = nextExercise;
       resetExerciseStateFor(nextExercise);
     }
@@ -1493,6 +1604,7 @@ function ActiveWorkoutContent() {
     const showMachineToggle2 = ex2Machine && !ex2RepsOnly;
     const showMetricInput1 = !ex1RepsOnly && !(ex1Machine && machineOnly1);
     const showMetricInput2 = !ex2RepsOnly && !(ex2Machine && machineOnly2);
+    const targetSetCount = getTargetSetCount(currentExerciseIndex, ex1.sets);
 
     // In review mode, show cached completed pairs
     const displayCompletedPairs = isReviewMode && viewingCachedData
@@ -1544,17 +1656,76 @@ function ActiveWorkoutContent() {
     const commitActivePair = (pairIndex: number) => {
       const pair = completedPairs[pairIndex];
       if (!pair) return;
-    void autosaveWorkout({
-      type: 'b2b_set',
-      exerciseName: ex1.name,
-      partnerName: ex2.name,
-      setIndex: pairIndex + 1,
-      weight: pair.ex1.weight,
-      reps: pair.ex1.reps,
-      partnerWeight: pair.ex2.weight,
-      partnerReps: pair.ex2.reps,
-    });
-  };
+      void autosaveWorkout({
+        type: 'b2b_set',
+        exerciseName: ex1.name,
+        partnerName: ex2.name,
+        setIndex: pairIndex + 1,
+        weight: pair.ex1.weight,
+        reps: pair.ex1.reps,
+        partnerWeight: pair.ex2.weight,
+        partnerReps: pair.ex2.reps,
+      });
+    };
+
+    const handleAddReviewPair = () => {
+      if (!viewingCachedData) return;
+      const sessionExerciseIndex = viewingCachedData.sessionExerciseIndex;
+      if (sessionExerciseIndex === null || sessionExerciseIndex === undefined) return;
+
+      const lastPair = displayCompletedPairs[displayCompletedPairs.length - 1];
+      const fallbackPair = {
+        ex1: {
+          weight: ex1IsWeightMetric ? ex1.targetWeight : 0,
+          reps: ex1.targetReps,
+        },
+        ex2: {
+          weight: ex2IsWeightMetric ? ex2.targetWeight : 0,
+          reps: ex2.targetReps,
+        },
+      };
+      const nextPair = lastPair ?? fallbackPair;
+      const nextSetIndex = displayCompletedPairs.length + 1;
+      const nextPairCount = displayCompletedPairs.length + 1;
+      if (nextPairCount > ex1.sets) {
+        setExtraSetsByExerciseIndex((prev) => ({
+          ...prev,
+          [viewingExerciseIndex]: Math.max(prev?.[viewingExerciseIndex] ?? 0, nextPairCount - ex1.sets),
+        }));
+      }
+
+      updateExerciseInSession(sessionExerciseIndex, (exercise) => {
+        const nextSets = [...(exercise.sets || []), { ...nextPair.ex1 }];
+        const nextPartner = exercise.b2bPartner
+          ? { ...exercise.b2bPartner, sets: [...(exercise.b2bPartner.sets || []), { ...nextPair.ex2 }] }
+          : {
+              name: ex2.name,
+              sets: [{ ...nextPair.ex2 }],
+            };
+        return {
+          ...exercise,
+          sets: nextSets,
+          b2bPartner: nextPartner,
+        };
+      });
+
+      setCompletedExercisesCache((prev) => prev.map((cache) => {
+        if (cache.exerciseIndex !== viewingExerciseIndex) return cache;
+        const nextPairs = [...(cache.completedPairs || []), { ...nextPair }];
+        return { ...cache, completedPairs: nextPairs };
+      }));
+
+      void autosaveWorkout({
+        type: 'b2b_set',
+        exerciseName: ex1.name,
+        partnerName: ex2.name,
+        setIndex: nextSetIndex,
+        weight: nextPair.ex1.weight,
+        reps: nextPair.ex1.reps,
+        partnerWeight: nextPair.ex2.weight,
+        partnerReps: nextPair.ex2.reps,
+      });
+    };
 
     if (isSetReview) {
       return (
@@ -1810,7 +1981,15 @@ function ActiveWorkoutContent() {
               </div>
             )}
 
-            <div className="flex items-center gap-3 mt-6">
+          <div className="flex flex-wrap items-center gap-3 mt-6">
+            {viewingCachedData && displayCompletedPairs.length > 0 && (
+              <button
+                onClick={handleAddReviewPair}
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+              >
+                + Add another set
+                </button>
+              )}
               <button
                 onClick={() => openHistory([ex1.name, ex2.name])}
                 className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
@@ -1997,7 +2176,7 @@ function ActiveWorkoutContent() {
           <div className="text-center mb-6">
             <div className="text-purple-400 text-sm font-bold mb-2">🔄 SUPERSET</div>
             <div className="text-white text-lg font-semibold mb-1">
-              SET {currentSetIndex} of {ex1.sets}
+              SET {currentSetIndex} of {targetSetCount}
             </div>
           </div>
 
@@ -2176,7 +2355,7 @@ function ActiveWorkoutContent() {
                 </div>
 
                 <button
-                  onClick={handleCompleteB2BExercise}
+                  onClick={() => handleCompleteB2BExercise()}
                   className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg text-lg font-bold transition-colors"
                 >
                   ✓ Complete Exercise 1
@@ -2313,12 +2492,29 @@ function ActiveWorkoutContent() {
                 </div>
 
                 <div className="space-y-3">
-                  <button
-                    onClick={handleCompleteB2BExercise}
-                    className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg text-lg font-bold transition-colors"
-                  >
-                    ✓ Complete Exercise 2
-                  </button>
+                  {(!isReviewMode && currentExerciseInPair === 1 && currentSetIndex === targetSetCount && currentSetIndex >= 3) ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={() => handleCompleteB2BExercise(true)}
+                        className="w-full bg-rose-700 hover:bg-rose-600 text-white py-3 rounded-lg text-sm font-bold transition-colors"
+                      >
+                        ✓ Complete Set {currentSetIndex} + Add another set
+                      </button>
+                      <button
+                        onClick={() => handleCompleteB2BExercise()}
+                        className="w-full bg-rose-700 hover:bg-rose-600 text-white py-3 rounded-lg text-sm font-bold transition-colors"
+                      >
+                        ✓ Complete Set {currentSetIndex}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleCompleteB2BExercise()}
+                      className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg text-lg font-bold transition-colors"
+                    >
+                      ✓ Complete Exercise 2
+                    </button>
+                  )}
                 </div>
               </>
             ) : (
@@ -2446,6 +2642,12 @@ function ActiveWorkoutContent() {
   const weightInputValue = isWarmupSet && warmupSuggestionWeight === null && showMetricInput && setData.weight === 0
     ? ''
     : formatMetricValueInput(setData.weight, metricInfo);
+  const targetSetCount = getTargetSetCount(currentExerciseIndex, exercise.sets);
+  const showExtraSetOption = !isReviewMode
+    && !showWarmupPrompt
+    && !isWarmupSet
+    && currentSetIndex === targetSetCount
+    && currentSetIndex >= 3;
 
   const commitReviewSingleSet = (setIndex: number) => {
     if (!viewingCachedData?.completedSets) return;
@@ -2497,6 +2699,55 @@ function ActiveWorkoutContent() {
       weight: set.weight,
       reps: set.reps,
       ...(isWarmupEdit ? { isWarmup: true } : {}),
+    });
+  };
+
+  const handleAddReviewSingleSet = () => {
+    if (!viewingCachedData) return;
+    const sessionExerciseIndex = viewingCachedData.sessionExerciseIndex;
+    if (sessionExerciseIndex === null || sessionExerciseIndex === undefined) return;
+
+    const defaultWorkingSet = {
+      weight: isWeightMetric(metricInfo.primaryMetric) ? exercise.targetWeight : 0,
+      reps: exercise.targetReps,
+    };
+    const lastSet = displayCompletedSets[displayCompletedSets.length - 1];
+    const nextSet = (displayWarmupCompleted && displayCompletedSets.length === 1)
+      ? defaultWorkingSet
+      : (lastSet ?? defaultWorkingSet);
+    const nextSetIndex = displayWarmupCompleted
+      ? displayCompletedSets.length
+      : displayCompletedSets.length + 1;
+    const nextWorkingCount = displayWarmupCompleted
+      ? displayCompletedSets.length
+      : displayCompletedSets.length + 1;
+    if (nextWorkingCount > exercise.sets) {
+      setExtraSetsByExerciseIndex((prev) => ({
+        ...prev,
+        [viewingExerciseIndex]: Math.max(prev?.[viewingExerciseIndex] ?? 0, nextWorkingCount - exercise.sets),
+      }));
+    }
+
+    updateExerciseInSession(sessionExerciseIndex, (sessionExercise) => {
+      const nextSets = [...(sessionExercise.sets || []), { weight: nextSet.weight, reps: nextSet.reps }];
+      return {
+        ...sessionExercise,
+        sets: nextSets,
+      };
+    });
+
+    setCompletedExercisesCache((prev) => prev.map((cache) => {
+      if (cache.exerciseIndex !== viewingExerciseIndex) return cache;
+      const nextCompleted = [...(cache.completedSets || []), { weight: nextSet.weight, reps: nextSet.reps }];
+      return { ...cache, completedSets: nextCompleted };
+    }));
+
+    void autosaveWorkout({
+      type: 'single_set',
+      exerciseName: exercise.name,
+      setIndex: nextSetIndex,
+      weight: nextSet.weight,
+      reps: nextSet.reps,
     });
   };
 
@@ -2669,7 +2920,15 @@ function ActiveWorkoutContent() {
             </div>
           )}
 
-          <div className="flex items-center gap-3 mt-6">
+          <div className="flex flex-wrap items-center gap-3 mt-6">
+            {viewingCachedData && displayCompletedSets.length > 0 && (
+              <button
+                onClick={handleAddReviewSingleSet}
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+              >
+                + Add another set
+              </button>
+            )}
             <button
               onClick={() => openHistory([exercise.name])}
               className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
@@ -3033,7 +3292,7 @@ function ActiveWorkoutContent() {
                   Skip Warmup
                 </button>
                 <button
-                  onClick={handleCompleteSet}
+                  onClick={() => handleCompleteSet()}
                   className="bg-rose-700 hover:bg-rose-600 text-white py-4 rounded-lg text-lg font-bold transition-colors"
                 >
                   ✓ Complete Warmup
@@ -3041,12 +3300,29 @@ function ActiveWorkoutContent() {
               </div>
             ) : (
               <div className="space-y-3">
-                <button
-                  onClick={handleCompleteSet}
-                  className="w-full bg-rose-700 hover:bg-rose-600 text-white py-4 rounded-lg text-xl font-bold transition-colors"
-                >
-                  ✓ Complete Set {currentSetIndex}
-                </button>
+                {showExtraSetOption ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => handleCompleteSet(true)}
+                      className="w-full bg-rose-700 hover:bg-rose-600 text-white py-4 rounded-lg text-base font-bold transition-colors"
+                    >
+                      ✓ Complete Set {currentSetIndex} + Add another set
+                    </button>
+                    <button
+                      onClick={() => handleCompleteSet()}
+                      className="w-full bg-rose-700 hover:bg-rose-600 text-white py-4 rounded-lg text-base font-bold transition-colors"
+                    >
+                      ✓ Complete Set {currentSetIndex}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleCompleteSet()}
+                    className="w-full bg-rose-700 hover:bg-rose-600 text-white py-4 rounded-lg text-xl font-bold transition-colors"
+                  >
+                    ✓ Complete Set {currentSetIndex}
+                  </button>
+                )}
               </div>
             )}
           </div>

@@ -110,7 +110,15 @@ describe('Phase 2: Public Routines Functions', () => {
         { id: 1, name: 'Routine 1', is_public: 1, creator_username: 'user1' },
         { id: 2, name: 'Routine 2', is_public: 1, creator_username: 'user2' },
       ];
-      mockExecute.mockResolvedValueOnce({ rows: routines });
+      mockExecute.mockImplementation(({ sql }) => {
+        if (typeof sql === 'string' && sql.includes('PRAGMA table_info(routines)')) {
+          return Promise.resolve({ rows: [{ name: 'like_count' }, { name: 'clone_count' }] });
+        }
+        if (typeof sql === 'string' && sql.includes('FROM routines r')) {
+          return Promise.resolve({ rows: routines });
+        }
+        return Promise.resolve({ rows: [] });
+      });
 
       const result = await getPublicRoutines();
 
@@ -119,16 +127,31 @@ describe('Phase 2: Public Routines Functions', () => {
         sql: expect.stringContaining('WHERE r.is_public = 1'),
         args: [],
       });
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: expect.stringContaining('ORDER BY (COALESCE(r.like_count, 0) + COALESCE(r.clone_count, 0)) DESC'),
+        args: [],
+      });
     });
 
     it('excludes specific user when provided', async () => {
       const routines = [
         { id: 2, name: 'Routine 2', is_public: 1, creator_username: 'user2' },
       ];
-      mockExecute
-        .mockResolvedValueOnce({ rows: [{ name: 'routine_id' }] })
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: routines });
+      mockExecute.mockImplementation(({ sql }) => {
+        if (typeof sql === 'string' && sql.includes('PRAGMA table_info(routines)')) {
+          return Promise.resolve({ rows: [{ name: 'like_count' }, { name: 'clone_count' }] });
+        }
+        if (typeof sql === 'string' && sql.includes('PRAGMA table_info(workout_sessions)')) {
+          return Promise.resolve({ rows: [{ name: 'routine_id' }] });
+        }
+        if (typeof sql === 'string' && sql.includes('UPDATE workout_sessions')) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (typeof sql === 'string' && sql.includes('FROM routines r')) {
+          return Promise.resolve({ rows: routines });
+        }
+        return Promise.resolve({ rows: [] });
+      });
 
       const result = await getPublicRoutines('user1-id');
 
@@ -246,7 +269,15 @@ describe('Phase 2: Favorites Functions', () => {
 
   describe('addFavorite', () => {
     it('adds a favorite entry', async () => {
-      mockExecute.mockResolvedValueOnce({ rows: [] });
+      mockExecute.mockImplementation(({ sql }) => {
+        if (typeof sql === 'string' && sql.includes('PRAGMA table_info(routines)')) {
+          return Promise.resolve({ rows: [{ name: 'like_count' }, { name: 'clone_count' }] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT changes()')) {
+          return Promise.resolve({ rows: [{ changes: 1 }] });
+        }
+        return Promise.resolve({ rows: [] });
+      });
 
       await addFavorite('user-123', 5);
 
@@ -254,18 +285,34 @@ describe('Phase 2: Favorites Functions', () => {
         sql: expect.stringContaining('INSERT OR IGNORE INTO routine_favorites'),
         args: ['user-123', 5],
       });
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: expect.stringContaining('UPDATE routines SET like_count'),
+        args: [5],
+      });
     });
   });
 
   describe('removeFavorite', () => {
     it('removes a favorite entry', async () => {
-      mockExecute.mockResolvedValueOnce({ rows: [] });
+      mockExecute.mockImplementation(({ sql }) => {
+        if (typeof sql === 'string' && sql.includes('PRAGMA table_info(routines)')) {
+          return Promise.resolve({ rows: [{ name: 'like_count' }, { name: 'clone_count' }] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT changes()')) {
+          return Promise.resolve({ rows: [{ changes: 1 }] });
+        }
+        return Promise.resolve({ rows: [] });
+      });
 
       await removeFavorite('user-123', 5);
 
       expect(mockExecute).toHaveBeenCalledWith({
         sql: expect.stringContaining('DELETE FROM routine_favorites'),
         args: ['user-123', 5],
+      });
+      expect(mockExecute).toHaveBeenCalledWith({
+        sql: expect.stringContaining('UPDATE routines'),
+        args: [5],
       });
     });
   });
@@ -336,22 +383,33 @@ describe('Phase 2: Clone Routine', () => {
 
   describe('cloneRoutine', () => {
     it('clones a routine with all associated data', async () => {
-      // Mock getting original routine
-      mockExecute.mockResolvedValueOnce({
-        rows: [{ id: 1, name: 'Original Routine', description: 'Test' }],
+      mockExecute.mockImplementation(({ sql }) => {
+        if (typeof sql === 'string' && sql.includes('PRAGMA table_info(routines)')) {
+          return Promise.resolve({ rows: [{ name: 'like_count' }, { name: 'clone_count' }] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routines WHERE id = ?')) {
+          return Promise.resolve({ rows: [{ id: 1, name: 'Original Routine', description: 'Test', is_public: 1 }] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT id FROM routines WHERE name = ? AND user_id = ?')) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (typeof sql === 'string' && sql.includes('INSERT INTO routines')) {
+          return Promise.resolve({ lastInsertRowid: 10 });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_exercises')) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_pre_stretches')) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_post_stretches')) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_cardio')) {
+          return Promise.resolve({ rows: [] });
+        }
+        return Promise.resolve({ rows: [] });
       });
-      // Mock checking for existing name (no conflict)
-      mockExecute.mockResolvedValueOnce({ rows: [] });
-      // Mock creating new routine
-      mockExecute.mockResolvedValueOnce({ lastInsertRowid: 10 });
-      // Mock getting exercises
-      mockExecute.mockResolvedValueOnce({ rows: [] });
-      // Mock getting pre-stretches
-      mockExecute.mockResolvedValueOnce({ rows: [] });
-      // Mock getting post-stretches
-      mockExecute.mockResolvedValueOnce({ rows: [] });
-      // Mock getting cardio
-      mockExecute.mockResolvedValueOnce({ rows: [] });
 
       const newId = await cloneRoutine(1, 'new-user');
 
@@ -359,24 +417,35 @@ describe('Phase 2: Clone Routine', () => {
     });
 
     it('appends number suffix when name already exists', async () => {
-      // Mock getting original routine
-      mockExecute.mockResolvedValueOnce({
-        rows: [{ id: 1, name: 'Push Day', description: null }],
+      let nameChecks = 0;
+      mockExecute.mockImplementation(({ sql }) => {
+        if (typeof sql === 'string' && sql.includes('PRAGMA table_info(routines)')) {
+          return Promise.resolve({ rows: [{ name: 'like_count' }, { name: 'clone_count' }] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routines WHERE id = ?')) {
+          return Promise.resolve({ rows: [{ id: 1, name: 'Push Day', description: null, is_public: 1 }] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT id FROM routines WHERE name = ? AND user_id = ?')) {
+          nameChecks += 1;
+          return Promise.resolve({ rows: nameChecks === 1 ? [{ id: 5 }] : [] });
+        }
+        if (typeof sql === 'string' && sql.includes('INSERT INTO routines')) {
+          return Promise.resolve({ lastInsertRowid: 11 });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_exercises')) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_pre_stretches')) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_post_stretches')) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_cardio')) {
+          return Promise.resolve({ rows: [] });
+        }
+        return Promise.resolve({ rows: [] });
       });
-      // Mock checking for existing name - conflict found
-      mockExecute.mockResolvedValueOnce({ rows: [{ id: 5 }] });
-      // Mock checking with (2) suffix - no conflict
-      mockExecute.mockResolvedValueOnce({ rows: [] });
-      // Mock creating new routine
-      mockExecute.mockResolvedValueOnce({ lastInsertRowid: 11 });
-      // Mock getting exercises
-      mockExecute.mockResolvedValueOnce({ rows: [] });
-      // Mock getting pre-stretches
-      mockExecute.mockResolvedValueOnce({ rows: [] });
-      // Mock getting post-stretches
-      mockExecute.mockResolvedValueOnce({ rows: [] });
-      // Mock getting cardio
-      mockExecute.mockResolvedValueOnce({ rows: [] });
 
       await cloneRoutine(1, 'new-user');
 
@@ -388,38 +457,55 @@ describe('Phase 2: Clone Routine', () => {
     });
 
     it('throws error when original routine not found', async () => {
-      mockExecute.mockResolvedValueOnce({ rows: [] });
+      mockExecute.mockImplementation(({ sql }) => {
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routines WHERE id = ?')) {
+          return Promise.resolve({ rows: [] });
+        }
+        return Promise.resolve({ rows: [] });
+      });
 
       await expect(cloneRoutine(999, 'user-123')).rejects.toThrow('Routine not found');
     });
 
     it('clones exercises from original routine', async () => {
-      // Mock getting original routine
-      mockExecute.mockResolvedValueOnce({
-        rows: [{ id: 1, name: 'Test Routine', description: null }],
+      mockExecute.mockImplementation(({ sql }) => {
+        if (typeof sql === 'string' && sql.includes('PRAGMA table_info(routines)')) {
+          return Promise.resolve({ rows: [{ name: 'like_count' }, { name: 'clone_count' }] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routines WHERE id = ?')) {
+          return Promise.resolve({ rows: [{ id: 1, name: 'Test Routine', description: null, is_public: 1 }] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT id FROM routines WHERE name = ? AND user_id = ?')) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (typeof sql === 'string' && sql.includes('INSERT INTO routines')) {
+          return Promise.resolve({ lastInsertRowid: 20 });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_exercises')) {
+          return Promise.resolve({
+            rows: [
+              {
+                exercise_id1: 1,
+                exercise_id2: null,
+                order_index: 0,
+              },
+            ],
+          });
+        }
+        if (typeof sql === 'string' && sql.includes('INSERT INTO routine_exercises')) {
+          return Promise.resolve({ lastInsertRowid: 1 });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_pre_stretches')) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_post_stretches')) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_cardio')) {
+          return Promise.resolve({ rows: [] });
+        }
+        return Promise.resolve({ rows: [] });
       });
-      // Mock checking for existing name
-      mockExecute.mockResolvedValueOnce({ rows: [] });
-      // Mock creating new routine
-      mockExecute.mockResolvedValueOnce({ lastInsertRowid: 20 });
-      // Mock getting exercises with data
-      mockExecute.mockResolvedValueOnce({
-        rows: [
-          {
-            exercise_id1: 1,
-            exercise_id2: null,
-            order_index: 0,
-          },
-        ],
-      });
-      // Mock inserting exercise
-      mockExecute.mockResolvedValueOnce({ lastInsertRowid: 1 });
-      // Mock getting pre-stretches
-      mockExecute.mockResolvedValueOnce({ rows: [] });
-      // Mock getting post-stretches
-      mockExecute.mockResolvedValueOnce({ rows: [] });
-      // Mock getting cardio
-      mockExecute.mockResolvedValueOnce({ rows: [] });
 
       await cloneRoutine(1, 'new-user');
 
@@ -431,22 +517,33 @@ describe('Phase 2: Clone Routine', () => {
     });
 
     it('allows custom name when cloning', async () => {
-      // Mock getting original routine
-      mockExecute.mockResolvedValueOnce({
-        rows: [{ id: 1, name: 'Original Name', description: null }],
+      mockExecute.mockImplementation(({ sql }) => {
+        if (typeof sql === 'string' && sql.includes('PRAGMA table_info(routines)')) {
+          return Promise.resolve({ rows: [{ name: 'like_count' }, { name: 'clone_count' }] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routines WHERE id = ?')) {
+          return Promise.resolve({ rows: [{ id: 1, name: 'Original Name', description: null, is_public: 1 }] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT id FROM routines WHERE name = ? AND user_id = ?')) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (typeof sql === 'string' && sql.includes('INSERT INTO routines')) {
+          return Promise.resolve({ lastInsertRowid: 30 });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_exercises')) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_pre_stretches')) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_post_stretches')) {
+          return Promise.resolve({ rows: [] });
+        }
+        if (typeof sql === 'string' && sql.includes('SELECT * FROM routine_cardio')) {
+          return Promise.resolve({ rows: [] });
+        }
+        return Promise.resolve({ rows: [] });
       });
-      // Mock checking for existing name
-      mockExecute.mockResolvedValueOnce({ rows: [] });
-      // Mock creating new routine
-      mockExecute.mockResolvedValueOnce({ lastInsertRowid: 30 });
-      // Mock getting exercises
-      mockExecute.mockResolvedValueOnce({ rows: [] });
-      // Mock getting pre-stretches
-      mockExecute.mockResolvedValueOnce({ rows: [] });
-      // Mock getting post-stretches
-      mockExecute.mockResolvedValueOnce({ rows: [] });
-      // Mock getting cardio
-      mockExecute.mockResolvedValueOnce({ rows: [] });
 
       await cloneRoutine(1, 'new-user', 'My Custom Name');
 

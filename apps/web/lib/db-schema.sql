@@ -152,7 +152,10 @@ CREATE TABLE IF NOT EXISTS routines (
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   user_id TEXT REFERENCES users(id),
-  is_public INTEGER DEFAULT 1  -- 1 = public (default), 0 = private
+  is_public INTEGER DEFAULT 1,  -- 1 = public (default), 0 = private
+  order_index INTEGER DEFAULT 0,
+  like_count INTEGER DEFAULT 0,
+  clone_count INTEGER DEFAULT 0
 );
 
 -- Favorites: users can favorite public routines from other users

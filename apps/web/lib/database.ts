@@ -15,6 +15,9 @@ let db: Client | null = null;
 let workoutSessionRoutineIdColumnReady: boolean | null = null;
 let workoutSessionKeyColumnReady: boolean | null = null;
 let workoutSessionReportColumnReady: boolean | null = null;
+let routineLikeCountColumnReady: boolean | null = null;
+let routineCloneCountColumnReady: boolean | null = null;
+let routineOrderColumnReady: boolean | null = null;
 let routineStretchTablesReady: boolean | null = null;
 let stretchRecommendationCacheReady: boolean | null = null;
 let stretchVersionTableReady: boolean | null = null;
@@ -130,6 +133,51 @@ async function hasWorkoutSessionReportColumn(): Promise<boolean> {
   return workoutSessionReportColumnReady;
 }
 
+async function hasRoutineLikeCountColumn(): Promise<boolean> {
+  if (routineLikeCountColumnReady !== null) return routineLikeCountColumnReady;
+  const db = getDatabase();
+  try {
+    const result = await db.execute({
+      sql: 'PRAGMA table_info(routines)'
+    });
+    routineLikeCountColumnReady = result.rows.some((row: any) => row.name === 'like_count');
+  } catch (error) {
+    console.warn('Failed to inspect routines like_count schema:', error);
+    routineLikeCountColumnReady = false;
+  }
+  return routineLikeCountColumnReady;
+}
+
+async function hasRoutineCloneCountColumn(): Promise<boolean> {
+  if (routineCloneCountColumnReady !== null) return routineCloneCountColumnReady;
+  const db = getDatabase();
+  try {
+    const result = await db.execute({
+      sql: 'PRAGMA table_info(routines)'
+    });
+    routineCloneCountColumnReady = result.rows.some((row: any) => row.name === 'clone_count');
+  } catch (error) {
+    console.warn('Failed to inspect routines clone_count schema:', error);
+    routineCloneCountColumnReady = false;
+  }
+  return routineCloneCountColumnReady;
+}
+
+async function hasRoutineOrderColumn(): Promise<boolean> {
+  if (routineOrderColumnReady !== null) return routineOrderColumnReady;
+  const db = getDatabase();
+  try {
+    const result = await db.execute({
+      sql: 'PRAGMA table_info(routines)'
+    });
+    routineOrderColumnReady = result.rows.some((row: any) => row.name === 'order_index');
+  } catch (error) {
+    console.warn('Failed to inspect routines order_index schema:', error);
+    routineOrderColumnReady = false;
+  }
+  return routineOrderColumnReady;
+}
+
 async function ensureWorkoutSessionKeyColumn(): Promise<boolean> {
   const hasColumn = await hasWorkoutSessionKeyColumn();
   if (hasColumn) return true;
@@ -203,6 +251,138 @@ async function ensureWorkoutSessionRoutineIdColumn(): Promise<boolean> {
     workoutSessionRoutineIdColumnReady = false;
     return false;
   }
+}
+
+async function ensureRoutineLikeCountColumn(): Promise<{ ready: boolean; added: boolean }> {
+  const hasColumn = await hasRoutineLikeCountColumn();
+  if (hasColumn) return { ready: true, added: false };
+  const db = getDatabase();
+  try {
+    await db.execute({
+      sql: 'ALTER TABLE routines ADD COLUMN like_count INTEGER DEFAULT 0'
+    });
+    routineLikeCountColumnReady = true;
+    return { ready: true, added: true };
+  } catch (error: any) {
+    const message = String(error?.message || error);
+    if (message.toLowerCase().includes('duplicate') || message.toLowerCase().includes('already exists')) {
+      routineLikeCountColumnReady = true;
+      return { ready: true, added: false };
+    }
+    console.warn('Failed to add like_count column to routines:', error);
+    routineLikeCountColumnReady = false;
+    return { ready: false, added: false };
+  }
+}
+
+async function ensureRoutineCloneCountColumn(): Promise<{ ready: boolean; added: boolean }> {
+  const hasColumn = await hasRoutineCloneCountColumn();
+  if (hasColumn) return { ready: true, added: false };
+  const db = getDatabase();
+  try {
+    await db.execute({
+      sql: 'ALTER TABLE routines ADD COLUMN clone_count INTEGER DEFAULT 0'
+    });
+    routineCloneCountColumnReady = true;
+    return { ready: true, added: true };
+  } catch (error: any) {
+    const message = String(error?.message || error);
+    if (message.toLowerCase().includes('duplicate') || message.toLowerCase().includes('already exists')) {
+      routineCloneCountColumnReady = true;
+      return { ready: true, added: false };
+    }
+    console.warn('Failed to add clone_count column to routines:', error);
+    routineCloneCountColumnReady = false;
+    return { ready: false, added: false };
+  }
+}
+
+async function ensureRoutineOrderColumn(): Promise<boolean> {
+  const hasColumn = await hasRoutineOrderColumn();
+  if (hasColumn) return true;
+  const db = getDatabase();
+  try {
+    await db.execute({
+      sql: 'ALTER TABLE routines ADD COLUMN order_index INTEGER DEFAULT 0'
+    });
+    routineOrderColumnReady = true;
+    return true;
+  } catch (error: any) {
+    const message = String(error?.message || error);
+    if (message.toLowerCase().includes('duplicate') || message.toLowerCase().includes('already exists')) {
+      routineOrderColumnReady = true;
+      return true;
+    }
+    console.warn('Failed to add order_index column to routines:', error);
+    routineOrderColumnReady = false;
+    return false;
+  }
+}
+
+async function backfillRoutineOrderForUser(userId: string): Promise<void> {
+  const db = getDatabase();
+  const hasOrderColumn = await ensureRoutineOrderColumn();
+  if (!hasOrderColumn) return;
+  const result = await db.execute({
+    sql: `
+      SELECT
+        COUNT(*) as total_count,
+        SUM(CASE WHEN order_index != 0 THEN 1 ELSE 0 END) as non_zero_count
+      FROM routines
+      WHERE user_id = ?
+    `,
+    args: [userId]
+  });
+  const total = Number((result.rows[0] as any)?.total_count ?? 0);
+  const nonZero = Number((result.rows[0] as any)?.non_zero_count ?? 0);
+  if (total === 0 || nonZero > 0) return;
+  await db.execute({
+    sql: `
+      WITH ordered AS (
+        SELECT id, ROW_NUMBER() OVER (ORDER BY created_at DESC) - 1 as rn
+        FROM routines
+        WHERE user_id = ?
+      )
+      UPDATE routines
+      SET order_index = (SELECT rn FROM ordered WHERE ordered.id = routines.id)
+      WHERE user_id = ?
+    `,
+    args: [userId, userId]
+  });
+}
+
+async function backfillRoutineLikeCounts(): Promise<void> {
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      UPDATE routines
+      SET like_count = (
+        SELECT COUNT(*)
+        FROM routine_favorites rf
+        WHERE rf.routine_id = routines.id
+      )
+    `
+  });
+}
+
+async function ensureRoutineCounts(): Promise<void> {
+  const likeResult = await ensureRoutineLikeCountColumn();
+  if (likeResult.ready && likeResult.added) {
+    await backfillRoutineLikeCounts();
+  }
+  await ensureRoutineCloneCountColumn();
+}
+
+async function getNextRoutineOrderIndex(userId: string): Promise<number | null> {
+  const db = getDatabase();
+  const hasOrderColumn = await ensureRoutineOrderColumn();
+  if (!hasOrderColumn) return null;
+  const result = await db.execute({
+    sql: 'SELECT COALESCE(MIN(order_index), 0) as min_order FROM routines WHERE user_id = ?',
+    args: [userId]
+  });
+  const minOrder = Number((result.rows[0] as any)?.min_order ?? 0);
+  return minOrder - 1;
 }
 
 async function backfillWorkoutSessionRoutineIds(userId: string): Promise<void> {
@@ -1217,16 +1397,30 @@ export async function getExerciseById(id: number): Promise<any | null> {
 // Routine CRUD
 export async function createRoutine(name: string, userId: string, isPublic: boolean = true): Promise<number> {
   const db = getDatabase();
-  const result = await db.execute({
-    sql: 'INSERT INTO routines (name, user_id, is_public) VALUES (?, ?, ?)',
-    args: [name, userId, isPublic ? 1 : 0]
-  });
+  const orderIndex = await getNextRoutineOrderIndex(userId);
+  const result = orderIndex === null
+    ? await db.execute({
+        sql: 'INSERT INTO routines (name, user_id, is_public) VALUES (?, ?, ?)',
+        args: [name, userId, isPublic ? 1 : 0]
+      })
+    : await db.execute({
+        sql: 'INSERT INTO routines (name, user_id, is_public, order_index) VALUES (?, ?, ?, ?)',
+        args: [name, userId, isPublic ? 1 : 0, orderIndex]
+      });
   return Number(result.lastInsertRowid);
 }
 
 export async function getAllRoutines(userId: string): Promise<any[]> {
   const db = getDatabase();
+  const hasOrderColumn = await ensureRoutineOrderColumn();
+  await ensureRoutineCounts();
   await backfillWorkoutSessionRoutineIds(userId);
+  if (hasOrderColumn) {
+    await backfillRoutineOrderForUser(userId);
+  }
+  const orderClause = hasOrderColumn
+    ? 'ORDER BY COALESCE(r.order_index, 0) ASC, r.created_at DESC'
+    : 'ORDER BY r.created_at DESC';
   const result = await db.execute({
     sql: `
       SELECT r.*, MAX(ws.date_completed) as last_workout_date
@@ -1235,11 +1429,24 @@ export async function getAllRoutines(userId: string): Promise<any[]> {
         ON ws.user_id = ? AND ws.routine_id = r.id
       WHERE r.user_id = ?
       GROUP BY r.id
-      ORDER BY r.created_at DESC
+      ${orderClause}
     `,
     args: [userId, userId]
   });
   return result.rows as any[];
+}
+
+export async function reorderUserRoutines(userId: string, routineOrder: number[]): Promise<void> {
+  if (!routineOrder.length) return;
+  const db = getDatabase();
+  const hasOrderColumn = await ensureRoutineOrderColumn();
+  if (!hasOrderColumn) return;
+  for (let i = 0; i < routineOrder.length; i++) {
+    await db.execute({
+      sql: 'UPDATE routines SET order_index = ? WHERE id = ? AND user_id = ?',
+      args: [i, routineOrder[i], userId]
+    });
+  }
 }
 
 export async function getRoutineById(id: number, userId?: string): Promise<any | null> {
@@ -1638,6 +1845,7 @@ export async function getUserWithUsername(userId: string): Promise<any | null> {
 // Public routines
 export async function getPublicRoutines(excludeUserId?: string): Promise<any[]> {
   const db = getDatabase();
+  await ensureRoutineCounts();
   if (excludeUserId) {
     await backfillWorkoutSessionRoutineIds(excludeUserId);
   }
@@ -1651,13 +1859,13 @@ export async function getPublicRoutines(excludeUserId?: string): Promise<any[]> 
          ON ws.user_id = ? AND ws.routine_id = r.id
        WHERE r.is_public = 1 AND r.user_id != ?
        GROUP BY r.id
-       ORDER BY r.created_at DESC`
+       ORDER BY (COALESCE(r.like_count, 0) + COALESCE(r.clone_count, 0)) DESC, r.created_at DESC`
     : `SELECT r.*, u.username as creator_username, u.name as creator_name,
          NULL as last_workout_date
        FROM routines r
        JOIN users u ON r.user_id = u.id
        WHERE r.is_public = 1
-       ORDER BY r.created_at DESC`;
+       ORDER BY (COALESCE(r.like_count, 0) + COALESCE(r.clone_count, 0)) DESC, r.created_at DESC`;
 
   const args = excludeUserId ? [excludeUserId, excludeUserId] : [];
   const result = await db.execute({ sql, args });
@@ -1667,18 +1875,43 @@ export async function getPublicRoutines(excludeUserId?: string): Promise<any[]> 
 // Favorites management
 export async function addFavorite(userId: string, routineId: number): Promise<void> {
   const db = getDatabase();
+  await ensureRoutineCounts();
   await db.execute({
     sql: `INSERT OR IGNORE INTO routine_favorites (user_id, routine_id) VALUES (?, ?)`,
     args: [userId, routineId]
   });
+  const changeResult = await db.execute({ sql: 'SELECT changes() as changes' });
+  const changes = Number((changeResult.rows[0] as any)?.changes ?? 0);
+  if (changes > 0) {
+    await db.execute({
+      sql: 'UPDATE routines SET like_count = COALESCE(like_count, 0) + 1 WHERE id = ?',
+      args: [routineId]
+    });
+  }
 }
 
 export async function removeFavorite(userId: string, routineId: number): Promise<void> {
   const db = getDatabase();
+  await ensureRoutineCounts();
   await db.execute({
     sql: `DELETE FROM routine_favorites WHERE user_id = ? AND routine_id = ?`,
     args: [userId, routineId]
   });
+  const changeResult = await db.execute({ sql: 'SELECT changes() as changes' });
+  const changes = Number((changeResult.rows[0] as any)?.changes ?? 0);
+  if (changes > 0) {
+    await db.execute({
+      sql: `
+        UPDATE routines
+        SET like_count = CASE
+          WHEN COALESCE(like_count, 0) > 0 THEN COALESCE(like_count, 0) - 1
+          ELSE 0
+        END
+        WHERE id = ?
+      `,
+      args: [routineId]
+    });
+  }
 }
 
 export async function isFavorited(userId: string, routineId: number): Promise<boolean> {
@@ -1740,11 +1973,18 @@ export async function cloneRoutine(routineId: number, newUserId: string, newName
   }
 
   // Create the new routine
-  const newRoutineResult = await db.execute({
-    sql: `INSERT INTO routines (user_id, name, description, is_public, created_at, updated_at)
-          VALUES (?, ?, ?, 0, datetime('now'), datetime('now'))`,
-    args: [newUserId, clonedName, routine.description]
-  });
+  const orderIndex = await getNextRoutineOrderIndex(newUserId);
+  const newRoutineResult = orderIndex === null
+    ? await db.execute({
+        sql: `INSERT INTO routines (user_id, name, description, is_public, created_at, updated_at)
+              VALUES (?, ?, ?, 0, datetime('now'), datetime('now'))`,
+        args: [newUserId, clonedName, routine.description]
+      })
+    : await db.execute({
+        sql: `INSERT INTO routines (user_id, name, description, is_public, order_index, created_at, updated_at)
+              VALUES (?, ?, ?, 0, ?, datetime('now'), datetime('now'))`,
+        args: [newUserId, clonedName, routine.description, orderIndex]
+      });
   const newRoutineId = Number(newRoutineResult.lastInsertRowid);
 
   // Clone exercises
@@ -1808,6 +2048,14 @@ export async function cloneRoutine(routineId: number, newUserId: string, newName
       sql: `INSERT INTO routine_cardio (routine_id, cardio_type, duration, intensity, tips)
             VALUES (?, ?, ?, ?, ?)`,
       args: [newRoutineId, c.cardio_type, c.duration, c.intensity, c.tips]
+    });
+  }
+
+  await ensureRoutineCounts();
+  if (routine.is_public) {
+    await db.execute({
+      sql: 'UPDATE routines SET clone_count = COALESCE(clone_count, 0) + 1 WHERE id = ?',
+      args: [routineId]
     });
   }
 
