@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, type ButtonHTMLAttributes } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense, type ButtonHTMLAttributes } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import UsernameSetup from '@/app/components/UsernameSetup';
 
@@ -48,8 +48,9 @@ function formatLocalDate(value?: string | null): string {
   });
 }
 
-export default function RoutinesPage() {
+function RoutinesContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [myRoutines, setMyRoutines] = useState<Routine[]>([]);
   const [favoritedRoutines, setFavoritedRoutines] = useState<Routine[]>([]);
   const [publicRoutinesPreview, setPublicRoutinesPreview] = useState<Routine[]>([]);
@@ -61,10 +62,24 @@ export default function RoutinesPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Routine | null>(null);
   const [deletingRoutine, setDeletingRoutine] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
     fetchUserInfo();
   }, []);
+
+  useEffect(() => {
+    const saved = searchParams.get('saved');
+    if (!saved) return;
+    const routineName = searchParams.get('name');
+    setToast({
+      message: routineName ? `Saved "${routineName}" to your routines.` : 'Saved to your routines.',
+      type: 'success',
+    });
+    const timer = setTimeout(() => setToast(null), 3000);
+    router.replace('/routines');
+    return () => clearTimeout(timer);
+  }, [router, searchParams]);
 
   async function fetchUserInfo() {
     try {
@@ -362,6 +377,26 @@ export default function RoutinesPage() {
 
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
+      {toast && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg ${
+            toast.type === 'success'
+              ? 'bg-green-600 text-white'
+              : 'bg-red-600 text-white'
+          }`}>
+            {toast.type === 'success' ? (
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+            <span className="font-medium">{toast.message}</span>
+          </div>
+        </div>
+      )}
       <main className="max-w-2xl mx-auto py-8">
         <div className="flex justify-end mb-4">
           <Link
@@ -563,5 +598,17 @@ export default function RoutinesPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function RoutinesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-zinc-900 flex items-center justify-center p-4">
+        <div className="text-white text-2xl">Loading...</div>
+      </div>
+    }>
+      <RoutinesContent />
+    </Suspense>
   );
 }

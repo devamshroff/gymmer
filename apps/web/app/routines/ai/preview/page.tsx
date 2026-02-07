@@ -262,6 +262,7 @@ export default function AiRoutinePreviewPage() {
     setSaving(true);
     setError(null);
     setSuccess(null);
+    let didRedirect = false;
     try {
       const response = await fetch('/api/routines/import', {
         method: 'POST',
@@ -276,11 +277,16 @@ export default function AiRoutinePreviewPage() {
 
       localStorage.removeItem(STORAGE_KEY);
       setSuccess(`Saved "${workoutPlan.name}" to your routines.`);
-      setTimeout(() => router.push('/routines'), 1500);
+      didRedirect = true;
+      const routineNameParam = encodeURIComponent(workoutPlan.name || 'routine');
+      router.push(`/routines?saved=1&name=${routineNameParam}`);
+      setTimeout(() => setSaving(false), 2000);
     } catch (err: any) {
       setError(err.message || 'Failed to save routine');
     } finally {
-      setSaving(false);
+      if (!didRedirect) {
+        setSaving(false);
+      }
     }
   };
 
