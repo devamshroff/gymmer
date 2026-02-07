@@ -53,3 +53,13 @@ body {
 .home-fade-in {
   animation: home-fade-in 0.6s ease-out both;
 }
+
+.analytics-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.analytics-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
