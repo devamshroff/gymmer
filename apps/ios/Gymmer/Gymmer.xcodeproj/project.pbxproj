@@ -6,63 +6,83 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C0C1A5D52F390B8B00CC99FB /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = C0C1A5D42F390B8B00CC99FB /* GoogleSignIn */; };
+		C0C1A5D72F390B9100CC99FB /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = C0C1A5D62F390B9100CC99FB /* GoogleSignInSwift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
-		C0E7C6E82F3660F700881C1A /* PBXContainerItemProxy */ = {
+		C0C1A5772F38F6AC00CC99FB /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = C0E7C6D22F3660F500881C1A /* Project object */;
+			containerPortal = C0C1A5612F38F6AB00CC99FB /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = C0E7C6D92F3660F500881C1A;
-			remoteInfo = Gymmer;
+			remoteGlobalIDString = C0C1A5682F38F6AB00CC99FB;
+			remoteInfo = GYMMER;
 		};
-		C0E7C6F22F3660F700881C1A /* PBXContainerItemProxy */ = {
+		C0C1A5812F38F6AC00CC99FB /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = C0E7C6D22F3660F500881C1A /* Project object */;
+			containerPortal = C0C1A5612F38F6AB00CC99FB /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = C0E7C6D92F3660F500881C1A;
-			remoteInfo = Gymmer;
+			remoteGlobalIDString = C0C1A5682F38F6AB00CC99FB;
+			remoteInfo = GYMMER;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		C0E7C6DA2F3660F500881C1A /* Gymmer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Gymmer.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		C0E7C6E72F3660F700881C1A /* GymmerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GymmerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		C0E7C6F12F3660F700881C1A /* GymmerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GymmerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0C1A5692F38F6AB00CC99FB /* GYMMER.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GYMMER.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0C1A5762F38F6AC00CC99FB /* GYMMERTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GYMMERTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0C1A5802F38F6AC00CC99FB /* GYMMERUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GYMMERUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		C0C1A5D22F39062800CC99FB /* Exceptions for "GYMMER" folder in "GYMMER" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C0C1A5682F38F6AB00CC99FB /* GYMMER */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		C0E7C6DC2F3660F500881C1A /* Gymmer */ = {
+		C0C1A56B2F38F6AB00CC99FB /* GYMMER */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Gymmer;
+			exceptions = (
+				C0C1A5D22F39062800CC99FB /* Exceptions for "GYMMER" folder in "GYMMER" target */,
+			);
+			path = GYMMER;
 			sourceTree = "<group>";
 		};
-		C0E7C6EA2F3660F700881C1A /* GymmerTests */ = {
+		C0C1A5792F38F6AC00CC99FB /* GYMMERTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = GymmerTests;
+			path = GYMMERTests;
 			sourceTree = "<group>";
 		};
-		C0E7C6F42F3660F700881C1A /* GymmerUITests */ = {
+		C0C1A5832F38F6AC00CC99FB /* GYMMERUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = GymmerUITests;
+			path = GYMMERUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		C0E7C6D72F3660F500881C1A /* Frameworks */ = {
+		C0C1A5662F38F6AB00CC99FB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C0C1A5D52F390B8B00CC99FB /* GoogleSignIn in Frameworks */,
+				C0C1A5D72F390B9100CC99FB /* GoogleSignInSwift in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C0C1A5732F38F6AC00CC99FB /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		C0E7C6E42F3660F700881C1A /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		C0E7C6EE2F3660F700881C1A /* Frameworks */ = {
+		C0C1A57D2F38F6AC00CC99FB /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -72,160 +92,170 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		C0E7C6D12F3660F500881C1A = {
+		C0C1A5602F38F6AB00CC99FB = {
 			isa = PBXGroup;
 			children = (
-				C0E7C6DC2F3660F500881C1A /* Gymmer */,
-				C0E7C6EA2F3660F700881C1A /* GymmerTests */,
-				C0E7C6F42F3660F700881C1A /* GymmerUITests */,
-				C0E7C6DB2F3660F500881C1A /* Products */,
+				C0C1A56B2F38F6AB00CC99FB /* GYMMER */,
+				C0C1A5792F38F6AC00CC99FB /* GYMMERTests */,
+				C0C1A5832F38F6AC00CC99FB /* GYMMERUITests */,
+				C0C1A5D32F390B8B00CC99FB /* Frameworks */,
+				C0C1A56A2F38F6AB00CC99FB /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		C0E7C6DB2F3660F500881C1A /* Products */ = {
+		C0C1A56A2F38F6AB00CC99FB /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				C0E7C6DA2F3660F500881C1A /* Gymmer.app */,
-				C0E7C6E72F3660F700881C1A /* GymmerTests.xctest */,
-				C0E7C6F12F3660F700881C1A /* GymmerUITests.xctest */,
+				C0C1A5692F38F6AB00CC99FB /* GYMMER.app */,
+				C0C1A5762F38F6AC00CC99FB /* GYMMERTests.xctest */,
+				C0C1A5802F38F6AC00CC99FB /* GYMMERUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C0C1A5D32F390B8B00CC99FB /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		C0E7C6D92F3660F500881C1A /* Gymmer */ = {
+		C0C1A5682F38F6AB00CC99FB /* GYMMER */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = C0E7C6FB2F3660F700881C1A /* Build configuration list for PBXNativeTarget "Gymmer" */;
+			buildConfigurationList = C0C1A58A2F38F6AC00CC99FB /* Build configuration list for PBXNativeTarget "GYMMER" */;
 			buildPhases = (
-				C0E7C6D62F3660F500881C1A /* Sources */,
-				C0E7C6D72F3660F500881C1A /* Frameworks */,
-				C0E7C6D82F3660F500881C1A /* Resources */,
+				C0C1A5652F38F6AB00CC99FB /* Sources */,
+				C0C1A5662F38F6AB00CC99FB /* Frameworks */,
+				C0C1A5672F38F6AB00CC99FB /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				C0E7C6DC2F3660F500881C1A /* Gymmer */,
+				C0C1A56B2F38F6AB00CC99FB /* GYMMER */,
 			);
-			name = Gymmer;
+			name = GYMMER;
 			packageProductDependencies = (
+				C0C1A5D42F390B8B00CC99FB /* GoogleSignIn */,
+				C0C1A5D62F390B9100CC99FB /* GoogleSignInSwift */,
 			);
-			productName = Gymmer;
-			productReference = C0E7C6DA2F3660F500881C1A /* Gymmer.app */;
+			productName = GYMMER;
+			productReference = C0C1A5692F38F6AB00CC99FB /* GYMMER.app */;
 			productType = "com.apple.product-type.application";
 		};
-		C0E7C6E62F3660F700881C1A /* GymmerTests */ = {
+		C0C1A5752F38F6AC00CC99FB /* GYMMERTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = C0E7C6FE2F3660F700881C1A /* Build configuration list for PBXNativeTarget "GymmerTests" */;
+			buildConfigurationList = C0C1A58D2F38F6AC00CC99FB /* Build configuration list for PBXNativeTarget "GYMMERTests" */;
 			buildPhases = (
-				C0E7C6E32F3660F700881C1A /* Sources */,
-				C0E7C6E42F3660F700881C1A /* Frameworks */,
-				C0E7C6E52F3660F700881C1A /* Resources */,
+				C0C1A5722F38F6AC00CC99FB /* Sources */,
+				C0C1A5732F38F6AC00CC99FB /* Frameworks */,
+				C0C1A5742F38F6AC00CC99FB /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				C0E7C6E92F3660F700881C1A /* PBXTargetDependency */,
+				C0C1A5782F38F6AC00CC99FB /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				C0E7C6EA2F3660F700881C1A /* GymmerTests */,
+				C0C1A5792F38F6AC00CC99FB /* GYMMERTests */,
 			);
-			name = GymmerTests;
+			name = GYMMERTests;
 			packageProductDependencies = (
 			);
-			productName = GymmerTests;
-			productReference = C0E7C6E72F3660F700881C1A /* GymmerTests.xctest */;
+			productName = GYMMERTests;
+			productReference = C0C1A5762F38F6AC00CC99FB /* GYMMERTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		C0E7C6F02F3660F700881C1A /* GymmerUITests */ = {
+		C0C1A57F2F38F6AC00CC99FB /* GYMMERUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = C0E7C7012F3660F700881C1A /* Build configuration list for PBXNativeTarget "GymmerUITests" */;
+			buildConfigurationList = C0C1A5902F38F6AC00CC99FB /* Build configuration list for PBXNativeTarget "GYMMERUITests" */;
 			buildPhases = (
-				C0E7C6ED2F3660F700881C1A /* Sources */,
-				C0E7C6EE2F3660F700881C1A /* Frameworks */,
-				C0E7C6EF2F3660F700881C1A /* Resources */,
+				C0C1A57C2F38F6AC00CC99FB /* Sources */,
+				C0C1A57D2F38F6AC00CC99FB /* Frameworks */,
+				C0C1A57E2F38F6AC00CC99FB /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				C0E7C6F32F3660F700881C1A /* PBXTargetDependency */,
+				C0C1A5822F38F6AC00CC99FB /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				C0E7C6F42F3660F700881C1A /* GymmerUITests */,
+				C0C1A5832F38F6AC00CC99FB /* GYMMERUITests */,
 			);
-			name = GymmerUITests;
+			name = GYMMERUITests;
 			packageProductDependencies = (
 			);
-			productName = GymmerUITests;
-			productReference = C0E7C6F12F3660F700881C1A /* GymmerUITests.xctest */;
+			productName = GYMMERUITests;
+			productReference = C0C1A5802F38F6AC00CC99FB /* GYMMERUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		C0E7C6D22F3660F500881C1A /* Project object */ = {
+		C0C1A5612F38F6AB00CC99FB /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
-					C0E7C6D92F3660F500881C1A = {
+					C0C1A5682F38F6AB00CC99FB = {
 						CreatedOnToolsVersion = 26.2;
 					};
-					C0E7C6E62F3660F700881C1A = {
+					C0C1A5752F38F6AC00CC99FB = {
 						CreatedOnToolsVersion = 26.2;
-						TestTargetID = C0E7C6D92F3660F500881C1A;
+						TestTargetID = C0C1A5682F38F6AB00CC99FB;
 					};
-					C0E7C6F02F3660F700881C1A = {
+					C0C1A57F2F38F6AC00CC99FB = {
 						CreatedOnToolsVersion = 26.2;
-						TestTargetID = C0E7C6D92F3660F500881C1A;
+						TestTargetID = C0C1A5682F38F6AB00CC99FB;
 					};
 				};
 			};
-			buildConfigurationList = C0E7C6D52F3660F500881C1A /* Build configuration list for PBXProject "Gymmer" */;
+			buildConfigurationList = C0C1A5642F38F6AB00CC99FB /* Build configuration list for PBXProject "GYMMER" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
 			);
-			mainGroup = C0E7C6D12F3660F500881C1A;
+			mainGroup = C0C1A5602F38F6AB00CC99FB;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				C0E7C7042F3661C200881C1A /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				C0C1A5952F38FC4E00CC99FB /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 			);
 			preferredProjectObjectVersion = 77;
-			productRefGroup = C0E7C6DB2F3660F500881C1A /* Products */;
+			productRefGroup = C0C1A56A2F38F6AB00CC99FB /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				C0E7C6D92F3660F500881C1A /* Gymmer */,
-				C0E7C6E62F3660F700881C1A /* GymmerTests */,
-				C0E7C6F02F3660F700881C1A /* GymmerUITests */,
+				C0C1A5682F38F6AB00CC99FB /* GYMMER */,
+				C0C1A5752F38F6AC00CC99FB /* GYMMERTests */,
+				C0C1A57F2F38F6AC00CC99FB /* GYMMERUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		C0E7C6D82F3660F500881C1A /* Resources */ = {
+		C0C1A5672F38F6AB00CC99FB /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		C0E7C6E52F3660F700881C1A /* Resources */ = {
+		C0C1A5742F38F6AC00CC99FB /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		C0E7C6EF2F3660F700881C1A /* Resources */ = {
+		C0C1A57E2F38F6AC00CC99FB /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -235,21 +265,21 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		C0E7C6D62F3660F500881C1A /* Sources */ = {
+		C0C1A5652F38F6AB00CC99FB /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		C0E7C6E32F3660F700881C1A /* Sources */ = {
+		C0C1A5722F38F6AC00CC99FB /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		C0E7C6ED2F3660F700881C1A /* Sources */ = {
+		C0C1A57C2F38F6AC00CC99FB /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -259,20 +289,20 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		C0E7C6E92F3660F700881C1A /* PBXTargetDependency */ = {
+		C0C1A5782F38F6AC00CC99FB /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = C0E7C6D92F3660F500881C1A /* Gymmer */;
-			targetProxy = C0E7C6E82F3660F700881C1A /* PBXContainerItemProxy */;
+			target = C0C1A5682F38F6AB00CC99FB /* GYMMER */;
+			targetProxy = C0C1A5772F38F6AC00CC99FB /* PBXContainerItemProxy */;
 		};
-		C0E7C6F32F3660F700881C1A /* PBXTargetDependency */ = {
+		C0C1A5822F38F6AC00CC99FB /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = C0E7C6D92F3660F500881C1A /* Gymmer */;
-			targetProxy = C0E7C6F22F3660F700881C1A /* PBXContainerItemProxy */;
+			target = C0C1A5682F38F6AB00CC99FB /* GYMMER */;
+			targetProxy = C0C1A5812F38F6AC00CC99FB /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		C0E7C6F92F3660F700881C1A /* Debug */ = {
+		C0C1A5882F38F6AC00CC99FB /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -325,7 +355,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -336,7 +366,7 @@
 			};
 			name = Debug;
 		};
-		C0E7C6FA2F3660F700881C1A /* Release */ = {
+		C0C1A5892F38F6AC00CC99FB /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -383,7 +413,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -393,7 +423,7 @@
 			};
 			name = Release;
 		};
-		C0E7C6FC2F3660F700881C1A /* Debug */ = {
+		C0C1A58B2F38F6AC00CC99FB /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -402,7 +432,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = P8UH6K6F4C;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = GYMMER/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -413,9 +444,13 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = gymmer.Gymmer;
+				PRODUCT_BUNDLE_IDENTIFIER = com.devamshroff.gymmer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -425,7 +460,7 @@
 			};
 			name = Debug;
 		};
-		C0E7C6FD2F3660F700881C1A /* Release */ = {
+		C0C1A58C2F38F6AC00CC99FB /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -434,7 +469,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = P8UH6K6F4C;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = GYMMER/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -445,9 +481,13 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = gymmer.Gymmer;
+				PRODUCT_BUNDLE_IDENTIFIER = com.devamshroff.gymmer;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -457,7 +497,7 @@
 			};
 			name = Release;
 		};
-		C0E7C6FF2F3660F700881C1A /* Debug */ = {
+		C0C1A58E2F38F6AC00CC99FB /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -465,9 +505,9 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = P8UH6K6F4C;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = gymmer.GymmerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = gymmer.GYMMERTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -475,11 +515,11 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Gymmer.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Gymmer";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GYMMER.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/GYMMER";
 			};
 			name = Debug;
 		};
-		C0E7C7002F3660F700881C1A /* Release */ = {
+		C0C1A58F2F38F6AC00CC99FB /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -487,9 +527,9 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = P8UH6K6F4C;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = gymmer.GymmerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = gymmer.GYMMERTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -497,11 +537,11 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Gymmer.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Gymmer";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GYMMER.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/GYMMER";
 			};
 			name = Release;
 		};
-		C0E7C7022F3660F700881C1A /* Debug */ = {
+		C0C1A5912F38F6AC00CC99FB /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
@@ -509,7 +549,7 @@
 				DEVELOPMENT_TEAM = P8UH6K6F4C;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = gymmer.GymmerUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = gymmer.GYMMERUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -517,11 +557,11 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = Gymmer;
+				TEST_TARGET_NAME = GYMMER;
 			};
 			name = Debug;
 		};
-		C0E7C7032F3660F700881C1A /* Release */ = {
+		C0C1A5922F38F6AC00CC99FB /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
@@ -529,7 +569,7 @@
 				DEVELOPMENT_TEAM = P8UH6K6F4C;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = gymmer.GymmerUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = gymmer.GYMMERUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -537,45 +577,45 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = Gymmer;
+				TEST_TARGET_NAME = GYMMER;
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		C0E7C6D52F3660F500881C1A /* Build configuration list for PBXProject "Gymmer" */ = {
+		C0C1A5642F38F6AB00CC99FB /* Build configuration list for PBXProject "GYMMER" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				C0E7C6F92F3660F700881C1A /* Debug */,
-				C0E7C6FA2F3660F700881C1A /* Release */,
+				C0C1A5882F38F6AC00CC99FB /* Debug */,
+				C0C1A5892F38F6AC00CC99FB /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		C0E7C6FB2F3660F700881C1A /* Build configuration list for PBXNativeTarget "Gymmer" */ = {
+		C0C1A58A2F38F6AC00CC99FB /* Build configuration list for PBXNativeTarget "GYMMER" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				C0E7C6FC2F3660F700881C1A /* Debug */,
-				C0E7C6FD2F3660F700881C1A /* Release */,
+				C0C1A58B2F38F6AC00CC99FB /* Debug */,
+				C0C1A58C2F38F6AC00CC99FB /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		C0E7C6FE2F3660F700881C1A /* Build configuration list for PBXNativeTarget "GymmerTests" */ = {
+		C0C1A58D2F38F6AC00CC99FB /* Build configuration list for PBXNativeTarget "GYMMERTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				C0E7C6FF2F3660F700881C1A /* Debug */,
-				C0E7C7002F3660F700881C1A /* Release */,
+				C0C1A58E2F38F6AC00CC99FB /* Debug */,
+				C0C1A58F2F38F6AC00CC99FB /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		C0E7C7012F3660F700881C1A /* Build configuration list for PBXNativeTarget "GymmerUITests" */ = {
+		C0C1A5902F38F6AC00CC99FB /* Build configuration list for PBXNativeTarget "GYMMERUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				C0E7C7022F3660F700881C1A /* Debug */,
-				C0E7C7032F3660F700881C1A /* Release */,
+				C0C1A5912F38F6AC00CC99FB /* Debug */,
+				C0C1A5922F38F6AC00CC99FB /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -583,7 +623,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		C0E7C7042F3661C200881C1A /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+		C0C1A5952F38FC4E00CC99FB /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
 			requirement = {
@@ -592,6 +632,19 @@
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C0C1A5D42F390B8B00CC99FB /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0C1A5952F38FC4E00CC99FB /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		C0C1A5D62F390B9100CC99FB /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0C1A5952F38FC4E00CC99FB /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = C0E7C6D22F3660F500881C1A /* Project object */;
+	rootObject = C0C1A5612F38F6AB00CC99FB /* Project object */;
 }
