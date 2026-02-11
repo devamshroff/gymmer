@@ -36,14 +36,8 @@ export async function POST(request: Request) {
   const resendApiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.BUG_REPORT_FROM_EMAIL;
   const toEmail = process.env.BUG_REPORT_TO_EMAIL;
-
-  if (!resendApiKey || !fromEmail || !toEmail) {
-    console.error('Missing Resend configuration for bug reports.');
-    return NextResponse.redirect(
-      new URL('/report-bug?status=error', request.url),
-      303
-    );
-  }
+  const hasEmailConfig = Boolean(resendApiKey && fromEmail && toEmail);
+  const isProduction = process.env.NODE_ENV === 'production';
 
   let formData: FormData;
   try {
@@ -89,7 +83,10 @@ export async function POST(request: Request) {
     };
   }
 
-  const user = await getCurrentUser();
+  const user = await getCurrentUser().catch((error) => {
+    console.warn('Failed to load current user for bug report.', error);
+    return null;
+  });
   const referer = request.headers.get('referer') || 'Unknown';
   const userAgent = request.headers.get('user-agent') || 'Unknown';
 
@@ -97,7 +94,6 @@ export async function POST(request: Request) {
     ? `${user.name ? `${user.name} ` : ''}<${user.email}>`
     : 'Anonymous user';
   const replyTo = user?.email;
-  const fromAddress = fromEmail;
 
   const textBody = [
     'New bug report',
@@ -124,11 +120,30 @@ export async function POST(request: Request) {
     <p>${escapeHtml(steps || 'Not provided.').replace(/\n/g, '<br />')}</p>
   `;
 
+  if (!hasEmailConfig) {
+    console.warn('Bug report received without email configuration.', {
+      reporter: reporterLine,
+      page: referer,
+      userAgent,
+      hasScreenshot: Boolean(attachment)
+    });
+    if (isProduction) {
+      return NextResponse.redirect(
+        new URL('/report-bug?status=error', request.url),
+        303
+      );
+    }
+    return NextResponse.redirect(
+      new URL('/report-bug?status=sent', request.url),
+      303
+    );
+  }
+
   try {
-    const resend = new Resend(resendApiKey);
+    const resend = new Resend(resendApiKey!);
     const emailPayload: Parameters<typeof resend.emails.send>[0] = {
-      from: fromAddress,
-      to: toEmail,
+      from: fromEmail!,
+      to: toEmail!,
       subject: `Bug report from ${reporterLine}`,
       text: textBody,
       html: htmlBody,
