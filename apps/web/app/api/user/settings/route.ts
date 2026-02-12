@@ -32,6 +32,8 @@ export async function POST(request: NextRequest) {
     const supersetRestSeconds = Number(body?.supersetRestSeconds);
     const weightUnitInput = body?.weightUnit;
     const heightUnitInput = body?.heightUnit;
+    const timerSoundInput = body?.timerSoundEnabled;
+    const timerVibrateInput = body?.timerVibrateEnabled;
 
     if (!Number.isFinite(restTimeSeconds) || restTimeSeconds < 0) {
       return NextResponse.json(
@@ -60,16 +62,36 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (timerSoundInput !== undefined && typeof timerSoundInput !== 'boolean') {
+      return NextResponse.json(
+        { error: 'timerSoundEnabled must be a boolean' },
+        { status: 400 }
+      );
+    }
+    if (timerVibrateInput !== undefined && typeof timerVibrateInput !== 'boolean') {
+      return NextResponse.json(
+        { error: 'timerVibrateEnabled must be a boolean' },
+        { status: 400 }
+      );
+    }
 
     const existingSettings = await getUserSettings(user.id);
     const weightUnit = isWeightUnit(weightUnitInput) ? weightUnitInput : existingSettings.weightUnit;
     const heightUnit = isHeightUnit(heightUnitInput) ? heightUnitInput : existingSettings.heightUnit;
+    const timerSoundEnabled = typeof timerSoundInput === 'boolean'
+      ? timerSoundInput
+      : existingSettings.timerSoundEnabled;
+    const timerVibrateEnabled = typeof timerVibrateInput === 'boolean'
+      ? timerVibrateInput
+      : existingSettings.timerVibrateEnabled;
 
     await upsertUserSettings(user.id, {
       restTimeSeconds,
       supersetRestSeconds,
       weightUnit,
-      heightUnit
+      heightUnit,
+      timerSoundEnabled,
+      timerVibrateEnabled,
     });
 
     return NextResponse.json({
@@ -77,7 +99,9 @@ export async function POST(request: NextRequest) {
       restTimeSeconds,
       supersetRestSeconds,
       weightUnit,
-      heightUnit
+      heightUnit,
+      timerSoundEnabled,
+      timerVibrateEnabled,
     });
   } catch (error) {
     console.error('Error updating user settings:', error);

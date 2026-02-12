@@ -17,6 +17,8 @@ interface StretchCardProps {
   timerKey?: number;
   /** Border color variant */
   variant?: 'pre' | 'post';
+  timerSoundEnabled?: boolean;
+  timerVibrateEnabled?: boolean;
 }
 
 /**
@@ -27,6 +29,8 @@ export default function StretchCard({
   stretch,
   timerKey = 0,
   variant = 'pre',
+  timerSoundEnabled = true,
+  timerVibrateEnabled = true,
 }: StretchCardProps) {
   const borderColor = 'border-blue-800';
   const emoji = variant === 'pre' ? '🏃' : '🧘';
@@ -44,7 +48,12 @@ export default function StretchCard({
       </div>
 
       {/* Timer - only shows if stretch has a timer value */}
-      <Timer key={timerKey} timerSeconds={timerSeconds} />
+      <Timer
+        key={timerKey}
+        timerSeconds={timerSeconds}
+        soundEnabled={timerSoundEnabled}
+        vibrateEnabled={timerVibrateEnabled}
+      />
 
       <div className="bg-zinc-900 rounded-lg p-4 mb-6">
         <div className="text-zinc-400 text-sm mb-2">Tips:</div>

@@ -22,6 +22,8 @@ const TIME_EXERCISES = [
   'Wall Sit',
   'Hollow Hold',
   'L-Sit',
+  'Single-Leg Balance',
+  'Single Leg Balance',
 ];
 
 const REPS_ONLY_EXERCISES = [

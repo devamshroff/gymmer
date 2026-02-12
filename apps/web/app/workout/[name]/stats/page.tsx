@@ -5,7 +5,13 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
 import { EXERCISE_TYPES } from '@/lib/constants';
-import { formatMetricDisplay, isWeightMetric, resolvePrimaryMetric } from '@/lib/metric-utils';
+import {
+  formatMetricDisplay,
+  isRepsOnlyMetric,
+  isTimeMetric,
+  isWeightMetric,
+  resolvePrimaryMetric,
+} from '@/lib/metric-utils';
 import { getWorkoutSession, clearWorkoutSession, WorkoutSessionData } from '@/lib/workout-session';
 import { Card } from '@/app/components/SharedUi';
 import {
@@ -37,6 +43,21 @@ export default function StatsPage() {
     metricInfo: { primaryMetric: ReturnType<typeof resolvePrimaryMetric>; metricUnit: string | null },
     isMachine?: boolean
   ) => formatMetricDisplay(value, metricInfo.primaryMetric, metricInfo.metricUnit, weightUnit, heightUnit, isMachine);
+
+  const formatSetSummary = (
+    weight: number,
+    reps: number,
+    metricInfo: { primaryMetric: ReturnType<typeof resolvePrimaryMetric>; metricUnit: string | null },
+    isMachine?: boolean
+  ) => {
+    if (isRepsOnlyMetric(metricInfo.primaryMetric)) {
+      return `${reps} reps`;
+    }
+    if (isTimeMetric(metricInfo.primaryMetric)) {
+      return formatMetric(weight, metricInfo, isMachine);
+    }
+    return `${formatMetric(weight, metricInfo, isMachine)} × ${reps} reps`;
+  };
 
   const formatVolume = (volume: number) =>
     Math.round(convertWeightFromStorage(volume, weightUnit)).toLocaleString();
@@ -251,25 +272,26 @@ export default function StatsPage() {
                         <div className="bg-zinc-700 rounded p-2 text-sm">
                           <span className="text-zinc-400">Warmup:</span>{' '}
                           <span className="text-white font-semibold">
-                            {formatMetric(exercise.warmup.weight, metricInfo, isMachine)}
-                          </span> × {exercise.warmup.reps} reps
+                            {formatSetSummary(exercise.warmup.weight, exercise.warmup.reps, metricInfo, isMachine)}
+                          </span>
                         </div>
                       )}
                       {exercise.sets.map((set, setIndex) => (
                         <div key={setIndex} className="bg-zinc-700 rounded p-2 text-sm">
                           <span className="text-zinc-400">Set {setIndex + 1}:</span>{' '}
                           <span className="text-white font-semibold">
-                            {formatMetric(set.weight, metricInfo, isMachine)}
-                          </span> × {set.reps} reps
+                            {formatSetSummary(set.weight, set.reps, metricInfo, isMachine)}
+                          </span>
                           {exercise.b2bPartner && exercise.b2bPartner.sets[setIndex] && partnerMetricInfo && (
                             <div className="mt-1 text-purple-400">
                               + <span className="font-semibold">
-                                {formatMetric(
+                                {formatSetSummary(
                                   exercise.b2bPartner.sets[setIndex].weight,
+                                  exercise.b2bPartner.sets[setIndex].reps,
                                   partnerMetricInfo,
                                   isPartnerMachine
                                 )}
-                              </span> × {exercise.b2bPartner.sets[setIndex].reps} reps
+                              </span>
                             </div>
                           )}
                         </div>

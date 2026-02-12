@@ -11,6 +11,7 @@ import ErrorScreen from '@/app/components/ErrorScreen';
 import AutosaveBadge from '@/app/components/AutosaveBadge';
 import { acknowledgeChangeWarning, hasChangeWarningAck, loadSessionWorkout, saveSessionWorkout } from '@/lib/session-workout';
 import { autosaveWorkout } from '@/lib/workout-autosave';
+import { loadWorkoutBootstrapCache } from '@/lib/workout-bootstrap';
 
 type StretchOption = {
   id: number;
@@ -32,6 +33,8 @@ function PostStretchesContent() {
   const [stretchActionMode, setStretchActionMode] = useState<'add' | 'replace' | null>(null);
   const [showChangeWarning, setShowChangeWarning] = useState(false);
   const pendingChangeRef = useRef<(() => void) | null>(null);
+  const [timerSoundEnabled, setTimerSoundEnabled] = useState(true);
+  const [timerVibrateEnabled, setTimerVibrateEnabled] = useState(true);
 
   // Get routineId from URL params (for public/favorited routines)
   const routineIdParam = searchParams.get('routineId');
@@ -42,6 +45,7 @@ function PostStretchesContent() {
   useEffect(() => {
     async function fetchWorkout() {
       try {
+        const decodedName = decodeURIComponent(params.name as string);
         let apiUrl = `/api/workout/${params.name}`;
         if (routineIdParam) {
           apiUrl += `?routineId=${routineIdParam}`;
@@ -55,6 +59,22 @@ function PostStretchesContent() {
         const sessionWorkout = loadSessionWorkout(baseWorkout.name, routineIdParam);
         const resolvedWorkout = sessionWorkout || baseWorkout;
         setWorkout(resolvedWorkout);
+
+        const cached = loadWorkoutBootstrapCache({
+          workoutName: decodedName,
+          routineId: routineIdParam,
+        });
+        if (cached?.settings) {
+          setTimerSoundEnabled(cached.settings.timerSoundEnabled ?? true);
+          setTimerVibrateEnabled(cached.settings.timerVibrateEnabled ?? true);
+        } else {
+          const settingsResponse = await fetch('/api/user/settings');
+          if (settingsResponse.ok) {
+            const settingsData = await settingsResponse.json();
+            setTimerSoundEnabled(settingsData?.timerSoundEnabled ?? true);
+            setTimerVibrateEnabled(settingsData?.timerVibrateEnabled ?? true);
+          }
+        }
 
         // Check for index in URL (for navigation from other sections)
         const indexParam = searchParams.get('index');
@@ -297,6 +317,8 @@ function PostStretchesContent() {
           stretch={currentStretch}
           timerKey={currentIndex}
           variant="post"
+          timerSoundEnabled={timerSoundEnabled}
+          timerVibrateEnabled={timerVibrateEnabled}
         />
 
         {/* Navigation Buttons */}

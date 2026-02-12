@@ -24,6 +24,8 @@ let stretchVersionTableReady: boolean | null = null;
 let exerciseColumnsReady: boolean | null = null;
 const DEFAULT_REST_TIME_SECONDS = 60;
 const DEFAULT_SUPERSET_REST_TIME_SECONDS = 15;
+const DEFAULT_TIMER_SOUND_ENABLED = true;
+const DEFAULT_TIMER_VIBRATE_ENABLED = true;
 
 export function getDatabase(): Client {
   if (!db) {
@@ -433,6 +435,8 @@ async function ensureUserSettingsTable(): Promise<void> {
         superset_rest_seconds INTEGER DEFAULT 15,
         weight_unit TEXT DEFAULT 'lbs',
         height_unit TEXT DEFAULT 'in',
+        timer_sound_enabled INTEGER DEFAULT 1,
+        timer_vibrate_enabled INTEGER DEFAULT 1,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -454,6 +458,12 @@ async function ensureUserSettingsColumns(): Promise<void> {
     }
     if (!columns.has('height_unit')) {
       await db.execute("ALTER TABLE user_settings ADD COLUMN height_unit TEXT DEFAULT 'in'");
+    }
+    if (!columns.has('timer_sound_enabled')) {
+      await db.execute('ALTER TABLE user_settings ADD COLUMN timer_sound_enabled INTEGER DEFAULT 1');
+    }
+    if (!columns.has('timer_vibrate_enabled')) {
+      await db.execute('ALTER TABLE user_settings ADD COLUMN timer_vibrate_enabled INTEGER DEFAULT 1');
     }
   } catch (error) {
     console.warn('Failed to inspect user_settings schema:', error);
@@ -579,11 +589,23 @@ export async function getUserSettings(userId: string): Promise<{
   supersetRestSeconds: number;
   weightUnit: WeightUnit;
   heightUnit: HeightUnit;
+  timerSoundEnabled: boolean;
+  timerVibrateEnabled: boolean;
 }> {
   await ensureUserSettingsTable();
   const db = getDatabase();
   const result = await db.execute({
-    sql: 'SELECT rest_time_seconds, superset_rest_seconds, weight_unit, height_unit FROM user_settings WHERE user_id = ?',
+    sql: `
+      SELECT
+        rest_time_seconds,
+        superset_rest_seconds,
+        weight_unit,
+        height_unit,
+        timer_sound_enabled,
+        timer_vibrate_enabled
+      FROM user_settings
+      WHERE user_id = ?
+    `,
     args: [userId]
   });
   const row = result.rows[0] as any | undefined;
@@ -591,6 +613,13 @@ export async function getUserSettings(userId: string): Promise<{
   const supersetRestSeconds = Number(row?.superset_rest_seconds);
   const weightUnit = normalizeWeightUnit(row?.weight_unit);
   const heightUnit = normalizeHeightUnit(row?.height_unit);
+  const resolveBoolean = (value: unknown, fallback: boolean) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    return fallback;
+  };
+  const timerSoundEnabled = resolveBoolean(row?.timer_sound_enabled, DEFAULT_TIMER_SOUND_ENABLED);
+  const timerVibrateEnabled = resolveBoolean(row?.timer_vibrate_enabled, DEFAULT_TIMER_VIBRATE_ENABLED);
 
   return {
     restTimeSeconds: Number.isFinite(restTimeSeconds) ? restTimeSeconds : DEFAULT_REST_TIME_SECONDS,
@@ -598,7 +627,9 @@ export async function getUserSettings(userId: string): Promise<{
       ? supersetRestSeconds
       : DEFAULT_SUPERSET_REST_TIME_SECONDS,
     weightUnit,
-    heightUnit
+    heightUnit,
+    timerSoundEnabled,
+    timerVibrateEnabled,
   };
 }
 
@@ -607,21 +638,42 @@ export async function upsertUserSettings(userId: string, data: {
   supersetRestSeconds: number;
   weightUnit: WeightUnit;
   heightUnit: HeightUnit;
+  timerSoundEnabled: boolean;
+  timerVibrateEnabled: boolean;
 }): Promise<void> {
   await ensureUserSettingsTable();
   const db = getDatabase();
   await db.execute({
     sql: `
-      INSERT INTO user_settings (user_id, rest_time_seconds, superset_rest_seconds, weight_unit, height_unit, updated_at)
-      VALUES (?, ?, ?, ?, ?, datetime('now'))
+      INSERT INTO user_settings (
+        user_id,
+        rest_time_seconds,
+        superset_rest_seconds,
+        weight_unit,
+        height_unit,
+        timer_sound_enabled,
+        timer_vibrate_enabled,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
       ON CONFLICT(user_id) DO UPDATE SET
         rest_time_seconds = excluded.rest_time_seconds,
         superset_rest_seconds = excluded.superset_rest_seconds,
         weight_unit = excluded.weight_unit,
         height_unit = excluded.height_unit,
+        timer_sound_enabled = excluded.timer_sound_enabled,
+        timer_vibrate_enabled = excluded.timer_vibrate_enabled,
         updated_at = datetime('now')
     `,
-    args: [userId, data.restTimeSeconds, data.supersetRestSeconds, data.weightUnit, data.heightUnit]
+    args: [
+      userId,
+      data.restTimeSeconds,
+      data.supersetRestSeconds,
+      data.weightUnit,
+      data.heightUnit,
+      data.timerSoundEnabled ? 1 : 0,
+      data.timerVibrateEnabled ? 1 : 0,
+    ]
   });
 }
 

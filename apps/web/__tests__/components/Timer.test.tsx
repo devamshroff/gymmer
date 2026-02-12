@@ -1,11 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
+
+const playTimerCompleteFeedback = vi.hoisted(() => vi.fn());
+
+vi.mock('@/lib/workout-timer', () => ({
+  playTimerCompleteFeedback,
+}));
+
 import Timer from '@/app/components/Timer';
 
 describe('Timer Component', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+    playTimerCompleteFeedback.mockClear();
   });
 
   afterEach(() => {
@@ -101,6 +109,20 @@ describe('Timer Component', () => {
       // Timer may call onComplete multiple times due to React's behavior
       // The important thing is that it was called at least once
       expect(onComplete).toHaveBeenCalled();
+    });
+
+    it('plays completion feedback when timer finishes', () => {
+      render(<Timer timerSeconds={1} soundEnabled={false} vibrateEnabled />);
+      fireEvent.click(screen.getByText('Start Timer'));
+
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+
+      expect(playTimerCompleteFeedback).toHaveBeenCalledWith({
+        soundEnabled: false,
+        vibrateEnabled: true,
+      });
     });
 
     it('pauses timer when Pause is clicked', () => {

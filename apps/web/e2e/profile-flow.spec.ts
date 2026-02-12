@@ -50,6 +50,10 @@ test('Profile settings and goals flow', async ({ page }) => {
 
   await page.getByLabel('Goals & preferences').fill('Focus on upper body strength.');
   await page.getByRole('button', { name: 'Save Goals' }).click();
+  await expect(page.getByText('Saved')).toHaveCount(1);
+
+  await page.getByLabel('Open settings').click();
+  await expect(page).toHaveURL('/settings');
 
   await page.getByLabel('Rest time between sets (seconds)').fill('45');
   await page.getByLabel('Rest time between superset rounds (seconds)').fill('20');
@@ -57,5 +61,5 @@ test('Profile settings and goals flow', async ({ page }) => {
   await page.getByLabel('Height unit').selectOption('cm');
   await page.getByRole('button', { name: 'Save Settings' }).click();
 
-  await expect(page.getByText('Saved')).toHaveCount(2);
+  await expect(page.getByText('Saved')).toHaveCount(1);
 });

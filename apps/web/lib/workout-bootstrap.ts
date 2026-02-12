@@ -6,6 +6,8 @@ export type BootstrapUserSettings = {
   supersetRestSeconds: number;
   weightUnit: WeightUnit;
   heightUnit: HeightUnit;
+  timerSoundEnabled: boolean;
+  timerVibrateEnabled: boolean;
 };
 
 export type LastSetSummary =

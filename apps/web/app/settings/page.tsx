@@ -15,6 +15,8 @@ export default function SettingsPage() {
   const [supersetRestSeconds, setSupersetRestSeconds] = useState('15');
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(DEFAULT_WEIGHT_UNIT);
   const [heightUnit, setHeightUnit] = useState<HeightUnit>(DEFAULT_HEIGHT_UNIT);
+  const [timerSoundEnabled, setTimerSoundEnabled] = useState(true);
+  const [timerVibrateEnabled, setTimerVibrateEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
@@ -38,6 +40,12 @@ export default function SettingsPage() {
           }
           if (settingsData?.heightUnit !== undefined) {
             setHeightUnit(normalizeHeightUnit(settingsData.heightUnit));
+          }
+          if (settingsData?.timerSoundEnabled !== undefined) {
+            setTimerSoundEnabled(Boolean(settingsData.timerSoundEnabled));
+          }
+          if (settingsData?.timerVibrateEnabled !== undefined) {
+            setTimerVibrateEnabled(Boolean(settingsData.timerVibrateEnabled));
           }
         } else {
           setLoadError(true);
@@ -81,7 +89,9 @@ export default function SettingsPage() {
           restTimeSeconds: restSeconds,
           supersetRestSeconds: supersetSeconds,
           weightUnit,
-          heightUnit
+          heightUnit,
+          timerSoundEnabled,
+          timerVibrateEnabled,
         })
       });
 
@@ -150,6 +160,30 @@ export default function SettingsPage() {
                 disabled={loading || saving}
                 className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
               />
+            </div>
+
+            <div>
+              <div className="text-sm font-semibold text-zinc-200">Timer feedback</div>
+              <div className="mt-2 space-y-2">
+                <label className="flex items-center gap-2 text-sm text-zinc-200">
+                  <input
+                    type="checkbox"
+                    checked={timerSoundEnabled}
+                    onChange={(event) => setTimerSoundEnabled(event.target.checked)}
+                    disabled={loading || saving}
+                  />
+                  Play sound when timers end
+                </label>
+                <label className="flex items-center gap-2 text-sm text-zinc-200">
+                  <input
+                    type="checkbox"
+                    checked={timerVibrateEnabled}
+                    onChange={(event) => setTimerVibrateEnabled(event.target.checked)}
+                    disabled={loading || saving}
+                  />
+                  Buzz when timers end
+                </label>
+              </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">

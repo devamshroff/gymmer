@@ -18,6 +18,7 @@ import type { HeightUnit, WeightUnit } from '@/lib/units';
 import {
   formatMetricDisplay,
   isRepsOnlyMetric,
+  isTimeMetric,
   isWeightMetric,
   resolvePrimaryMetric,
 } from '@/lib/metric-utils';
@@ -104,6 +105,21 @@ export default function SummaryPage() {
   ) => {
     const metricInfo = getMetricInfo(entry);
     return formatMetricDisplay(value, metricInfo.primaryMetric, metricInfo.metricUnit, weightUnit, heightUnit, isMachine);
+  };
+
+  const formatSetSummary = (
+    weight: number,
+    reps: number,
+    metricInfo: { primaryMetric: ExercisePrimaryMetric; metricUnit: string | null },
+    isMachine?: boolean
+  ) => {
+    if (isRepsOnlyMetric(metricInfo.primaryMetric)) {
+      return `${reps} reps`;
+    }
+    if (isTimeMetric(metricInfo.primaryMetric)) {
+      return formatMetricDisplay(weight, metricInfo.primaryMetric, metricInfo.metricUnit, weightUnit, heightUnit, isMachine);
+    }
+    return `${formatMetricDisplay(weight, metricInfo.primaryMetric, metricInfo.metricUnit, weightUnit, heightUnit, isMachine)} × ${reps} reps`;
   };
 
   const formatVolume = (volume: number) =>
@@ -481,31 +497,32 @@ export default function SummaryPage() {
                     <div className="space-y-1 text-xs">
                       {exercise.warmup && (
                         <div className="text-zinc-500">
-                          Warmup: {formatMetric(exercise.warmup.weight, {
-                            primaryMetric: metricInfo.primaryMetric,
-                            metricUnit: metricInfo.metricUnit,
-                            isBodyweight: targetMeta?.isBodyweight
-                          }, isMachine)} ×{' '}
-                          {exercise.warmup.reps} reps
+                          Warmup: {formatSetSummary(
+                            exercise.warmup.weight,
+                            exercise.warmup.reps,
+                            metricInfo,
+                            isMachine
+                          )}
                         </div>
                       )}
                       {exercise.sets.map((set, setIndex) => (
                         <div key={setIndex} className="text-zinc-300">
-                          Set {setIndex + 1}: {formatMetric(set.weight, {
-                            primaryMetric: metricInfo.primaryMetric,
-                            metricUnit: metricInfo.metricUnit,
-                            isBodyweight: targetMeta?.isBodyweight
-                          }, isMachine)} × {set.reps} reps
+                          Set {setIndex + 1}: {formatSetSummary(
+                            set.weight,
+                            set.reps,
+                            metricInfo,
+                            isMachine
+                          )}
                           {exercise.b2bPartner &&
                             exercise.b2bPartner.sets[setIndex] && (
                               <span className="text-purple-400">
                                 {' + '}
-                                {formatMetric(exercise.b2bPartner.sets[setIndex].weight, {
-                                  primaryMetric: partnerMetricInfo.primaryMetric,
-                                  metricUnit: partnerMetricInfo.metricUnit,
-                                  isBodyweight: partnerMeta?.isBodyweight
-                                }, isPartnerMachine)} ×{' '}
-                                {exercise.b2bPartner.sets[setIndex].reps} reps
+                                {formatSetSummary(
+                                  exercise.b2bPartner.sets[setIndex].weight,
+                                  exercise.b2bPartner.sets[setIndex].reps,
+                                  partnerMetricInfo,
+                                  isPartnerMachine
+                                )}
                               </span>
                             )}
                         </div>

@@ -21,6 +21,7 @@ export interface SessionExerciseData {
   };
 }
 
+// `weight` stores the primary metric value (e.g., seconds for time-based exercises).
 type SessionSetData = { weight: number; reps: number };
 
 export interface WorkoutFlowState {

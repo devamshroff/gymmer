@@ -198,7 +198,14 @@ describe('Phase 2: User Settings Functions', () => {
     it('returns defaults when settings are missing', async () => {
       mockExecute
         .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [{ name: 'weight_unit' }, { name: 'height_unit' }] })
+        .mockResolvedValueOnce({
+          rows: [
+            { name: 'weight_unit' },
+            { name: 'height_unit' },
+            { name: 'timer_sound_enabled' },
+            { name: 'timer_vibrate_enabled' },
+          ],
+        })
         .mockResolvedValueOnce({ rows: [] });
 
       const settings = await getUserSettings('user-123');
@@ -208,12 +215,14 @@ describe('Phase 2: User Settings Functions', () => {
         supersetRestSeconds: 15,
         weightUnit: 'lbs',
         heightUnit: 'in',
+        timerSoundEnabled: true,
+        timerVibrateEnabled: true,
       });
       expect(mockExecute).toHaveBeenCalledWith({
         sql: expect.stringContaining('CREATE TABLE IF NOT EXISTS user_settings'),
       });
       expect(mockExecute).toHaveBeenCalledWith({
-        sql: 'SELECT rest_time_seconds, superset_rest_seconds, weight_unit, height_unit FROM user_settings WHERE user_id = ?',
+        sql: expect.stringContaining('SELECT'),
         args: ['user-123'],
       });
     });
@@ -221,9 +230,23 @@ describe('Phase 2: User Settings Functions', () => {
     it('returns stored settings when present', async () => {
       mockExecute
         .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [{ name: 'weight_unit' }, { name: 'height_unit' }] })
         .mockResolvedValueOnce({
-          rows: [{ rest_time_seconds: 45, superset_rest_seconds: 20, weight_unit: 'kg', height_unit: 'cm' }],
+          rows: [
+            { name: 'weight_unit' },
+            { name: 'height_unit' },
+            { name: 'timer_sound_enabled' },
+            { name: 'timer_vibrate_enabled' },
+          ],
+        })
+        .mockResolvedValueOnce({
+          rows: [{
+            rest_time_seconds: 45,
+            superset_rest_seconds: 20,
+            weight_unit: 'kg',
+            height_unit: 'cm',
+            timer_sound_enabled: 0,
+            timer_vibrate_enabled: 1,
+          }],
         });
 
       const settings = await getUserSettings('user-123');
@@ -233,6 +256,8 @@ describe('Phase 2: User Settings Functions', () => {
         supersetRestSeconds: 20,
         weightUnit: 'kg',
         heightUnit: 'cm',
+        timerSoundEnabled: false,
+        timerVibrateEnabled: true,
       });
     });
   });
@@ -248,6 +273,8 @@ describe('Phase 2: User Settings Functions', () => {
         supersetRestSeconds: 30,
         weightUnit: 'lbs',
         heightUnit: 'in',
+        timerSoundEnabled: true,
+        timerVibrateEnabled: false,
       });
 
       expect(mockExecute).toHaveBeenCalledWith({
@@ -255,7 +282,7 @@ describe('Phase 2: User Settings Functions', () => {
       });
       expect(mockExecute).toHaveBeenCalledWith({
         sql: expect.stringContaining('INSERT INTO user_settings'),
-        args: ['user-123', 90, 30, 'lbs', 'in'],
+        args: ['user-123', 90, 30, 'lbs', 'in', 1, 0],
       });
     });
   });

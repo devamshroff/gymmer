@@ -38,6 +38,8 @@ function StretchesContent() {
   const [stretchActionMode, setStretchActionMode] = useState<'add' | 'replace' | null>(null);
   const [showChangeWarning, setShowChangeWarning] = useState(false);
   const pendingChangeRef = useRef<(() => void) | null>(null);
+  const [timerSoundEnabled, setTimerSoundEnabled] = useState(true);
+  const [timerVibrateEnabled, setTimerVibrateEnabled] = useState(true);
 
   // Get routineId from URL params (for public/favorited routines)
   const routineIdParam = searchParams.get('routineId');
@@ -54,9 +56,11 @@ function StretchesContent() {
         });
 
         let baseWorkout: WorkoutPlan | null = null;
+        let bootstrapSettings: WorkoutBootstrapPayload['settings'] | null = null;
 
         if (cached) {
           baseWorkout = cached.workout;
+          bootstrapSettings = cached.settings;
         } else {
           let apiUrl = `/api/workout/${params.workoutName}?bootstrap=1`;
           if (routineIdParam) {
@@ -68,6 +72,7 @@ function StretchesContent() {
           }
           const data = await response.json();
           baseWorkout = data.workout as WorkoutPlan;
+          bootstrapSettings = data.settings;
           const payload: WorkoutBootstrapPayload = {
             workout: baseWorkout,
             settings: data.settings,
@@ -88,6 +93,11 @@ function StretchesContent() {
         const sessionWorkout = loadSessionWorkout(baseWorkout.name, routineIdParam);
         const resolvedWorkout = sessionWorkout || baseWorkout;
         setWorkout(resolvedWorkout);
+
+        if (bootstrapSettings) {
+          setTimerSoundEnabled(bootstrapSettings.timerSoundEnabled ?? true);
+          setTimerVibrateEnabled(bootstrapSettings.timerVibrateEnabled ?? true);
+        }
         // Ensure workout session exists when workout is loaded
         ensureWorkoutSession(resolvedWorkout.name, routineId);
 
@@ -357,6 +367,8 @@ function StretchesContent() {
           stretch={currentStretch}
           timerKey={currentIndex}
           variant="pre"
+          timerSoundEnabled={timerSoundEnabled}
+          timerVibrateEnabled={timerVibrateEnabled}
         />
 
         {/* Navigation Buttons */}

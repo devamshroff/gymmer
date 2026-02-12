@@ -169,3 +169,7 @@ export function isRepsOnlyMetric(primaryMetric: ExercisePrimaryMetric): boolean 
 export function isWeightMetric(primaryMetric: ExercisePrimaryMetric): boolean {
   return primaryMetric === EXERCISE_PRIMARY_METRICS.weight;
 }
+
+export function isTimeMetric(primaryMetric: ExercisePrimaryMetric): boolean {
+  return primaryMetric === EXERCISE_PRIMARY_METRICS.time;
+}

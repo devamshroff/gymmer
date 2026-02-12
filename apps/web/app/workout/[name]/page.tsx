@@ -29,6 +29,7 @@ import {
   formatMetricDisplay,
   getMetricLabel,
   isRepsOnlyMetric,
+  isTimeMetric,
   resolvePrimaryMetric,
 } from '@/lib/metric-utils';
 import {
@@ -1117,6 +1118,8 @@ function TargetCard({
   const weightDelta = lastWeight !== null ? targetWeight - lastWeight : null;
   const repsDelta = lastReps !== null ? targetReps - lastReps : null;
   const showMetric = !isRepsOnlyMetric(metricInfo.primaryMetric);
+  const isTimeOnly = isTimeMetric(metricInfo.primaryMetric);
+  const showReps = !isTimeOnly;
   const weightLabel = getMetricLabel(
     metricInfo.primaryMetric,
     metricInfo.metricUnit,
@@ -1138,7 +1141,7 @@ function TargetCard({
         )
       );
     }
-    if (lastReps !== null) lastSummaryParts.push(`${lastReps} reps`);
+    if (lastReps !== null && showReps) lastSummaryParts.push(`${lastReps} reps`);
   } else {
     if (lastReps !== null) lastSummaryParts.push(`${lastReps} reps`);
     else if (lastWeight !== null) {
@@ -1162,7 +1165,7 @@ function TargetCard({
   return (
     <div className="bg-zinc-900 rounded p-3 border border-emerald-800">
       <div className="text-emerald-400 text-xs mb-2">Today&apos;s target</div>
-      <div className={`grid ${showMetric ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
+      <div className={`grid ${showMetric && showReps ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
         {showMetric && (
           <div>
             <div className="text-zinc-500 text-xs mb-1">{weightLabel}</div>
@@ -1181,15 +1184,17 @@ function TargetCard({
             </div>
           </div>
         )}
-        <div>
-          <div className="text-zinc-500 text-xs mb-1">Reps</div>
-          <div className="text-white font-semibold text-lg">
-            {targetReps}
-            {repsDelta !== null && repsDelta !== 0 && (
-              <span className={`ml-2 text-sm ${deltaClass(repsDelta)}`}>({formatDelta(repsDelta)})</span>
-            )}
+        {showReps && (
+          <div>
+            <div className="text-zinc-500 text-xs mb-1">Reps</div>
+            <div className="text-white font-semibold text-lg">
+              {targetReps}
+              {repsDelta !== null && repsDelta !== 0 && (
+                <span className={`ml-2 text-sm ${deltaClass(repsDelta)}`}>({formatDelta(repsDelta)})</span>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
       {lastSummary && (
         <div className="text-zinc-500 text-xs mt-2">
@@ -1230,6 +1235,7 @@ function ExerciseCard({
       metricUnit: exercise.metricUnit ?? null,
     };
     const showMetric = !isRepsOnlyMetric(metricInfo.primaryMetric);
+    const isTimeOnly = isTimeMetric(metricInfo.primaryMetric);
     const isMachine = !!exercise.isMachine;
     const metricLabel = getMetricLabel(
       metricInfo.primaryMetric,
@@ -1308,9 +1314,20 @@ function ExerciseCard({
               <div className="text-white font-semibold text-2xl">{exercise.restTime}s</div>
             </div>
             <div className="bg-zinc-900 rounded p-3">
-              <div className="text-zinc-500 text-xs mb-1">Sets × Reps</div>
+              <div className="text-zinc-500 text-xs mb-1">
+                {isTimeOnly ? 'Sets × Time' : 'Sets × Reps'}
+              </div>
               <div className="text-white font-semibold text-2xl">
-                {exercise.sets} × {exercise.targetReps}
+                {isTimeOnly
+                  ? `${exercise.sets} × ${formatMetricDisplay(
+                      exercise.targetWeight,
+                      metricInfo.primaryMetric,
+                      metricInfo.metricUnit,
+                      weightUnit,
+                      heightUnit,
+                      isMachine
+                    )}`
+                  : `${exercise.sets} × ${exercise.targetReps}`}
               </div>
             </div>
           </div>

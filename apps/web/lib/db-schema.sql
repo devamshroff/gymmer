@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS user_settings (
   superset_rest_seconds INTEGER DEFAULT 15,
   weight_unit TEXT DEFAULT 'lbs',
   height_unit TEXT DEFAULT 'in',
+  timer_sound_enabled INTEGER DEFAULT 1,
+  timer_vibrate_enabled INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -59,7 +61,7 @@ CREATE TABLE IF NOT EXISTS workout_exercise_logs (
   warmup_weight REAL,
   warmup_reps INTEGER,
 
-  -- Working sets (up to 4)
+  -- Working sets (up to 4). set*_weight stores the primary metric value (e.g., seconds for time).
   set1_weight REAL,
   set1_reps INTEGER,
   set2_weight REAL,
@@ -69,7 +71,7 @@ CREATE TABLE IF NOT EXISTS workout_exercise_logs (
   set4_weight REAL,
   set4_reps INTEGER,
 
-  -- For B2B/Supersets: second exercise data
+  -- For B2B/Supersets: second exercise data (same metric convention as above).
   b2b_partner_name TEXT,
   b2b_warmup_weight REAL,
   b2b_warmup_reps INTEGER,

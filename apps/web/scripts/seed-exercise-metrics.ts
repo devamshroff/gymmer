@@ -20,6 +20,8 @@ const EXERCISES: Array<{
   { name: 'Wall Sit', equipment: 'Bodyweight', primaryMetric: EXERCISE_PRIMARY_METRICS.time },
   { name: 'Hollow Hold', equipment: 'Bodyweight', primaryMetric: EXERCISE_PRIMARY_METRICS.time },
   { name: 'L-Sit', equipment: 'Bodyweight', primaryMetric: EXERCISE_PRIMARY_METRICS.time },
+  { name: 'Single-Leg Balance', equipment: 'Bodyweight', primaryMetric: EXERCISE_PRIMARY_METRICS.time },
+  { name: 'Single Leg Balance', equipment: 'Bodyweight', primaryMetric: EXERCISE_PRIMARY_METRICS.time },
 ];
 
 async function ensureExerciseColumns(db: ReturnType<typeof getDatabase>) {

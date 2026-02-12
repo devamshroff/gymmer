@@ -1,28 +1,54 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { playTimerCompleteFeedback, type TimerFeedbackOptions } from '@/lib/workout-timer';
 
 interface TimerProps {
   timerSeconds: number; // Explicit timer value in seconds, 0 means no timer
   onComplete?: () => void;
+  soundEnabled?: boolean;
+  vibrateEnabled?: boolean;
 }
 
-export default function Timer({ timerSeconds, onComplete }: TimerProps) {
+export default function Timer({
+  timerSeconds,
+  onComplete,
+  soundEnabled,
+  vibrateEnabled,
+}: TimerProps) {
   // Don't render anything if no timer is needed
   if (!timerSeconds || timerSeconds <= 0) {
     return null;
   }
 
-  return <TimerContent timerSeconds={timerSeconds} onComplete={onComplete} />;
+  return (
+    <TimerContent
+      timerSeconds={timerSeconds}
+      onComplete={onComplete}
+      soundEnabled={soundEnabled}
+      vibrateEnabled={vibrateEnabled}
+    />
+  );
 }
 
-function TimerContent({ timerSeconds, onComplete }: { timerSeconds: number; onComplete?: () => void }) {
+function TimerContent({
+  timerSeconds,
+  onComplete,
+  soundEnabled,
+  vibrateEnabled,
+}: {
+  timerSeconds: number;
+  onComplete?: () => void;
+  soundEnabled?: boolean;
+  vibrateEnabled?: boolean;
+}) {
   const totalSeconds = timerSeconds;
   const [secondsLeft, setSecondsLeft] = useState(totalSeconds);
   const [isRunning, setIsRunning] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const endTimeRef = useRef<number | null>(null);
   const didCompleteRef = useRef(false);
+  const feedbackRef = useRef<TimerFeedbackOptions>({ soundEnabled, vibrateEnabled });
 
   useEffect(() => {
     // Reset timer when timerSeconds changes
@@ -33,6 +59,10 @@ function TimerContent({ timerSeconds, onComplete }: { timerSeconds: number; onCo
     didCompleteRef.current = false;
   }, [timerSeconds]);
 
+  useEffect(() => {
+    feedbackRef.current = { soundEnabled, vibrateEnabled };
+  }, [soundEnabled, vibrateEnabled]);
+
   const updateRemaining = useCallback(() => {
     if (!endTimeRef.current) return;
     const remainingMs = endTimeRef.current - Date.now();
@@ -42,6 +72,7 @@ function TimerContent({ timerSeconds, onComplete }: { timerSeconds: number; onCo
       setIsRunning(false);
       if (!didCompleteRef.current) {
         didCompleteRef.current = true;
+        playTimerCompleteFeedback(feedbackRef.current);
         onComplete?.();
       }
     }

@@ -117,6 +117,8 @@ export interface WorkoutExerciseLog {
   warmup_reps: number | null;
 
   // Working sets (1-4)
+  // NOTE: set*_weight stores the primary metric value (weight/height/time/distance).
+  // For time-based exercises, store seconds in set*_weight and leave reps as 0.
   set1_weight: number | null;
   set1_reps: number | null;
   set2_weight: number | null;

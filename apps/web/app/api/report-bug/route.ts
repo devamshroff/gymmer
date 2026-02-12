@@ -32,6 +32,31 @@ function getFilename(file: File): string {
   return `screenshot.${extension}`;
 }
 
+function getRequestOrigin(request: Request): string {
+  const origin = request.headers.get('origin');
+  if (origin) return origin;
+
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const forwardedProto = request.headers.get('x-forwarded-proto');
+  if (forwardedHost) {
+    const proto = forwardedProto ?? 'https';
+    return `${proto}://${forwardedHost}`;
+  }
+
+  const host = request.headers.get('host');
+  if (host) {
+    const proto = forwardedProto ?? 'https';
+    return `${proto}://${host}`;
+  }
+
+  return new URL(request.url).origin;
+}
+
+function redirectWithStatus(request: Request, status: string) {
+  const origin = getRequestOrigin(request);
+  return NextResponse.redirect(new URL(`/report-bug?status=${status}`, origin), 303);
+}
+
 export async function POST(request: Request) {
   const resendApiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.BUG_REPORT_FROM_EMAIL;
@@ -44,10 +69,7 @@ export async function POST(request: Request) {
     formData = await request.formData();
   } catch (error) {
     console.error('Failed to read bug report form data.', error);
-    return NextResponse.redirect(
-      new URL('/report-bug?status=error', request.url),
-      303
-    );
+    return redirectWithStatus(request, 'error');
   }
 
   const description = normalizeText(formData.get('description'));
@@ -55,10 +77,7 @@ export async function POST(request: Request) {
   const screenshot = formData.get('screenshot');
 
   if (!description) {
-    return NextResponse.redirect(
-      new URL('/report-bug?status=error', request.url),
-      303
-    );
+    return redirectWithStatus(request, 'error');
   }
 
   let attachment:
@@ -70,10 +89,7 @@ export async function POST(request: Request) {
 
   if (screenshot instanceof File && screenshot.size > 0) {
     if (!ALLOWED_SCREENSHOT_TYPES.has(screenshot.type) || screenshot.size > MAX_SCREENSHOT_BYTES) {
-      return NextResponse.redirect(
-        new URL('/report-bug?status=invalid-file', request.url),
-        303
-      );
+      return redirectWithStatus(request, 'invalid-file');
     }
 
     const buffer = Buffer.from(await screenshot.arrayBuffer());
@@ -128,15 +144,9 @@ export async function POST(request: Request) {
       hasScreenshot: Boolean(attachment)
     });
     if (isProduction) {
-      return NextResponse.redirect(
-        new URL('/report-bug?status=error', request.url),
-        303
-      );
+      return redirectWithStatus(request, 'error');
     }
-    return NextResponse.redirect(
-      new URL('/report-bug?status=sent', request.url),
-      303
-    );
+    return redirectWithStatus(request, 'sent');
   }
 
   try {
@@ -155,14 +165,8 @@ export async function POST(request: Request) {
     await resend.emails.send(emailPayload);
   } catch (error) {
     console.error('Failed to send bug report email.', error);
-    return NextResponse.redirect(
-      new URL('/report-bug?status=error', request.url),
-      303
-    );
+    return redirectWithStatus(request, 'error');
   }
 
-  return NextResponse.redirect(
-    new URL('/report-bug?status=sent', request.url),
-    303
-  );
+  return redirectWithStatus(request, 'sent');
 }
