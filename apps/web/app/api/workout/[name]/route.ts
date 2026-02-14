@@ -256,6 +256,7 @@ async function loadRoutineFromDatabase(
     if (!isSuperset) {
       return {
         type: EXERCISE_TYPES.single,
+        exerciseId: typeof re.exercise_id1 === 'number' ? re.exercise_id1 : undefined,
         name: re.exercise_name,
         sets: defaultSets,
         targetReps: defaultTargetReps,
@@ -277,6 +278,7 @@ async function loadRoutineFromDatabase(
       restTime: supersetRestSeconds,
       exercises: [
         {
+          exerciseId: typeof re.exercise_id1 === 'number' ? re.exercise_id1 : undefined,
           name: re.exercise_name,
           sets: defaultSets,
           targetReps: defaultTargetReps,
@@ -291,6 +293,7 @@ async function loadRoutineFromDatabase(
           metricUnit
         },
         {
+          exerciseId: typeof re.exercise_id2 === 'number' ? re.exercise_id2 : undefined,
           name: re.exercise2_name || '',
           sets: defaultSets,
           targetReps: defaultTargetReps,

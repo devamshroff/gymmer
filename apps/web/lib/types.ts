@@ -11,6 +11,7 @@ export interface Stretch {
 
 export interface SingleExercise {
   type: typeof EXERCISE_TYPES.single;
+  exerciseId?: number;
   name: string;
   sets: number;
   targetReps: number;
@@ -30,6 +31,7 @@ export interface B2BExercise {
   type: typeof EXERCISE_TYPES.b2b;
   exercises: [
     {
+      exerciseId?: number;
       name: string;
       sets: number;
       targetReps: number;
@@ -44,6 +46,7 @@ export interface B2BExercise {
       metricUnit?: string | null;
     },
     {
+      exerciseId?: number;
       name: string;
       sets: number;
       targetReps: number;

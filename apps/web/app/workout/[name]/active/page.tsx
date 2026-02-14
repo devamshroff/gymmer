@@ -49,6 +49,7 @@ import { formatLocalDate, getLogSetValue, resolveHasWarmup } from './helpers';
 import type { LastSetSummaries, SetData } from './types';
 import { B2BExerciseView, SingleExerciseView } from './exercise-views';
 import type { ActiveWorkoutViewContext } from './exercise-views';
+import { buildFreeWorkoutPlan } from '@/lib/free-workout';
 
 type ExerciseOption = {
   id: number;
@@ -64,6 +65,7 @@ function ActiveWorkoutContent() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const isFreeMode = searchParams.get('free') === '1';
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [initialIndexSet, setInitialIndexSet] = useState(false);
@@ -484,6 +486,7 @@ function ActiveWorkoutContent() {
   const routineId = Number.isNaN(routineIdValue) ? null : routineIdValue;
   const routineQueryParams = new URLSearchParams();
   if (routineIdParam) routineQueryParams.set('routineId', routineIdParam);
+  if (isFreeMode) routineQueryParams.set('free', '1');
   const routineQuery = routineQueryParams.toString() ? `?${routineQueryParams.toString()}` : '';
 
   useEffect(() => {
@@ -511,6 +514,31 @@ function ActiveWorkoutContent() {
     async function fetchWorkout() {
       try {
         const decodedName = decodeURIComponent(params.name as string);
+        if (isFreeMode) {
+          const fallbackPlan = buildFreeWorkoutPlan();
+          const sessionPlan = loadSessionWorkout(fallbackPlan.name, null);
+          const resolvedWorkout = sessionPlan || fallbackPlan;
+          setWorkout(resolvedWorkout);
+          setLastSetSummaries({});
+          ensureWorkoutSession(resolvedWorkout.name, null);
+          try {
+            const settingsResponse = await fetch('/api/user/settings');
+            if (settingsResponse.ok) {
+              const settingsData = await settingsResponse.json();
+              const restSeconds = Number(settingsData?.restTimeSeconds);
+              const supersetSeconds = Number(settingsData?.supersetRestSeconds);
+              setRestTimeSeconds(Number.isFinite(restSeconds) ? restSeconds : 60);
+              setSupersetRestSeconds(Number.isFinite(supersetSeconds) ? supersetSeconds : 15);
+              setWeightUnit(normalizeWeightUnit(settingsData?.weightUnit));
+              setHeightUnit(normalizeHeightUnit(settingsData?.heightUnit));
+              setTimerSoundEnabled(settingsData?.timerSoundEnabled ?? true);
+              setTimerVibrateEnabled(settingsData?.timerVibrateEnabled ?? true);
+            }
+          } catch (error) {
+            console.error('Error fetching user settings:', error);
+          }
+          return;
+        }
         const cached = loadWorkoutBootstrapCache({
           workoutName: decodedName,
           routineId: routineIdParam,
@@ -732,7 +760,7 @@ function ActiveWorkoutContent() {
     }
 
     fetchWorkout();
-  }, [params.name, searchParams, routineIdParam, initialIndexSet]);
+  }, [params.name, searchParams, routineIdParam, initialIndexSet, isFreeMode]);
 
   useEffect(() => {
     if (!userId) return;
@@ -835,7 +863,7 @@ function ActiveWorkoutContent() {
   }, [currentExerciseIndex, currentSetIndex]);
 
   useEffect(() => {
-    if (!workout) return;
+    if (!workout || workout.exercises.length === 0) return;
     const current = workout.exercises[currentExerciseIndex];
     if (current.type === EXERCISE_TYPES.single) {
       const metric = resolvePrimaryMetric(current.primaryMetric, current.isBodyweight);
@@ -894,7 +922,7 @@ function ActiveWorkoutContent() {
 
   // Resolve last-set summaries from bootstrap cache
   useEffect(() => {
-    if (!workout) return;
+    if (!workout || workout.exercises.length === 0) return;
     const currentExercise = workout.exercises[currentExerciseIndex];
     if (currentExercise.type === EXERCISE_TYPES.single) {
       setLastExerciseLog(lastSetSummaries[currentExercise.name] ?? null);
@@ -927,22 +955,36 @@ function ActiveWorkoutContent() {
     );
   }
 
-  const currentExercise = workout.exercises[currentExerciseIndex];
+  const hasExercises = workout.exercises.length > 0;
+  const placeholderExercise: SingleExercise = {
+    type: EXERCISE_TYPES.single,
+    name: 'Placeholder',
+    sets: 1,
+    targetReps: 0,
+    targetWeight: 0,
+    warmupWeight: 0,
+    restTime: 60,
+    videoUrl: '',
+    tips: '',
+    hasWarmup: false,
+  };
+  const currentExercise = hasExercises ? workout.exercises[currentExerciseIndex] : placeholderExercise;
 
   // Review mode: determine if viewing a previous exercise
   const isReviewMode = viewingExerciseIndex < currentExerciseIndex;
   const isSetReview = showSetReview && viewingExerciseIndex === currentExerciseIndex;
-  const viewingExercise = workout.exercises[viewingExerciseIndex];
+  const viewingExercise = hasExercises ? workout.exercises[viewingExerciseIndex] : currentExercise;
   const viewingCachedData = completedExercisesCache.find(cache => cache.exerciseIndex === viewingExerciseIndex) ?? null;
   const lastExerciseDate = lastExerciseLog?.completed_at || lastExerciseLog?.created_at || null;
   const lastPartnerExerciseDate = lastPartnerExerciseLog?.completed_at || lastPartnerExerciseLog?.created_at || null;
 
   // Calculate total workout items for progress
-  const totalItems =
+  const computedTotalItems =
     workout.preWorkoutStretches.length +
     workout.exercises.length +
     (workout.cardio ? 1 : 0) +
     workout.postWorkoutStretches.length;
+  const totalItems = Math.max(1, computedTotalItems);
   const currentProgress = workout.preWorkoutStretches.length + currentExerciseIndex + 1;
   const progressPercentage = (currentProgress / totalItems) * 100;
 
@@ -1384,6 +1426,7 @@ function ActiveWorkoutContent() {
       : false;
     return {
       type: EXERCISE_TYPES.single,
+      exerciseId: exercise.id,
       name: exercise.name,
       sets: 3,
       targetReps: 10,
@@ -1416,6 +1459,7 @@ function ActiveWorkoutContent() {
       restTime: 30,
       exercises: [
         {
+          exerciseId: exercise1.id,
           name: exercise1.name,
           sets: 3,
           targetReps: 10,
@@ -1428,6 +1472,7 @@ function ActiveWorkoutContent() {
           isMachine: isMachine1
         },
         {
+          exerciseId: exercise2.id,
           name: exercise2.name,
           sets: 3,
           targetReps: 10,
@@ -1569,6 +1614,10 @@ function ActiveWorkoutContent() {
 
   const runWithChangeWarning = (action: () => void) => {
     if (!workout) return;
+    if (isFreeMode) {
+      action();
+      return;
+    }
     if (hasChangeWarningAck(workout.name, routineIdParam)) {
       action();
       return;
@@ -1789,6 +1838,37 @@ function ActiveWorkoutContent() {
       />
     </>
   );
+
+  if (!hasExercises) {
+    return (
+      <div className="min-h-screen bg-zinc-900 p-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-white mb-2">{workout.name}</h1>
+            <p className="text-zinc-400">Add exercises as you go.</p>
+          </div>
+          <div className="rounded-lg border border-zinc-700 bg-zinc-800 p-6 text-center">
+            <div className="text-zinc-300 mb-4">No exercises yet.</div>
+            <div className="space-y-3">
+              <button
+                onClick={() => openExerciseTypePicker('add')}
+                className="w-full rounded-lg bg-rose-800 py-3 text-sm font-semibold text-white hover:bg-rose-700"
+              >
+                + Add Exercise
+              </button>
+              <button
+                onClick={() => router.push('/routines')}
+                className="w-full rounded-lg bg-zinc-700 py-3 text-sm font-semibold text-white hover:bg-zinc-600"
+              >
+                Exit to routines
+              </button>
+            </div>
+          </div>
+        </div>
+        {exerciseModals}
+      </div>
+    );
+  }
 
   const viewContext: ActiveWorkoutViewContext = {
     workout,

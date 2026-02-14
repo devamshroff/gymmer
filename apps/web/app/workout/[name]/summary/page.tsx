@@ -28,6 +28,11 @@ import {
   isWeightMetric,
   resolvePrimaryMetric,
 } from '@/lib/metric-utils';
+import {
+  buildFreeWorkoutPlan,
+  extractRoutineExerciseDrafts,
+  resolveRoutineExerciseIds,
+} from '@/lib/free-workout';
 
 type ReportTarget = {
   name: string;
@@ -82,6 +87,7 @@ export default function SummaryPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const isFreeMode = searchParams.get('free') === '1';
 
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
@@ -96,6 +102,11 @@ export default function SummaryPage() {
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(DEFAULT_WEIGHT_UNIT);
   const [heightUnit, setHeightUnit] = useState<HeightUnit>(DEFAULT_HEIGHT_UNIT);
   const [sessionChanges, setSessionChanges] = useState<SessionChanges | null>(null);
+  const [showSaveRoutineModal, setShowSaveRoutineModal] = useState(false);
+  const [routineNameDraft, setRoutineNameDraft] = useState('');
+  const [routinePrivate, setRoutinePrivate] = useState(false);
+  const [savingRoutine, setSavingRoutine] = useState(false);
+  const [saveRoutineError, setSaveRoutineError] = useState<string | null>(null);
 
   const getMetricInfo = (entry: {
     primaryMetric?: ExercisePrimaryMetric;
@@ -177,6 +188,12 @@ export default function SummaryPage() {
   useEffect(() => {
     async function fetchWorkout() {
       try {
+        if (isFreeMode) {
+          const fallbackPlan = buildFreeWorkoutPlan();
+          const sessionPlan = loadSessionWorkout(fallbackPlan.name, null);
+          setWorkout(sessionPlan || fallbackPlan);
+          return;
+        }
         let apiUrl = `/api/workout/${params.name}`;
         if (routineIdParam) {
           apiUrl += `?routineId=${routineIdParam}`;
@@ -195,7 +212,7 @@ export default function SummaryPage() {
     }
 
     fetchWorkout();
-  }, [params.name, routineIdParam]);
+  }, [params.name, routineIdParam, isFreeMode]);
 
   useEffect(() => {
     if (!workout) return;
@@ -414,6 +431,99 @@ export default function SummaryPage() {
     router.push(`/routines/${routineEditId}/edit?sessionChanges=1`);
   };
 
+  const buildDefaultRoutineName = () => {
+    const baseDate = sessionData?.startTime ? new Date(sessionData.startTime) : new Date();
+    const formatted = baseDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `Free Workout ${formatted}`;
+  };
+
+  const handleOpenSaveRoutine = () => {
+    setSaveRoutineError(null);
+    setRoutineNameDraft((prev) => (prev.trim().length > 0 ? prev : buildDefaultRoutineName()));
+    setShowSaveRoutineModal(true);
+  };
+
+  const handleSaveAsRoutine = async () => {
+    if (!workout) return;
+    const trimmedName = routineNameDraft.trim();
+    if (!trimmedName) {
+      setSaveRoutineError('Routine name is required.');
+      return;
+    }
+
+    const sessionPlan = loadSessionWorkout(workout.name, null) ?? workout;
+    const drafts = extractRoutineExerciseDrafts(sessionPlan);
+    if (drafts.length === 0) {
+      setSaveRoutineError('Add at least one exercise to save a routine.');
+      return;
+    }
+
+    setSavingRoutine(true);
+    setSaveRoutineError(null);
+    try {
+      const createResponse = await fetch('/api/routines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmedName, isPublic: !routinePrivate }),
+      });
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to create routine');
+      }
+      const created = await createResponse.json();
+      const routineId = created.id as number;
+
+      const needsResolve = drafts.some((draft) => !draft.exerciseId1 || (draft.name2 && !draft.exerciseId2));
+      let resolvedExercises = drafts.map((draft) => ({
+        exerciseId1: draft.exerciseId1 ?? 0,
+        exerciseId2: draft.exerciseId2 ?? null,
+      }));
+
+      if (needsResolve) {
+        const exercisesResponse = await fetch('/api/exercises');
+        if (!exercisesResponse.ok) {
+          throw new Error('Failed to resolve exercises for routine');
+        }
+        const exercisesData = await exercisesResponse.json();
+        const nameToId = new Map<string, number>();
+        for (const exercise of exercisesData.exercises || []) {
+          if (typeof exercise?.name === 'string' && Number.isFinite(Number(exercise?.id))) {
+            nameToId.set(exercise.name.trim().toLowerCase(), Number(exercise.id));
+          }
+        }
+        const resolved = resolveRoutineExerciseIds(drafts, nameToId);
+        if (resolved.missing.length > 0) {
+          throw new Error(`Missing exercise IDs for: ${resolved.missing.join(', ')}`);
+        }
+        resolvedExercises = resolved.resolved;
+      }
+
+      for (const entry of resolvedExercises) {
+        if (!entry.exerciseId1) {
+          throw new Error('Missing exercise ID for routine entry');
+        }
+        const response = await fetch(`/api/routines/${routineId}/exercises`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            exerciseId1: entry.exerciseId1,
+            exerciseId2: entry.exerciseId2 ?? null,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error('Failed to add exercise to routine');
+        }
+      }
+
+      router.push(`/routines/${routineId}/stretches`);
+    } catch (error: any) {
+      console.error('Error saving routine:', error);
+      setSaveRoutineError(error?.message || 'Failed to save routine.');
+    } finally {
+      setSavingRoutine(false);
+    }
+  };
+
   // ---------------------------
   // UI STATES
   // ---------------------------
@@ -437,6 +547,8 @@ export default function SummaryPage() {
       </div>
     );
   }
+
+  const canSaveRoutine = Boolean(sessionData && sessionData.exercises.length > 0);
 
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
@@ -498,6 +610,33 @@ export default function SummaryPage() {
             <div className="text-center text-zinc-400">Loading session data...</div>
           )}
         </div>
+
+        {isFreeMode && (
+          <div className="bg-zinc-800 rounded-lg p-6 mb-8 border border-blue-600/60">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-semibold uppercase tracking-wide text-blue-300">
+                  Save as routine
+                </div>
+                <div className="text-base text-zinc-200">
+                  Turn today&apos;s workout into a routine and get stretch suggestions.
+                </div>
+              </div>
+              <button
+                onClick={handleOpenSaveRoutine}
+                disabled={!canSaveRoutine || savingRoutine}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Save routine
+              </button>
+            </div>
+            {!canSaveRoutine && (
+              <div className="mt-3 text-xs text-zinc-400">
+                Add at least one exercise to save a routine.
+              </div>
+            )}
+          </div>
+        )}
 
         {(reportLoading || report) && (
           <div className="bg-zinc-800 rounded-lg p-6 mb-8 border border-zinc-700">
@@ -616,6 +755,68 @@ export default function SummaryPage() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {showSaveRoutineModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+            <div className="w-full max-w-md rounded-lg border border-blue-600/60 bg-zinc-900 p-6 text-white">
+              <h3 className="text-xl font-semibold mb-2">Save as routine</h3>
+              <p className="text-sm text-zinc-400 mb-4">
+                We&apos;ll suggest stretches after you save.
+              </p>
+
+              <label className="block text-sm text-zinc-300 mb-2">Routine name</label>
+              <input
+                type="text"
+                value={routineNameDraft}
+                onChange={(event) => {
+                  setRoutineNameDraft(event.target.value);
+                  setSaveRoutineError(null);
+                }}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                placeholder="e.g., Full Body Flow"
+                autoFocus
+              />
+
+              <label className="mt-4 flex items-center gap-3 text-sm text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={routinePrivate}
+                  onChange={(event) => setRoutinePrivate(event.target.checked)}
+                  className="h-5 w-5 rounded border-zinc-600 bg-zinc-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-zinc-800 cursor-pointer"
+                />
+                <span>
+                  Make this routine private
+                  <span className="block text-xs text-zinc-500">
+                    Private routines won&apos;t appear in the public browse page
+                  </span>
+                </span>
+              </label>
+
+              {saveRoutineError && (
+                <div className="mt-4 rounded-lg border border-red-500/60 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                  {saveRoutineError}
+                </div>
+              )}
+
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setShowSaveRoutineModal(false)}
+                  disabled={savingRoutine}
+                  className="rounded-lg bg-zinc-700 py-2 text-sm font-semibold text-white hover:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveAsRoutine}
+                  disabled={savingRoutine || !routineNameDraft.trim()}
+                  className="rounded-lg bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {savingRoutine ? 'Saving...' : 'Save & pick stretches'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

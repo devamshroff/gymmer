@@ -13,6 +13,7 @@ import { addSessionStretchChange } from '@/lib/session-changes';
 import { acknowledgeChangeWarning, hasChangeWarningAck, loadSessionWorkout, saveSessionWorkout } from '@/lib/session-workout';
 import { autosaveWorkout } from '@/lib/workout-autosave';
 import { loadWorkoutBootstrapCache } from '@/lib/workout-bootstrap';
+import { buildFreeWorkoutPlan } from '@/lib/free-workout';
 
 type StretchOption = {
   id: number;
@@ -27,6 +28,7 @@ function PostStretchesContent() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const isFreeMode = searchParams.get('free') === '1';
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -41,12 +43,19 @@ function PostStretchesContent() {
   const routineIdParam = searchParams.get('routineId');
   const routineQueryParams = new URLSearchParams();
   if (routineIdParam) routineQueryParams.set('routineId', routineIdParam);
+  if (isFreeMode) routineQueryParams.set('free', '1');
   const routineQuery = routineQueryParams.toString() ? `?${routineQueryParams.toString()}` : '';
 
   useEffect(() => {
     async function fetchWorkout() {
       try {
         const decodedName = decodeURIComponent(params.name as string);
+        if (isFreeMode) {
+          const fallbackPlan = buildFreeWorkoutPlan();
+          const sessionPlan = loadSessionWorkout(fallbackPlan.name, null);
+          setWorkout(sessionPlan || fallbackPlan);
+          return;
+        }
         let apiUrl = `/api/workout/${params.name}`;
         if (routineIdParam) {
           apiUrl += `?routineId=${routineIdParam}`;
@@ -94,7 +103,7 @@ function PostStretchesContent() {
     }
 
     fetchWorkout();
-  }, [params.name, searchParams, routineIdParam]);
+  }, [params.name, searchParams, routineIdParam, isFreeMode]);
 
   if (loading) {
     return <LoadingScreen />;
@@ -108,6 +117,10 @@ function PostStretchesContent() {
   const workoutName = encodeURIComponent(workout.name);
 
   const runWithChangeWarning = (action: () => void) => {
+    if (isFreeMode) {
+      action();
+      return;
+    }
     if (hasChangeWarningAck(workout.name, routineIdParam)) {
       action();
       return;

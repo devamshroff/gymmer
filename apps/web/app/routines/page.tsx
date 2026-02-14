@@ -11,7 +11,9 @@ import {
   removeActiveRoutine,
   type ActiveRoutineEntry,
 } from '@/lib/active-routines';
-import { restoreWorkoutSession } from '@/lib/workout-session';
+import { initWorkoutSession, restoreWorkoutSession } from '@/lib/workout-session';
+import { saveSessionWorkout } from '@/lib/session-workout';
+import { buildFreeWorkoutPlan, FREE_WORKOUT_SLUG } from '@/lib/free-workout';
 
 interface Routine {
   id: number;
@@ -95,6 +97,13 @@ function RoutinesContent() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [activeRoutines, setActiveRoutines] = useState<ActiveRoutineEntry[]>([]);
   const userId = userInfo?.id ?? null;
+
+  const handleStartFreeWorkout = () => {
+    const plan = buildFreeWorkoutPlan();
+    initWorkoutSession(plan.name, null);
+    saveSessionWorkout(plan, null);
+    router.push(`/workout/${encodeURIComponent(FREE_WORKOUT_SLUG)}/active?free=1`);
+  };
 
   useEffect(() => {
     fetchUserInfo();
@@ -493,6 +502,13 @@ function RoutinesContent() {
             </p>
           )}
         </div>
+
+        <button
+          onClick={handleStartFreeWorkout}
+          className="mb-3 block w-full bg-blue-900 hover:bg-blue-800 text-white text-center py-4 rounded-lg text-lg font-bold transition-colors"
+        >
+          ▶ Start Free Workout
+        </button>
 
         {/* Create New Routine Button */}
         <button

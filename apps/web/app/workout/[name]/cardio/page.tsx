@@ -9,6 +9,7 @@ import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 import { Card } from '@/app/components/SharedUi';
 import { loadSessionWorkout } from '@/lib/session-workout';
 import AutosaveBadge from '@/app/components/AutosaveBadge';
+import { buildFreeWorkoutPlan } from '@/lib/free-workout';
 
 const CARDIO_TYPES = [
   { value: 'Treadmill', label: 'Treadmill', icon: '🏃' },
@@ -23,6 +24,7 @@ export default function CardioPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const isFreeMode = searchParams.get('free') === '1';
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [isDone, setIsDone] = useState(false);
@@ -31,6 +33,7 @@ export default function CardioPage() {
   const routineIdParam = searchParams.get('routineId');
   const routineQueryParams = new URLSearchParams();
   if (routineIdParam) routineQueryParams.set('routineId', routineIdParam);
+  if (isFreeMode) routineQueryParams.set('free', '1');
   const routineQuery = routineQueryParams.toString() ? `?${routineQueryParams.toString()}` : '';
 
   // Cardio inputs
@@ -42,6 +45,12 @@ export default function CardioPage() {
   useEffect(() => {
     async function fetchWorkout() {
       try {
+        if (isFreeMode) {
+          const fallbackPlan = buildFreeWorkoutPlan();
+          const sessionPlan = loadSessionWorkout(fallbackPlan.name, null);
+          setWorkout(sessionPlan || fallbackPlan);
+          return;
+        }
         let apiUrl = `/api/workout/${params.name}`;
         if (routineIdParam) {
           apiUrl += `?routineId=${routineIdParam}`;
@@ -68,7 +77,7 @@ export default function CardioPage() {
     }
 
     fetchWorkout();
-  }, [params.name, routineIdParam]);
+  }, [params.name, routineIdParam, isFreeMode]);
 
   if (loading) {
     return (
@@ -111,11 +120,19 @@ export default function CardioPage() {
 
     setIsDone(true);
     setTimeout(() => {
+      if (isFreeMode) {
+        router.push(`/workout/${encodeURIComponent(workout.name)}/summary${routineQuery}`);
+        return;
+      }
       router.push(`/workout/${encodeURIComponent(workout.name)}/post-stretches${routineQuery}`);
     }, 1000);
   };
 
   const handleSkip = () => {
+    if (isFreeMode) {
+      router.push(`/workout/${encodeURIComponent(workout.name)}/summary${routineQuery}`);
+      return;
+    }
     router.push(`/workout/${encodeURIComponent(workout.name)}/post-stretches${routineQuery}`);
   };
 
@@ -123,7 +140,11 @@ export default function CardioPage() {
     // Go back to last exercise
     const exerciseCount = workout.exercises?.length || 0;
     if (exerciseCount > 0) {
-      router.push(`/workout/${encodeURIComponent(workout.name)}/active?index=${exerciseCount - 1}${routineIdParam ? `&routineId=${routineIdParam}` : ''}`);
+      const backParams = new URLSearchParams();
+      backParams.set('index', String(exerciseCount - 1));
+      if (routineIdParam) backParams.set('routineId', routineIdParam);
+      if (isFreeMode) backParams.set('free', '1');
+      router.push(`/workout/${encodeURIComponent(workout.name)}/active?${backParams.toString()}`);
     }
   };
 
