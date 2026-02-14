@@ -88,6 +88,8 @@ function ActiveWorkoutContent() {
   const [showSupersetSelector, setShowSupersetSelector] = useState(false);
   const [exerciseActionMode, setExerciseActionMode] = useState<'add' | 'replace' | null>(null);
   const [showChangeWarning, setShowChangeWarning] = useState(false);
+  const [showFreeNextPrompt, setShowFreeNextPrompt] = useState(false);
+  const [pendingInsertIndex, setPendingInsertIndex] = useState<number | null>(null);
   const pendingChangeRef = useRef<(() => void) | null>(null);
   const [timeTargetSeconds, setTimeTargetSeconds] = useState(0);
   const [b2bTimeTargetSeconds1, setB2bTimeTargetSeconds1] = useState(0);
@@ -1112,8 +1114,8 @@ function ActiveWorkoutContent() {
           setIsTransitioning(true);
           setTransitionTimeRemaining(60);
         } else {
-          // All exercises done - always go to cardio (optional)
-          router.push(`/workout/${encodeURIComponent(workout!.name)}/cardio${routineQuery}`);
+          // All exercises done - go to next step
+          handleFinishWorkoutFlow();
         }
       }
     }
@@ -1212,8 +1214,8 @@ function ActiveWorkoutContent() {
         setIsTransitioning(true);
         setTransitionTimeRemaining(60);
       } else {
-        // All exercises done - always go to cardio (optional)
-        router.push(`/workout/${encodeURIComponent(workout.name)}/cardio${routineQuery}`);
+        // All exercises done - go to next step
+        handleFinishWorkoutFlow();
       }
     }
   };
@@ -1255,6 +1257,14 @@ function ActiveWorkoutContent() {
 
   const handleSkipTransition = () => {
     setTransitionTimeRemaining(0);
+  };
+
+  const handleFinishWorkoutFlow = () => {
+    if (isFreeMode) {
+      setShowFreeNextPrompt(true);
+      return;
+    }
+    router.push(`/workout/${encodeURIComponent(workout!.name)}/cardio${routineQuery}`);
   };
 
   const openHistory = (names: string[]) => {
@@ -1349,9 +1359,9 @@ function ActiveWorkoutContent() {
       // Keep viewing index synced so next exercise isn't in read-only mode
       setViewingExerciseIndex(currentExerciseIndex);
     } else {
-      console.log('All exercises done, going to cardio');
-      // All exercises done - always go to cardio (optional)
-      router.push(`/workout/${encodeURIComponent(workout!.name)}/cardio${routineQuery}`);
+      console.log('All exercises done, moving to next step');
+      // All exercises done - go to next step
+      handleFinishWorkoutFlow();
     }
   };
 
@@ -1643,9 +1653,14 @@ function ActiveWorkoutContent() {
     setShowChangeWarning(false);
   };
 
-  const openExerciseTypePicker = (mode: 'add' | 'replace') => {
+  const openExerciseTypePicker = (mode: 'add' | 'replace', insertIndex?: number) => {
     runWithChangeWarning(() => {
       setExerciseActionMode(mode);
+      if (mode === 'add' && Number.isFinite(insertIndex)) {
+        setPendingInsertIndex(insertIndex ?? null);
+      } else {
+        setPendingInsertIndex(null);
+      }
       setShowExerciseTypePicker(true);
     });
   };
@@ -1654,7 +1669,8 @@ function ActiveWorkoutContent() {
     if (!workout || !exerciseActionMode) return;
     const nextExercise = buildSingleExercise(exercise);
     const updatedExercises = [...workout.exercises];
-    const insertIndex = currentExerciseIndex;
+    const insertIndex = pendingInsertIndex ?? currentExerciseIndex;
+    const insertedAfter = insertIndex > currentExerciseIndex;
 
     if (exerciseActionMode === 'add') {
       shiftExtraSetsForInsert(insertIndex);
@@ -1670,6 +1686,11 @@ function ActiveWorkoutContent() {
     applyWorkoutUpdate({ ...workout, exercises: updatedExercises });
     setExerciseActionMode(null);
     setShowExerciseSelector(false);
+    setPendingInsertIndex(null);
+    if (insertedAfter) {
+      setCurrentExerciseIndex(insertIndex);
+      setViewingExerciseIndex(insertIndex);
+    }
     void refreshLastSetSummaries([exercise.name]);
     if (exerciseActionMode === 'add') {
       addSessionExerciseChange({
@@ -1686,7 +1707,8 @@ function ActiveWorkoutContent() {
     if (!workout || !exerciseActionMode) return;
     const nextExercise = buildSupersetExercise(exercise1, exercise2);
     const updatedExercises = [...workout.exercises];
-    const insertIndex = currentExerciseIndex;
+    const insertIndex = pendingInsertIndex ?? currentExerciseIndex;
+    const insertedAfter = insertIndex > currentExerciseIndex;
 
     if (exerciseActionMode === 'add') {
       shiftExtraSetsForInsert(insertIndex);
@@ -1702,6 +1724,11 @@ function ActiveWorkoutContent() {
     applyWorkoutUpdate({ ...workout, exercises: updatedExercises });
     setExerciseActionMode(null);
     setShowSupersetSelector(false);
+    setPendingInsertIndex(null);
+    if (insertedAfter) {
+      setCurrentExerciseIndex(insertIndex);
+      setViewingExerciseIndex(insertIndex);
+    }
     void refreshLastSetSummaries([exercise1.name, exercise2.name]);
     if (exerciseActionMode === 'add') {
       addSessionExerciseChange({
@@ -1718,6 +1745,17 @@ function ActiveWorkoutContent() {
   const handleExerciseTypeCancel = () => {
     setShowExerciseTypePicker(false);
     setExerciseActionMode(null);
+    setPendingInsertIndex(null);
+  };
+
+  const handleFreeNextAddExercise = () => {
+    setShowFreeNextPrompt(false);
+    openExerciseTypePicker('add', currentExerciseIndex + 1);
+  };
+
+  const handleFreeNextGoCardio = () => {
+    setShowFreeNextPrompt(false);
+    router.push(`/workout/${encodeURIComponent(workout!.name)}/cardio${routineQuery}`);
   };
 
   // Determine which exercise to display (for review mode vs active mode)
@@ -1747,6 +1785,31 @@ function ActiveWorkoutContent() {
   ) : null;
   const exerciseModals = (
     <>
+      {showFreeNextPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-lg border border-blue-600/60 bg-zinc-900 p-5 text-white">
+            <h3 className="text-lg font-semibold mb-2">What&apos;s next?</h3>
+            <p className="text-sm text-zinc-300 mb-4">
+              Add another exercise or head to cardio.
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={handleFreeNextAddExercise}
+                className="w-full rounded-lg bg-rose-800 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+              >
+                + Add another exercise
+              </button>
+              <button
+                onClick={handleFreeNextGoCardio}
+                className="w-full rounded-lg bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-500"
+              >
+                Go to cardio
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showChangeWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-md rounded-lg border border-zinc-700 bg-zinc-900 p-6 text-white">
@@ -1812,6 +1875,7 @@ function ActiveWorkoutContent() {
           onCancel={() => {
             setShowExerciseSelector(false);
             setExerciseActionMode(null);
+            setPendingInsertIndex(null);
           }}
           onSelect={handleSelectSingleExercise}
         />
@@ -1822,6 +1886,7 @@ function ActiveWorkoutContent() {
           onCancel={() => {
             setShowSupersetSelector(false);
             setExerciseActionMode(null);
+            setPendingInsertIndex(null);
           }}
           onSelect={handleSelectSuperset}
         />
@@ -1927,6 +1992,7 @@ function ActiveWorkoutContent() {
     handleStartWarmup,
     handleSkipWarmup,
     handleEndExercise,
+    handleFinishWorkoutFlow,
     initSingleExerciseState,
     getTargetSetCount,
     getDefaultReps,

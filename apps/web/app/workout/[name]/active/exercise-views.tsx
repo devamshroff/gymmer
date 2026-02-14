@@ -119,6 +119,7 @@ export type ActiveWorkoutViewContext = {
   handleStartWarmup: () => void;
   handleSkipWarmup: () => void;
   handleEndExercise: () => void;
+  handleFinishWorkoutFlow: () => void;
   initSingleExerciseState: (exercise: SingleExercise) => void;
   getTargetSetCount: (exerciseIndex: number, baseSetCount: number) => number;
   getDefaultReps: (exercise: MetricRepsExercise) => number;
@@ -235,6 +236,7 @@ export function B2BExerciseView({ context }: { context: ActiveWorkoutViewContext
     handleStartWarmup,
     handleSkipWarmup,
     handleEndExercise,
+    handleFinishWorkoutFlow,
     initSingleExerciseState,
     getTargetSetCount,
     getDefaultReps,
@@ -1620,8 +1622,8 @@ export function B2BExerciseView({ context }: { context: ActiveWorkoutViewContext
                   setWarmupCompleted(false);
                 }
               } else {
-                // Always go to cardio (optional)
-                router.push(`/workout/${encodeURIComponent(workout.name)}/cardio${routineQuery}`);
+                // Finish workout flow
+                handleFinishWorkoutFlow();
               }
             }}
             className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-lg font-semibold transition-colors"
@@ -1695,6 +1697,7 @@ export function SingleExerciseView({ context }: { context: ActiveWorkoutViewCont
     handleStartWarmup,
     handleSkipWarmup,
     handleEndExercise,
+    handleFinishWorkoutFlow,
     initSingleExerciseState,
     getTargetSetCount,
     getDefaultReps,
@@ -2688,8 +2691,8 @@ return (
                   setWarmupCompleted(false);
                 }
               } else {
-                // Always go to cardio (optional)
-                router.push(`/workout/${encodeURIComponent(workout.name)}/cardio${routineQuery}`);
+                // Finish workout flow
+                handleFinishWorkoutFlow();
               }
             }}
             className="bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-lg font-semibold transition-colors"
