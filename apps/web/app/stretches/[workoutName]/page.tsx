@@ -11,6 +11,7 @@ import StretchSelector from '@/app/components/StretchSelector';
 import LoadingScreen from '@/app/components/LoadingScreen';
 import ErrorScreen from '@/app/components/ErrorScreen';
 import AutosaveBadge from '@/app/components/AutosaveBadge';
+import { addSessionStretchChange } from '@/lib/session-changes';
 import { acknowledgeChangeWarning, hasChangeWarningAck, loadSessionWorkout, saveSessionWorkout } from '@/lib/session-workout';
 import {
   loadWorkoutBootstrapCache,
@@ -206,6 +207,20 @@ function StretchesContent() {
     saveSessionWorkout(updatedWorkout, routineIdParam);
     setStretchActionMode(null);
     setShowStretchSelector(false);
+    if (stretchActionMode === 'add') {
+      addSessionStretchChange({
+        workoutName: workout.name,
+        routineId: routineIdParam,
+        stretchType: 'pre',
+        origin: 'add',
+        stretch: {
+          id: stretch.id,
+          name: stretch.name,
+          timer_seconds: stretch.timer_seconds ?? 0,
+          muscle_groups: stretch.muscle_groups ?? null,
+        },
+      });
+    }
   };
 
   // If no stretches, show message and skip to exercises

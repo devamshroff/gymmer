@@ -9,6 +9,9 @@ vi.mock('next/navigation', () => ({
     back: vi.fn(),
   }),
   useParams: () => ({ id: '1' }),
+  useSearchParams: () => ({
+    get: () => null,
+  }),
 }));
 
 const routineResponse = {

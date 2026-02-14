@@ -6,6 +6,12 @@ import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
 import { loadSessionTargetsMeta, loadSessionWorkout } from '@/lib/session-workout';
 import { getWorkoutSession, WorkoutSessionData } from '@/lib/workout-session';
+import { removeActiveRoutineForSession } from '@/lib/active-routines';
+import {
+  loadSessionChanges,
+  hasSessionChanges,
+  type SessionChanges,
+} from '@/lib/session-changes';
 import { EXERCISE_TYPES, type ExercisePrimaryMetric } from '@/lib/constants';
 import {
   DEFAULT_HEIGHT_UNIT,
@@ -80,6 +86,7 @@ export default function SummaryPage() {
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionData, setSessionData] = useState<WorkoutSessionData | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [totalVolume, setTotalVolume] = useState(0);
@@ -88,6 +95,7 @@ export default function SummaryPage() {
   const [reportLoading, setReportLoading] = useState(false);
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(DEFAULT_WEIGHT_UNIT);
   const [heightUnit, setHeightUnit] = useState<HeightUnit>(DEFAULT_HEIGHT_UNIT);
+  const [sessionChanges, setSessionChanges] = useState<SessionChanges | null>(null);
 
   const getMetricInfo = (entry: {
     primaryMetric?: ExercisePrimaryMetric;
@@ -161,6 +169,7 @@ export default function SummaryPage() {
 
   // Get routineId from URL params (for public/favorited routines)
   const routineIdParam = searchParams.get('routineId');
+  const routineEditId = routineIdParam ?? null;
 
   // ---------------------------
   // Fetch workout
@@ -187,6 +196,32 @@ export default function SummaryPage() {
 
     fetchWorkout();
   }, [params.name, routineIdParam]);
+
+  useEffect(() => {
+    if (!workout) return;
+    setSessionChanges(loadSessionChanges(workout.name, routineIdParam));
+  }, [workout, routineIdParam]);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchUser() {
+      try {
+        const response = await fetch('/api/user');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (isMounted && typeof data?.id === 'string') {
+          setUserId(data.id);
+        }
+      } catch (error) {
+        console.error('Error fetching user:', error);
+      }
+    }
+
+    fetchUser();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // ---------------------------
   // Load session + compute stats
@@ -242,6 +277,16 @@ export default function SummaryPage() {
     const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
     setTotalDuration(durationMinutes);
   }, [reportTargetsByName]);
+
+  useEffect(() => {
+    if (!sessionData || !userId) return;
+    removeActiveRoutineForSession({
+      sessionKey: sessionData.startTime,
+      workoutName: sessionData.workoutName,
+      routineId: sessionData.routineId ?? null,
+      userId,
+    });
+  }, [sessionData, userId]);
 
   // ---------------------------
   // AUTO-SAVE WORKOUT (with duplicate protection)
@@ -364,6 +409,11 @@ export default function SummaryPage() {
     router.push('/routines');
   };
 
+  const handleReviewSessionChanges = () => {
+    if (!routineEditId) return;
+    router.push(`/routines/${routineEditId}/edit?sessionChanges=1`);
+  };
+
   // ---------------------------
   // UI STATES
   // ---------------------------
@@ -391,6 +441,26 @@ export default function SummaryPage() {
   return (
     <div className="min-h-screen bg-zinc-900 p-4">
       <div className="max-w-2xl mx-auto">
+        {routineEditId && hasSessionChanges(sessionChanges) && (
+          <div className="mb-6 rounded-lg border border-amber-500/60 bg-amber-500/10 p-4 text-amber-100">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-semibold uppercase tracking-wide text-amber-300">
+                  Session changes
+                </div>
+                <div className="text-base text-amber-100">
+                  You added items during this workout. Review and add them to your routine.
+                </div>
+              </div>
+              <button
+                onClick={handleReviewSessionChanges}
+                className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-black hover:bg-amber-400"
+              >
+                Review session changes
+              </button>
+            </div>
+          </div>
+        )}
         {/* Celebration Header */}
         <div className="text-center mb-8">
           <div className="text-8xl mb-4">🎉</div>

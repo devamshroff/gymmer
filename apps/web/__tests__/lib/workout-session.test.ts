@@ -3,6 +3,7 @@ import {
   addExerciseToSession,
   getWorkoutSession,
   initWorkoutSession,
+  restoreWorkoutSession,
   updateExerciseInSession,
   updateWorkoutFlowState,
 } from '@/lib/workout-session';
@@ -70,5 +71,23 @@ describe('workout-session', () => {
 
     expect(first).not.toBe(second);
     expect(second?.flow?.currentExerciseIndex).toBe(1);
+  });
+
+  it('restores a session snapshot into storage', () => {
+    restoreWorkoutSession({
+      workoutName: 'Restored Day',
+      routineId: 7,
+      sessionId: 42,
+      startTime: '2026-01-31T12:00:00.000Z',
+      exercises: [],
+      flow: { currentExerciseIndex: 3 } as any,
+    });
+
+    const session = getWorkoutSession();
+    expect(session?.workoutName).toBe('Restored Day');
+    expect(session?.routineId).toBe(7);
+    expect(session?.sessionId).toBe(42);
+    expect(session?.flow?.currentExerciseIndex).toBe(3);
+    expect(session?.flow?.restTimeSeconds).toBe(60);
   });
 });

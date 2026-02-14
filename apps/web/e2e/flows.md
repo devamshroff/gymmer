@@ -16,6 +16,7 @@ This is the current set of user flows (page routes) and the e2e specs that cover
 | Browse + clone public routines | `/routines/browse` | `browse-clone.spec.ts` |
 | Pre-workout stretches | `/stretches/[workoutName]` | `ai-flow.spec.ts` |
 | Resume workout from pre-workout stretches | `/stretches/[workoutName]`, `/workout/[name]/active` | `workout-resume-stretch.spec.ts` |
+| Resume active routine from routines | `/routines`, `/workout/[name]/active`, `/workout/[name]/cardio`, `/workout/[name]/post-stretches`, `/workout/[name]/summary` | `workout-resume-active.spec.ts` |
 | Active workout (sets, warmup, navigation) | `/workout/[name]/active` | `ai-flow.spec.ts`, `workout-extra-sets.spec.ts` |
 | Cardio | `/workout/[name]/cardio` | `ai-flow.spec.ts` |
 | Post-workout stretches | `/workout/[name]/post-stretches` | `ai-flow.spec.ts` |

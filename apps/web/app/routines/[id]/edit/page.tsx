@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
 import SupersetSelector from '@/app/components/SupersetSelector';
 import StretchSelector from '@/app/components/StretchSelector';
@@ -15,6 +15,16 @@ import {
 } from '@/app/components/RoutineEditParts';
 import { BottomActionBar, Card, EmptyState, SectionHeader } from '@/app/components/SharedUi';
 import { invalidateWorkoutBootstrapCache } from '@/lib/workout-bootstrap';
+import {
+  clearSessionChanges,
+  hasSessionChanges,
+  loadSessionChanges,
+  removeSessionExerciseChange,
+  removeSessionStretchChange,
+  type SessionChanges,
+  type SessionExerciseChange,
+  type SessionStretchChange,
+} from '@/lib/session-changes';
 
 interface RoutineStretch {
   id: number;
@@ -42,7 +52,9 @@ interface RoutineCardio {
 export default function EditRoutinePage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const routineId = params.id as string;
+  const showSessionChanges = searchParams.get('sessionChanges') === '1';
 
   const [routineName, setRoutineName] = useState('');
   const [routineNameDraft, setRoutineNameDraft] = useState('');
@@ -54,6 +66,7 @@ export default function EditRoutinePage() {
   const [cardio, setCardio] = useState<RoutineCardio | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPublic, setIsPublic] = useState(true);
+  const [sessionChanges, setSessionChanges] = useState<SessionChanges | null>(null);
   const [draggingPreIndex, setDraggingPreIndex] = useState<number | null>(null);
   const [draggingExerciseIndex, setDraggingExerciseIndex] = useState<number | null>(null);
   const [draggingPostIndex, setDraggingPostIndex] = useState<number | null>(null);
@@ -175,6 +188,23 @@ export default function EditRoutinePage() {
     }
   };
 
+  const syncSessionChanges = () => {
+    if (!routineName) return;
+    setSessionChanges(loadSessionChanges(routineName, routineId));
+  };
+
+  const finalizeSessionChanges = (next: SessionChanges) => {
+    setSessionChanges(next);
+    if (!hasSessionChanges(next) && routineName) {
+      clearSessionChanges(routineName, routineId);
+    }
+  };
+
+  useEffect(() => {
+    if (!showSessionChanges) return;
+    syncSessionChanges();
+  }, [showSessionChanges, routineName, routineId]);
+
   // Delete handlers
   const handleDeletePreStretch = async (index: number) => {
     const stretch = preStretches[index];
@@ -251,6 +281,101 @@ export default function EditRoutinePage() {
       invalidateBootstrapCache();
     } catch (error) {
       console.error('Error deleting cardio:', error);
+    }
+  };
+
+  const handleClearSessionChanges = () => {
+    if (!routineName) return;
+    clearSessionChanges(routineName, routineId);
+    setSessionChanges(null);
+  };
+
+  const handleAddSessionExercise = async (change: SessionExerciseChange) => {
+    if (!routineName) return;
+    try {
+      const response = await fetch(`/api/routines/${routineId}/exercises`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          exerciseId1: change.exercise1.id,
+          ...(change.mode === 'superset' && change.exercise2 ? { exerciseId2: change.exercise2.id } : {})
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add exercise to routine');
+      }
+
+      const data = await response.json();
+      const newExercise: RoutineExercise = {
+        id: data.id,
+        exercise_id1: change.exercise1.id,
+        exercise_name: change.exercise1.name,
+        exercise_id2: change.exercise2?.id ?? null,
+        exercise2_name: change.exercise2?.name ?? null
+      };
+
+      const nextExercises = [...exercises, newExercise];
+      setExercises(nextExercises);
+
+      const newOrder = nextExercises.map(e => e.id);
+      await fetch(`/api/routines/${routineId}/exercises`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: newOrder })
+      });
+      invalidateBootstrapCache();
+
+      const nextChanges = removeSessionExerciseChange({
+        workoutName: routineName,
+        routineId,
+        changeId: change.id
+      });
+      finalizeSessionChanges(nextChanges);
+    } catch (error) {
+      console.error('Error adding session exercise:', error);
+    }
+  };
+
+  const handleAddSessionStretch = async (change: SessionStretchChange) => {
+    if (!routineName) return;
+    const isPre = change.stretchType === 'pre';
+    const currentStretches = isPre ? preStretches : postStretches;
+    const stretchIds = currentStretches.map(s => s.stretch_id);
+    stretchIds.push(change.stretch.id);
+
+    try {
+      await fetch(`/api/routines/${routineId}/stretches`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: isPre ? 'pre' : 'post', order: stretchIds })
+      });
+
+      const newStretch: RoutineStretch = {
+        id: Date.now(),
+        stretch_id: change.stretch.id,
+        name: change.stretch.name,
+        timerSeconds: change.stretch.timer_seconds ?? 0,
+        muscle_groups: change.stretch.muscle_groups ?? null
+      };
+
+      if (isPre) {
+        setPreStretches([...preStretches, newStretch]);
+      } else {
+        setPostStretches([...postStretches, newStretch]);
+      }
+
+      invalidateBootstrapCache();
+
+      const nextChanges = removeSessionStretchChange({
+        workoutName: routineName,
+        routineId,
+        changeId: change.id,
+        stretchType: change.stretchType
+      });
+      finalizeSessionChanges(nextChanges);
+    } catch (error) {
+      console.error('Error adding session stretch:', error);
     }
   };
 
@@ -575,9 +700,15 @@ export default function EditRoutinePage() {
     }
   };
 
+  const exerciseChanges = sessionChanges?.exercises ?? [];
+  const preStretchChanges = sessionChanges?.preStretches ?? [];
+  const postStretchChanges = sessionChanges?.postStretches ?? [];
+
   return (
     <div className="min-h-screen bg-zinc-900 p-4 pb-24">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-5xl mx-auto">
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-8">
+          <div>
         {/* Header */}
         <div className="mb-6">
           <button
@@ -810,6 +941,113 @@ export default function EditRoutinePage() {
             Done Editing
           </button>
         </BottomActionBar>
+          </div>
+
+          {showSessionChanges && (
+            <aside className="mt-10 lg:mt-0">
+              <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-4 text-amber-100">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-amber-300">
+                      Session changes
+                    </div>
+                    <div className="text-sm text-amber-100">
+                      Add items you used today into this routine.
+                    </div>
+                  </div>
+                  {hasSessionChanges(sessionChanges) && (
+                    <button
+                      onClick={handleClearSessionChanges}
+                      className="text-xs font-semibold text-amber-200 hover:text-amber-100"
+                    >
+                      Clear all
+                    </button>
+                  )}
+                </div>
+
+                {!hasSessionChanges(sessionChanges) && (
+                  <div className="mt-4 text-sm text-amber-200/80">
+                    No session changes to review.
+                  </div>
+                )}
+
+                {exerciseChanges.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-amber-300">
+                      Exercises
+                    </div>
+                    {exerciseChanges.map((change) => (
+                      <div
+                        key={change.id}
+                        className="rounded-lg border border-amber-500/30 bg-zinc-900/60 p-3"
+                      >
+                        <div className="text-sm font-semibold text-white">
+                          {change.mode === 'superset' && change.exercise2
+                            ? `${change.exercise1.name} + ${change.exercise2.name}`
+                            : change.exercise1.name}
+                        </div>
+                        <button
+                          onClick={() => handleAddSessionExercise(change)}
+                          className="mt-2 w-full rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-black hover:bg-amber-400"
+                        >
+                          Add to routine
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {preStretchChanges.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-amber-300">
+                      Pre-Workout Stretches
+                    </div>
+                    {preStretchChanges.map((change) => (
+                      <div
+                        key={change.id}
+                        className="rounded-lg border border-amber-500/30 bg-zinc-900/60 p-3"
+                      >
+                        <div className="text-sm font-semibold text-white">
+                          {change.stretch.name}
+                        </div>
+                        <button
+                          onClick={() => handleAddSessionStretch(change)}
+                          className="mt-2 w-full rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-black hover:bg-amber-400"
+                        >
+                          Add to routine
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {postStretchChanges.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-amber-300">
+                      Post-Workout Stretches
+                    </div>
+                    {postStretchChanges.map((change) => (
+                      <div
+                        key={change.id}
+                        className="rounded-lg border border-amber-500/30 bg-zinc-900/60 p-3"
+                      >
+                        <div className="text-sm font-semibold text-white">
+                          {change.stretch.name}
+                        </div>
+                        <button
+                          onClick={() => handleAddSessionStretch(change)}
+                          className="mt-2 w-full rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-black hover:bg-amber-400"
+                        >
+                          Add to routine
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </aside>
+          )}
+        </div>
       </div>
 
       {/* Modals */}

@@ -287,6 +287,24 @@ export function clearWorkoutSession(): void {
   notify();
 }
 
+export function restoreWorkoutSession(session: WorkoutSessionData): void {
+  if (typeof window === 'undefined') return;
+  if (!session || typeof session.workoutName !== 'string') return;
+  const normalized: WorkoutSessionData = {
+    ...session,
+    routineId: session.routineId ?? null,
+    sessionId: session.sessionId ?? null,
+    flow: session.flow
+      ? { ...DEFAULT_WORKOUT_FLOW_STATE, ...session.flow }
+      : { ...DEFAULT_WORKOUT_FLOW_STATE },
+  };
+  const raw = JSON.stringify(normalized);
+  localStorage.setItem(STORAGE_KEY, raw);
+  cachedSession = JSON.parse(raw) as WorkoutSessionData;
+  cachedSessionRaw = raw;
+  notify();
+}
+
 export function subscribeWorkoutSession(listener: () => void): () => void {
   listeners.add(listener);
   return () => {

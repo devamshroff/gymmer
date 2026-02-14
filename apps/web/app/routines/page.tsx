@@ -4,6 +4,14 @@ import { useEffect, useState, Suspense, type ButtonHTMLAttributes } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import UsernameSetup from '@/app/components/UsernameSetup';
+import {
+  ACTIVE_ROUTINE_TTL_MS,
+  ACTIVE_ROUTINES_STORAGE_KEY,
+  getActiveRoutines,
+  removeActiveRoutine,
+  type ActiveRoutineEntry,
+} from '@/lib/active-routines';
+import { restoreWorkoutSession } from '@/lib/workout-session';
 
 interface Routine {
   id: number;
@@ -48,6 +56,28 @@ function formatLocalDate(value?: string | null): string {
   });
 }
 
+function formatTimeAgo(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+  const diffMs = Date.now() - date.getTime();
+  if (diffMs < 60_000) return 'just now';
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function formatExpiresIn(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+  const remainingMs = ACTIVE_ROUTINE_TTL_MS - (Date.now() - date.getTime());
+  if (remainingMs <= 0) return 'Expired';
+  const hours = Math.max(1, Math.ceil(remainingMs / 3_600_000));
+  return `${hours}h`;
+}
+
 function RoutinesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -63,10 +93,28 @@ function RoutinesContent() {
   const [deleteTarget, setDeleteTarget] = useState<Routine | null>(null);
   const [deletingRoutine, setDeletingRoutine] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [activeRoutines, setActiveRoutines] = useState<ActiveRoutineEntry[]>([]);
+  const userId = userInfo?.id ?? null;
 
   useEffect(() => {
     fetchUserInfo();
   }, []);
+
+  useEffect(() => {
+    if (!userId) {
+      setActiveRoutines([]);
+      return;
+    }
+    setActiveRoutines(getActiveRoutines(userId));
+    const handleStorage = (event: StorageEvent) => {
+      if (!event.key) return;
+      if (event.key === ACTIVE_ROUTINES_STORAGE_KEY || event.key.startsWith(`${ACTIVE_ROUTINES_STORAGE_KEY}:`)) {
+        setActiveRoutines(getActiveRoutines(userId));
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [userId]);
 
   useEffect(() => {
     const saved = searchParams.get('saved');
@@ -220,6 +268,24 @@ function RoutinesContent() {
       setMyRoutines(previous);
     }
   }
+
+  const handleResumeActiveRoutine = (entry: ActiveRoutineEntry) => {
+    if (entry.sessionData) {
+      restoreWorkoutSession(entry.sessionData);
+    }
+    const encodedName = encodeURIComponent(entry.workoutName);
+    const query = new URLSearchParams();
+    if (typeof entry.routineId === 'number') {
+      query.set('routineId', String(entry.routineId));
+    }
+    query.set('resumeIndex', String(entry.resumeIndex));
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    router.push(`/workout/${encodedName}/active${suffix}`);
+  };
+
+  const handleDiscardActiveRoutine = (sessionKey: string) => {
+    setActiveRoutines(removeActiveRoutine(sessionKey, userId));
+  };
 
   if (showUsernameSetup) {
     return <UsernameSetup onComplete={handleUsernameComplete} />;
@@ -444,6 +510,63 @@ function RoutinesContent() {
             Import Routine from JSON
           </Link>
         </div>
+
+        {activeRoutines.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold text-zinc-300 mb-2 flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-emerald-300" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm.9 5.5a.9.9 0 0 1 1.8 0v4.4l2.8 1.6a.9.9 0 0 1-.9 1.6l-3.3-1.9a.9.9 0 0 1-.4-.8V7.5Z" />
+              </svg>
+              Active Routines
+            </h2>
+            <p className="text-sm text-zinc-500 mb-4">
+              Active routines stay here for 24 hours so you can resume anytime.
+            </p>
+            <div className="space-y-4">
+              {activeRoutines.map((entry) => (
+                <div
+                  key={entry.sessionKey}
+                  className="bg-zinc-800 hover:bg-zinc-700 transition-colors rounded-lg p-6 border-2 border-emerald-900/60"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-2xl font-semibold text-white">{entry.workoutName}</h3>
+                      <div className="text-sm text-zinc-400 mt-1">
+                        Last active {formatTimeAgo(entry.lastActiveAt)} - Resume at exercise {entry.resumeIndex + 1}
+                      </div>
+                      <div className="text-xs text-zinc-500 mt-1">
+                        Expires in {formatExpiresIn(entry.lastActiveAt)}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleResumeActiveRoutine(entry)}
+                        className="px-4 py-2 rounded-lg font-medium bg-emerald-700 hover:bg-emerald-600 text-white transition-colors inline-flex items-center gap-2"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path d="M6.5 4.8a1 1 0 0 1 1 0l10 6a1 1 0 0 1 0 1.8l-10 6A1 1 0 0 1 6 17.8V6.2a1 1 0 0 1 .5-1.4z" />
+                        </svg>
+                        Resume
+                      </button>
+                      <button
+                        onClick={() => handleDiscardActiveRoutine(entry.sessionKey)}
+                        className="px-4 py-2 rounded-lg font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+                      >
+                        Discard
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* My Routines Section */}
         <div className="mb-8">

@@ -12,6 +12,7 @@ import {
   DEFAULT_WORKOUT_FLOW_STATE,
   type WorkoutFlowState,
 } from '@/lib/workout-session';
+import { touchActiveRoutine } from '@/lib/active-routines';
 import { useWorkoutSessionStore } from '@/lib/use-workout-session';
 import { autosaveWorkout } from '@/lib/workout-autosave';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
@@ -43,6 +44,7 @@ import {
   type LastSetSummary,
   type WorkoutBootstrapPayload,
 } from '@/lib/workout-bootstrap';
+import { addSessionExerciseChange } from '@/lib/session-changes';
 import { formatLocalDate, getLogSetValue, resolveHasWarmup } from './helpers';
 import type { LastSetSummaries, SetData } from './types';
 import { B2BExerciseView, SingleExerciseView } from './exercise-views';
@@ -65,6 +67,7 @@ function ActiveWorkoutContent() {
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [initialIndexSet, setInitialIndexSet] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(DEFAULT_WEIGHT_UNIT);
   const [heightUnit, setHeightUnit] = useState<HeightUnit>(DEFAULT_HEIGHT_UNIT);
   const [timerSoundEnabled, setTimerSoundEnabled] = useState(true);
@@ -477,15 +480,36 @@ function ActiveWorkoutContent() {
 
   // Get routineId from URL params (for public/favorited routines)
   const routineIdParam = searchParams.get('routineId');
+  const routineIdValue = routineIdParam ? Number(routineIdParam) : null;
+  const routineId = Number.isNaN(routineIdValue) ? null : routineIdValue;
   const routineQueryParams = new URLSearchParams();
   if (routineIdParam) routineQueryParams.set('routineId', routineIdParam);
   const routineQuery = routineQueryParams.toString() ? `?${routineQueryParams.toString()}` : '';
 
   useEffect(() => {
+    let isMounted = true;
+    async function fetchUser() {
+      try {
+        const response = await fetch('/api/user');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (isMounted && typeof data?.id === 'string') {
+          setUserId(data.id);
+        }
+      } catch (error) {
+        console.error('Error fetching user:', error);
+      }
+    }
+
+    fetchUser();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     async function fetchWorkout() {
       try {
-        const routineIdValue = routineIdParam ? Number(routineIdParam) : null;
-        const routineId = Number.isNaN(routineIdValue) ? null : routineIdValue;
         const decodedName = decodeURIComponent(params.name as string);
         const cached = loadWorkoutBootstrapCache({
           workoutName: decodedName,
@@ -709,6 +733,22 @@ function ActiveWorkoutContent() {
 
     fetchWorkout();
   }, [params.name, searchParams, routineIdParam, initialIndexSet]);
+
+  useEffect(() => {
+    if (!userId) return;
+    if (!workout || !sessionSnapshot?.startTime) return;
+    if (sessionSnapshot.workoutName !== workout.name) return;
+    if ((sessionSnapshot.routineId ?? null) !== (routineId ?? null)) return;
+    touchActiveRoutine({
+      sessionKey: sessionSnapshot.startTime,
+      userId,
+      workoutName: workout.name,
+      routineId,
+      resumeIndex: currentExerciseIndex,
+      sessionId: sessionSnapshot.sessionId ?? null,
+      sessionData: sessionSnapshot,
+    });
+  }, [workout, routineId, currentExerciseIndex, sessionSnapshot, userId]);
 
   // Rest timer countdown
   useEffect(() => {
@@ -1582,6 +1622,15 @@ function ActiveWorkoutContent() {
     setExerciseActionMode(null);
     setShowExerciseSelector(false);
     void refreshLastSetSummaries([exercise.name]);
+    if (exerciseActionMode === 'add') {
+      addSessionExerciseChange({
+        workoutName: workout.name,
+        routineId: routineIdParam,
+        mode: 'single',
+        origin: 'add',
+        exercise1: { id: exercise.id, name: exercise.name },
+      });
+    }
   };
 
   const handleSelectSuperset = (exercise1: ExerciseOption, exercise2: ExerciseOption) => {
@@ -1605,6 +1654,16 @@ function ActiveWorkoutContent() {
     setExerciseActionMode(null);
     setShowSupersetSelector(false);
     void refreshLastSetSummaries([exercise1.name, exercise2.name]);
+    if (exerciseActionMode === 'add') {
+      addSessionExerciseChange({
+        workoutName: workout.name,
+        routineId: routineIdParam,
+        mode: 'superset',
+        origin: 'add',
+        exercise1: { id: exercise1.id, name: exercise1.name },
+        exercise2: { id: exercise2.id, name: exercise2.name },
+      });
+    }
   };
 
   const handleExerciseTypeCancel = () => {
