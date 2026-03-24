@@ -1,12 +1,39 @@
-import type { Metadata } from "next";
-import "./globals.css";
-import { Providers } from "./providers";
-import Link from "next/link";
-import Header from "./components/Header";
+import type { Metadata, Viewport } from 'next';
+import './globals.css';
+import { Providers } from './providers';
+import Link from 'next/link';
+import Header from './components/Header';
+import PwaBootstrap from './components/PwaBootstrap';
+import PwaStatusBanner from './components/PwaStatusBanner';
+import { PWA_MANIFEST_PATH, PWA_THEME_COLOR } from '@/lib/pwa/config';
 
 export const metadata: Metadata = {
-  title: "GYMMER",
-  description: "flow and progress",
+  applicationName: 'GYMMER',
+  title: 'GYMMER',
+  description: 'flow and progress',
+  manifest: PWA_MANIFEST_PATH,
+  icons: {
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'GYMMER',
+  },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: PWA_THEME_COLOR,
 };
 
 export default function RootLayout({
@@ -18,6 +45,8 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         <Providers>
+          <PwaBootstrap />
+          <PwaStatusBanner />
           <div className="min-h-screen flex flex-col">
             <Header />
             <Link

@@ -3,6 +3,7 @@
 Structure:
 
 - apps/web: Next.js web app
+- docs: project and contributor documentation
 
 ## Requirements
 
@@ -15,9 +16,9 @@ Structure:
 bun install
 ```
 
-This installs dependencies for the web app using Bun workspaces.
+This installs dependencies for the Gymmer web app using Bun workspaces.
 
-## Run the web app
+## Run Gymmer
 
 From the repo root:
 
@@ -38,5 +39,6 @@ bun run test:e2e
 
 ## Notes
 
-- Web app environment files live in `apps/web` (e.g. `apps/web/.env.local`).
+- Gymmer is maintained as a web-only app in this repo.
+- Environment files live in `apps/web` (e.g. `apps/web/.env.local`).
 - You can still run commands directly inside `apps/web` if you prefer.

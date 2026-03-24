@@ -4,13 +4,12 @@
 Gymmer is a workout tracking app for building routines and flowing through them during workouts. It began as a personal tool and is now used by friends, so stability and correctness are important.
 
 ## Status and Focus
-- The web app is the source of truth and the only actively supported surface.
-- The iOS app was started but abandoned; new features and fixes are **web-only** unless explicitly requested.
+- Gymmer is a web-only product.
+- The web app is the source of truth and the only supported surface.
 
 ## Repo Structure (High-Level)
-- `apps/web`: Next.js web app (primary)
-- `apps/ios`: iOS app (abandoned)
-- `docs/ios-plan/*`: iOS planning documents (historical context only)
+- `apps/web`: Next.js web app
+- `docs/*`: project and contributor documentation
 
 ## Build + Run
 See `README.md` for commands. The project uses Bun for install, dev, and build.

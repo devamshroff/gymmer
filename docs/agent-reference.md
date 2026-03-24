@@ -3,9 +3,8 @@
 This file is a concise, code-backed reference for how Gymmer’s web app is structured and how core features are designed. It is intended for assistants and contributors who need to locate logic quickly and reason about flow.
 
 ## Scope + Product Focus
+- Gymmer is a **web-only product**.
 - The **web app is the source of truth** (`apps/web`).
-- iOS was started but abandoned; new features and fixes are **web-only** unless explicitly requested.
-- `docs/ios-plan/*` is **historical context only**.
 
 ## Architecture Overview (Web)
 - **Framework:** Next.js App Router (`apps/web/app/*`), API route handlers in `apps/web/app/api/*`.
@@ -14,6 +13,7 @@ This file is a concise, code-backed reference for how Gymmer’s web app is stru
 - **Domain model:** `apps/web/lib/types.ts` and `apps/web/lib/constants.ts` are the canonical types/constants.
 - **Shared UI:** `apps/web/app/components/*`.
 - **State + caching:** localStorage and sessionStorage for workout state and caching (details below).
+- **PWA shell:** manifest route in `apps/web/app/manifest.ts`, bootstrap in `apps/web/app/components/PwaBootstrap.tsx`, install/offline banner in `apps/web/app/components/PwaStatusBanner.tsx`, offline fallback in `apps/web/app/offline/page.tsx`, service worker in `apps/web/public/sw.js`.
 
 ## Cross-Cutting Design Patterns
 - **Workout state lives on the client** during a session and is persisted in localStorage (`lib/workout-session.ts`).

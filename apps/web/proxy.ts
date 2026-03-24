@@ -2,6 +2,13 @@ import { auth } from "@/auth"
 import { NextResponse } from "next/server"
 
 export default auth((req) => {
+  const publicPwaRoute = req.nextUrl.pathname === "/manifest.webmanifest"
+    || req.nextUrl.pathname === "/sw.js"
+    || req.nextUrl.pathname === "/offline";
+  if (publicPwaRoute) {
+    return NextResponse.next()
+  }
+
   const isE2ETest = process.env.E2E_TEST === "1" && req.headers.get("x-e2e-bypass") === "1"
   if (isE2ETest) {
     return NextResponse.next()

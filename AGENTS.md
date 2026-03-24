@@ -6,8 +6,8 @@ This repo is the Gymmer monorepo. Read this first before making changes.
 Gymmer helps track workout progress, build routines, and flow through them. It started as a personal tool and is now used by friends, so reliability and correctness matter a lot.
 
 ## Product Focus
-- Web app is the source of truth and the only actively supported surface.
-- iOS was started but abandoned. New features and fixes are **web-only** unless explicitly requested.
+- Gymmer is a web-only product.
+- `apps/web` is the source of truth and the only supported surface.
 
 ## Primary App
 - `apps/web` (Next.js)
@@ -38,4 +38,4 @@ Gymmer helps track workout progress, build routines, and flow through them. It s
 ## Notes for Assistants
 - Prefer existing patterns in `apps/web`.
 - Keep changes minimal and reversible.
-- Assume changes are only for web and not ios, unless user explicitly states otherwise.
+- Assume changes are for the web app unless the user explicitly asks for another surface.
