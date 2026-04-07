@@ -11,6 +11,17 @@ Gymmer is a workout tracking app for building routines and flowing through them 
 - `apps/web`: Next.js web app
 - `docs/*`: project and contributor documentation
 
+## Fast Context
+- Start with `AGENTS.md` for repo rules and testing expectations.
+- Use `docs/agent-reference.md` for the curated architecture summary.
+- Use `docs/architecture-index.md` or `docs/architecture-index.json` for the generated route/API/component/library/test inventory.
+- Refresh the generated index with `bun run docs:architecture` after structural changes.
+
+## Documentation Rule
+- Relevant docs must be updated in the same change as the code or behavior change.
+- Structural changes require regenerating `docs/architecture-index.md` and `docs/architecture-index.json`.
+- Durable architecture decisions belong in `docs/adr/`.
+
 ## Build + Run
 See `README.md` for commands. The project uses Bun for install, dev, and build.
 

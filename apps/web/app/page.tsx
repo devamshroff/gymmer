@@ -26,6 +26,15 @@ export default function HomePage() {
       />
 
       <main className="relative mx-auto flex min-h-[calc(100vh-96px)] max-w-4xl flex-col items-center justify-center gap-8 px-6 py-16 text-center">
+        <div className="absolute right-6 top-6 home-fade-up" style={{ animationDelay: '120ms' }}>
+          <Link
+            href="/profile"
+            className="inline-flex items-center justify-center rounded-full border border-[var(--home-border)] bg-zinc-900/70 px-4 py-2 text-sm font-semibold text-[var(--home-ink)] transition hover:-translate-y-0.5 hover:border-emerald-400/60"
+          >
+            My Profile
+          </Link>
+        </div>
+
         <p
           className="text-2xl uppercase tracking-[0.5em] text-[var(--home-muted)] home-fade-in sm:text-3xl"
           style={{ animationDelay: '80ms' }}
@@ -51,14 +60,14 @@ export default function HomePage() {
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
             <Link
-              href="/profile"
-              className="inline-flex items-center justify-center rounded-full border border-[var(--home-border)] bg-zinc-900/60 px-5 py-2.5 text-sm font-semibold text-[var(--home-ink)] transition hover:-translate-y-0.5 hover:border-emerald-400/60"
+              href="/free-workout"
+              className="inline-flex items-center justify-center rounded-full bg-[var(--home-accent-strong)] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:-translate-y-0.5 hover:bg-emerald-500"
             >
-              My Profile
+              Start Free Workout
             </Link>
             <Link
               href="/routines"
-              className="inline-flex items-center justify-center rounded-full bg-[var(--home-accent-strong)] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:-translate-y-0.5 hover:bg-emerald-500"
+              className="inline-flex items-center justify-center rounded-full border border-[var(--home-border)] bg-zinc-900/60 px-5 py-2.5 text-sm font-semibold text-[var(--home-ink)] transition hover:-translate-y-0.5 hover:border-emerald-400/60"
             >
               My Routines
             </Link>

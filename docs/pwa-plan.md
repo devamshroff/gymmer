@@ -5,6 +5,17 @@ Turn Gymmer into an installable Progressive Web App without creating a second fr
 
 This should be built on top of the existing `apps/web` Next.js app. The PWA work is an extension of the current web architecture, not a parallel app.
 
+## Status Snapshot
+As of 2026-04-07, Gymmer already ships the basic PWA shell:
+- web manifest via `apps/web/app/manifest.ts`
+- service worker via `apps/web/public/sw.js`
+- install/update bootstrap via `apps/web/app/components/PwaBootstrap.tsx`
+- install/offline/update banner via `apps/web/app/components/PwaStatusBanner.tsx`
+- offline fallback route via `apps/web/app/offline/page.tsx`
+- app metadata wired through `apps/web/app/layout.tsx`
+
+What remains is the deeper offline work: durable mutation queueing, retry-safe sync, broader offline read coverage, and stronger observability.
+
 ## Current State
 
 ### What Gymmer already has
@@ -14,14 +25,18 @@ This should be built on top of the existing `apps/web` Next.js app. The PWA work
 - Server-backed autosave in `apps/web/lib/workout-autosave.ts` and `apps/web/app/api/workout-autosave/route.ts`.
 - Server-backed final workout save in `apps/web/app/api/save-workout/route.ts`.
 - Existing local browser storage usage with `localStorage` and `sessionStorage`.
+- A web manifest in `apps/web/app/manifest.ts`.
+- A service worker in `apps/web/public/sw.js`.
+- Install/update bootstrap and status UI in `apps/web/app/components/PwaBootstrap.tsx` and `apps/web/app/components/PwaStatusBanner.tsx`.
+- An offline fallback route in `apps/web/app/offline/page.tsx`.
+- Shared PWA config and install helpers in `apps/web/lib/pwa/*`.
 
 ### What Gymmer does not have yet
-- No web manifest.
-- No service worker.
-- No install prompt UX.
-- No offline fallback route/page.
 - No client-side mutation queue for offline sync.
-- No explicit PWA cache strategy.
+- No offline continuation for already-started workouts.
+- No retry-safe mutation contract with stable client mutation IDs.
+- No IndexedDB-backed queue/cache layer for durable offline sync.
+- No broad offline read coverage beyond the cached shell and fallback flow.
 
 ## Recommendation
 Implement the PWA in phases.
@@ -30,6 +45,10 @@ Implement the PWA in phases.
 - First release is installable plus cached shell: yes.
 - Offline support includes continuing an already-started workout: no.
 - Routine edits, profile edits, and settings changes are allowed offline in v1: no.
+
+Implementation status:
+- The installable shell portion of v1 is implemented.
+- The remaining work is the sync/offline continuation work described in later phases.
 
 Do not try to make the entire app offline-first in one step. The correct sequence is:
 1. Make the app installable.
@@ -287,6 +306,9 @@ Output:
 Goal:
 - make Gymmer installable and correctly branded as a standalone app
 
+Status:
+- Complete as of 2026-04-07.
+
 Implementation:
 - add `apps/web/app/manifest.ts`
 - add app icons under `apps/web/public/icons/*`
@@ -310,6 +332,11 @@ Route impact:
 ## Phase 2: Service Worker And Safe Caching
 Goal:
 - cache static assets and a minimal app shell without breaking dynamic behavior
+
+Status:
+- Partially complete as of 2026-04-07.
+- The service worker, runtime route list, static asset caching, and offline fallback route exist.
+- Broader validation and future cache expansion remain open.
 
 Implementation:
 - add `apps/web/public/sw.js`
@@ -345,6 +372,11 @@ Route impact:
 ## Phase 3: Offline UX, Update UX, And Observability
 Goal:
 - make the PWA understandable when offline instead of silently failing
+
+Status:
+- Partially complete as of 2026-04-07.
+- The global status banner covers install, update, and offline states.
+- Retry entry points, richer observability, and sync-specific messaging remain open.
 
 Implementation:
 - global offline indicator

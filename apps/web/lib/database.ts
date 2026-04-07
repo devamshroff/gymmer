@@ -1446,6 +1446,191 @@ export async function getExerciseById(id: number): Promise<any | null> {
   return result.rows[0] as any || null;
 }
 
+export async function getExercisesWithHistory(userId: string): Promise<any[]> {
+  await ensureExerciseColumns();
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      WITH appearances AS (
+        SELECT el.exercise_name AS name, ws.date_completed
+        FROM workout_exercise_logs el
+        JOIN workout_sessions ws ON ws.id = el.session_id
+        WHERE ws.user_id = ?
+        UNION ALL
+        SELECT el.b2b_partner_name AS name, ws.date_completed
+        FROM workout_exercise_logs el
+        JOIN workout_sessions ws ON ws.id = el.session_id
+        WHERE ws.user_id = ?
+          AND el.b2b_partner_name IS NOT NULL
+          AND trim(el.b2b_partner_name) != ''
+      ),
+      scored AS (
+        SELECT
+          name,
+          COUNT(*) AS history_count,
+          SUM(CASE WHEN date(date_completed) >= date('now', '-30 days') THEN 1 ELSE 0 END) AS recent_count,
+          MAX(date_completed) AS last_used_at
+        FROM appearances
+        GROUP BY name
+      )
+      SELECT
+        e.*,
+        scored.history_count,
+        scored.recent_count,
+        scored.last_used_at
+      FROM scored
+      JOIN exercises e ON lower(e.name) = lower(scored.name)
+      ORDER BY ((scored.recent_count * 3) + scored.history_count) DESC, scored.last_used_at DESC, e.name ASC
+    `,
+    args: [userId, userId]
+  });
+  return result.rows as any[];
+}
+
+export async function getPopularExercises(userId: string, limit: number = 12): Promise<any[]> {
+  await ensureExerciseColumns();
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      WITH appearances AS (
+        SELECT el.exercise_name AS name, ws.date_completed
+        FROM workout_exercise_logs el
+        JOIN workout_sessions ws ON ws.id = el.session_id
+        WHERE ws.user_id = ?
+        UNION ALL
+        SELECT el.b2b_partner_name AS name, ws.date_completed
+        FROM workout_exercise_logs el
+        JOIN workout_sessions ws ON ws.id = el.session_id
+        WHERE ws.user_id = ?
+          AND el.b2b_partner_name IS NOT NULL
+          AND trim(el.b2b_partner_name) != ''
+      ),
+      scored AS (
+        SELECT
+          name,
+          COUNT(*) AS history_count,
+          SUM(CASE WHEN date(date_completed) >= date('now', '-30 days') THEN 1 ELSE 0 END) AS recent_count,
+          MAX(date_completed) AS last_used_at
+        FROM appearances
+        GROUP BY name
+      )
+      SELECT
+        e.*,
+        scored.history_count,
+        scored.recent_count,
+        scored.last_used_at
+      FROM scored
+      JOIN exercises e ON lower(e.name) = lower(scored.name)
+      ORDER BY ((scored.recent_count * 3) + scored.history_count) DESC, scored.last_used_at DESC, e.name ASC
+      LIMIT ?
+    `,
+    args: [userId, userId, limit]
+  });
+  return result.rows as any[];
+}
+
+export async function getPopularSupersetPairs(userId: string, limit: number = 8): Promise<Array<{
+  exercise1: any;
+  exercise2: any;
+  totalCount: number;
+  recentCount: number;
+  lastUsedAt: string | null;
+}>> {
+  await ensureExerciseColumns();
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      WITH pairs AS (
+        SELECT
+          CASE
+            WHEN lower(el.exercise_name) <= lower(el.b2b_partner_name) THEN el.exercise_name
+            ELSE el.b2b_partner_name
+          END AS name1,
+          CASE
+            WHEN lower(el.exercise_name) <= lower(el.b2b_partner_name) THEN el.b2b_partner_name
+            ELSE el.exercise_name
+          END AS name2,
+          ws.date_completed
+        FROM workout_exercise_logs el
+        JOIN workout_sessions ws ON ws.id = el.session_id
+        WHERE ws.user_id = ?
+          AND el.b2b_partner_name IS NOT NULL
+          AND trim(el.b2b_partner_name) != ''
+      ),
+      scored AS (
+        SELECT
+          name1,
+          name2,
+          COUNT(*) AS total_count,
+          SUM(CASE WHEN date(date_completed) >= date('now', '-30 days') THEN 1 ELSE 0 END) AS recent_count,
+          MAX(date_completed) AS last_used_at
+        FROM pairs
+        GROUP BY name1, name2
+      )
+      SELECT
+        scored.total_count,
+        scored.recent_count,
+        scored.last_used_at,
+        e1.id AS exercise1_id,
+        e1.name AS exercise1_name,
+        e1.video_url AS exercise1_video_url,
+        e1.tips AS exercise1_tips,
+        e1.equipment AS exercise1_equipment,
+        e1.is_bodyweight AS exercise1_is_bodyweight,
+        e1.is_machine AS exercise1_is_machine,
+        e1.primary_metric AS exercise1_primary_metric,
+        e1.metric_unit AS exercise1_metric_unit,
+        e1.muscle_groups AS exercise1_muscle_groups,
+        e2.id AS exercise2_id,
+        e2.name AS exercise2_name,
+        e2.video_url AS exercise2_video_url,
+        e2.tips AS exercise2_tips,
+        e2.equipment AS exercise2_equipment,
+        e2.is_bodyweight AS exercise2_is_bodyweight,
+        e2.is_machine AS exercise2_is_machine,
+        e2.primary_metric AS exercise2_primary_metric,
+        e2.metric_unit AS exercise2_metric_unit,
+        e2.muscle_groups AS exercise2_muscle_groups
+      FROM scored
+      JOIN exercises e1 ON lower(e1.name) = lower(scored.name1)
+      JOIN exercises e2 ON lower(e2.name) = lower(scored.name2)
+      ORDER BY ((scored.recent_count * 3) + scored.total_count) DESC, scored.last_used_at DESC, e1.name ASC, e2.name ASC
+      LIMIT ?
+    `,
+    args: [userId, limit]
+  });
+
+  return result.rows.map((row: any) => ({
+    exercise1: {
+      id: Number(row.exercise1_id),
+      name: row.exercise1_name,
+      video_url: row.exercise1_video_url ?? null,
+      tips: row.exercise1_tips ?? null,
+      equipment: row.exercise1_equipment ?? null,
+      is_bodyweight: row.exercise1_is_bodyweight ?? null,
+      is_machine: row.exercise1_is_machine ?? null,
+      primary_metric: row.exercise1_primary_metric ?? null,
+      metric_unit: row.exercise1_metric_unit ?? null,
+      muscle_groups: row.exercise1_muscle_groups ?? null,
+    },
+    exercise2: {
+      id: Number(row.exercise2_id),
+      name: row.exercise2_name,
+      video_url: row.exercise2_video_url ?? null,
+      tips: row.exercise2_tips ?? null,
+      equipment: row.exercise2_equipment ?? null,
+      is_bodyweight: row.exercise2_is_bodyweight ?? null,
+      is_machine: row.exercise2_is_machine ?? null,
+      primary_metric: row.exercise2_primary_metric ?? null,
+      metric_unit: row.exercise2_metric_unit ?? null,
+      muscle_groups: row.exercise2_muscle_groups ?? null,
+    },
+    totalCount: Number(row.total_count ?? 0),
+    recentCount: Number(row.recent_count ?? 0),
+    lastUsedAt: typeof row.last_used_at === 'string' ? row.last_used_at : null,
+  }));
+}
+
 // Routine CRUD
 export async function createRoutine(name: string, userId: string, isPublic: boolean = true): Promise<number> {
   const db = getDatabase();

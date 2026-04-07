@@ -3,6 +3,10 @@
 import { useState, useEffect } from 'react';
 import QuickExerciseForm from './QuickExerciseForm';
 import { MUSCLE_GROUP_ORDER, formatTypeLabel, parseTagJson, MUSCLE_GROUP_TAGS } from '@/lib/muscle-tags';
+import type {
+  FreeWorkoutRecommendedExercise,
+  FreeWorkoutRecommendedSuperset,
+} from '@/lib/session-workout';
 
 interface Exercise {
   id: number;
@@ -19,7 +23,11 @@ interface Exercise {
 
 interface ExerciseSelectorProps {
   onSelect: (exercise: Exercise) => void;
+  onSelectSuperset?: (exercise1: Exercise, exercise2: Exercise) => void;
   onCancel: () => void;
+  onBuildCustomSuperset?: () => void;
+  recommendedExercises?: FreeWorkoutRecommendedExercise[];
+  recommendedSupersets?: FreeWorkoutRecommendedSuperset[];
   title?: string;
 }
 
@@ -59,7 +67,49 @@ function groupExercisesByType(items: Exercise[]): Array<{ type: string; exercise
   return keys.map((key) => ({ type: key, exercises: grouped.get(key) || [] }));
 }
 
-export default function ExerciseSelector({ onSelect, onCancel, title }: ExerciseSelectorProps) {
+function normalizeRecommendedExercise(exercise: FreeWorkoutRecommendedExercise): Exercise {
+  return {
+    id: exercise.id,
+    name: exercise.name,
+    video_url: exercise.video_url ?? null,
+    tips: exercise.tips ?? null,
+    equipment: exercise.equipment ?? null,
+    is_bodyweight: exercise.is_bodyweight ?? null,
+    is_machine: exercise.is_machine ?? null,
+    primary_metric: exercise.primary_metric ?? null,
+    metric_unit: exercise.metric_unit ?? null,
+    muscle_groups: exercise.muscle_groups ?? null,
+  };
+}
+
+function RecommendationMeta({
+  historyCount,
+  recentCount,
+}: {
+  historyCount?: number | null;
+  recentCount?: number | null;
+}) {
+  if (!historyCount && !recentCount) return null;
+  return (
+    <div className="mt-1 text-xs text-zinc-400">
+      {typeof recentCount === 'number' && recentCount > 0 ? `${recentCount} recent` : null}
+      {typeof recentCount === 'number' && recentCount > 0 && typeof historyCount === 'number' && historyCount > 0
+        ? ' · '
+        : null}
+      {typeof historyCount === 'number' && historyCount > 0 ? `${historyCount} total` : null}
+    </div>
+  );
+}
+
+export default function ExerciseSelector({
+  onSelect,
+  onSelectSuperset,
+  onCancel,
+  onBuildCustomSuperset,
+  recommendedExercises = [],
+  recommendedSupersets = [],
+  title,
+}: ExerciseSelectorProps) {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -124,6 +174,10 @@ export default function ExerciseSelector({ onSelect, onCancel, title }: Exercise
     return exercise.name.toLowerCase().includes(query) || tagText.includes(query);
   });
   const groupedExercises = groupExercisesByType(filteredExercises);
+  const showRecommendations = !searchQuery;
+  const showRecommendedExercises = showRecommendations && recommendedExercises.length > 0;
+  const showRecommendedSupersets =
+    showRecommendations && Boolean(onSelectSuperset) && recommendedSupersets.length > 0;
 
   if (showCreateForm) {
     return (
@@ -136,10 +190,10 @@ export default function ExerciseSelector({ onSelect, onCancel, title }: Exercise
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
-      <div className="bg-zinc-800 rounded-lg p-6 max-w-3xl w-full max-h-[90vh] flex flex-col border-2 border-blue-600">
+      <div className="bg-zinc-800 rounded-lg p-6 max-w-4xl w-full max-h-[90vh] flex flex-col border-2 border-blue-600">
         <h2 className="text-2xl font-bold text-white mb-4">{title || 'Select Exercise'}</h2>
 
-        {/* Search & Create */}
+        {/* Search & quick actions */}
         <div className="mb-4 space-y-3">
           <input
             type="text"
@@ -150,12 +204,22 @@ export default function ExerciseSelector({ onSelect, onCancel, title }: Exercise
             autoFocus
           />
 
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold transition-colors"
-          >
-            + Create New Exercise
-          </button>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold transition-colors"
+            >
+              + Create New Exercise
+            </button>
+            {onBuildCustomSuperset && (
+              <button
+                onClick={onBuildCustomSuperset}
+                className="w-full bg-purple-700 hover:bg-purple-600 text-white py-3 rounded-lg font-bold transition-colors"
+              >
+                + Build Custom Superset
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Exercise List */}
@@ -168,25 +232,78 @@ export default function ExerciseSelector({ onSelect, onCancel, title }: Exercise
             </div>
           ) : (
             <div className="space-y-4">
+              {(showRecommendedExercises || showRecommendedSupersets) && (
+                <div className="grid gap-4 xl:grid-cols-2">
+                  {showRecommendedExercises && (
+                    <div className="space-y-2 rounded-xl border border-emerald-900/60 bg-zinc-900/50 p-4">
+                      <div className="text-xs uppercase tracking-wide text-emerald-300">Most Popular Exercises</div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {recommendedExercises.map((exercise) => (
+                          <button
+                            key={`recommended-exercise-${exercise.id}`}
+                            onClick={() => onSelect(normalizeRecommendedExercise(exercise))}
+                            className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-left transition-colors hover:border-emerald-500 hover:bg-zinc-800"
+                          >
+                            <div className="text-white font-semibold">{exercise.name}</div>
+                            {exercise.equipment && (
+                              <div className="mt-1 text-sm text-zinc-400">{exercise.equipment}</div>
+                            )}
+                            <RecommendationMeta
+                              historyCount={exercise.history_count}
+                              recentCount={exercise.recent_count}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {showRecommendedSupersets && (
+                    <div className="space-y-2 rounded-xl border border-purple-900/60 bg-zinc-900/50 p-4">
+                      <div className="text-xs uppercase tracking-wide text-purple-300">Common Pairings</div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {recommendedSupersets.map((pair, index) => (
+                          <button
+                            key={`recommended-superset-${pair.exercise1.id}-${pair.exercise2.id}-${index}`}
+                            onClick={() => onSelectSuperset?.(
+                              normalizeRecommendedExercise(pair.exercise1),
+                              normalizeRecommendedExercise(pair.exercise2)
+                            )}
+                            className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-left transition-colors hover:border-purple-500 hover:bg-zinc-800"
+                          >
+                            <div className="text-white font-semibold">
+                              {pair.exercise1.name} + {pair.exercise2.name}
+                            </div>
+                            <div className="mt-1 text-sm text-zinc-400">
+                              {pair.recentCount > 0 ? `${pair.recentCount} recent` : 'No recent pairings'} · {pair.totalCount} total
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {groupedExercises.map(({ type, exercises: groupExercises }) => (
                 <div key={type} className="space-y-2">
                   <div className="text-xs uppercase tracking-wide text-zinc-400">
-                    {formatTypeLabel(type)}
+                    {showRecommendations ? `All Exercises · ${formatTypeLabel(type)}` : formatTypeLabel(type)}
                   </div>
-                  {groupExercises.map((exercise) => (
-                    <button
-                      key={exercise.id}
-                      onClick={() => onSelect(exercise)}
-                      className="w-full bg-zinc-900 hover:bg-zinc-700 text-left p-4 rounded-lg transition-colors border-2 border-zinc-700 hover:border-blue-500"
-                    >
-                      <div>
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {groupExercises.map((exercise) => (
+                      <button
+                        key={exercise.id}
+                        onClick={() => onSelect(exercise)}
+                        className="rounded-lg border-2 border-zinc-700 bg-zinc-900 p-3 text-left transition-colors hover:border-blue-500 hover:bg-zinc-700"
+                      >
                         <div className="text-white font-semibold">{exercise.name}</div>
                         {exercise.equipment && (
-                          <div className="text-zinc-400 text-sm mt-1">{exercise.equipment}</div>
+                          <div className="mt-1 text-sm text-zinc-400">{exercise.equipment}</div>
                         )}
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>

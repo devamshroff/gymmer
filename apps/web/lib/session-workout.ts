@@ -3,6 +3,8 @@ import type { WorkoutPlan } from '@/lib/types';
 const SESSION_PREFIX = 'session_workout_override';
 const WARNING_PREFIX = 'session_workout_change_ack';
 const TARGETS_META_PREFIX = 'session_workout_targets_meta';
+const FREE_WORKOUT_SETUP_KEY = 'free_workout_setup';
+const FREE_WORKOUT_SETUP_CACHE_PREFIX = 'free_workout_setup_cache';
 
 type TargetsSource = 'ai' | 'fallback' | null;
 
@@ -12,6 +14,52 @@ export type SessionTargetsMeta = {
   trendSummary: string | null;
   source: TargetsSource;
   sessionMode?: string | null;
+};
+
+export type SessionExerciseTarget = {
+  suggestedWeight?: number | null;
+  suggestedReps?: number | null;
+  rationale?: string | null;
+};
+
+export type FreeWorkoutRecommendedExercise = {
+  id: number;
+  name: string;
+  video_url: string | null;
+  tips: string | null;
+  equipment?: string | null;
+  is_bodyweight?: number | null;
+  is_machine?: number | null;
+  primary_metric?: string | null;
+  metric_unit?: string | null;
+  muscle_groups?: string | null;
+  history_count?: number | null;
+  recent_count?: number | null;
+  last_used_at?: string | null;
+};
+
+export type FreeWorkoutRecommendedSuperset = {
+  exercise1: FreeWorkoutRecommendedExercise;
+  exercise2: FreeWorkoutRecommendedExercise;
+  totalCount: number;
+  recentCount: number;
+  lastUsedAt: string | null;
+};
+
+export type FreeWorkoutSetup = {
+  sessionMode: string | null;
+  source: TargetsSource;
+  encouragement: string | null;
+  goalSummary: string | null;
+  trendSummary: string | null;
+  targetsByExercise: Record<string, SessionExerciseTarget>;
+  popularExercises: FreeWorkoutRecommendedExercise[];
+  popularSupersets: FreeWorkoutRecommendedSuperset[];
+};
+
+type FreeWorkoutSetupCacheEntry = {
+  cachedAt: string;
+  setup: FreeWorkoutSetup;
 };
 
 function buildKey(prefix: string, workoutName: string, routineId?: string | null): string {
@@ -91,4 +139,73 @@ export function acknowledgeChangeWarning(workoutName: string, routineId?: string
   if (typeof window === 'undefined') return;
   const key = buildKey(WARNING_PREFIX, workoutName, routineId);
   sessionStorage.setItem(key, '1');
+}
+
+export function loadFreeWorkoutSetup(): FreeWorkoutSetup | null {
+  if (typeof window === 'undefined') return null;
+  const stored = sessionStorage.getItem(FREE_WORKOUT_SETUP_KEY);
+  if (!stored) return null;
+  try {
+    return JSON.parse(stored) as FreeWorkoutSetup;
+  } catch (error) {
+    console.error('Failed to parse free workout setup:', error);
+    return null;
+  }
+}
+
+export function saveFreeWorkoutSetup(setup: FreeWorkoutSetup): void {
+  if (typeof window === 'undefined') return;
+  sessionStorage.setItem(FREE_WORKOUT_SETUP_KEY, JSON.stringify(setup));
+}
+
+export function clearFreeWorkoutSetup(): void {
+  if (typeof window === 'undefined') return;
+  sessionStorage.removeItem(FREE_WORKOUT_SETUP_KEY);
+}
+
+function buildFreeWorkoutSetupCacheKey(sessionMode: string): string {
+  return `${FREE_WORKOUT_SETUP_CACHE_PREFIX}:${sessionMode}`;
+}
+
+export function loadFreeWorkoutSetupCache(sessionMode: string): FreeWorkoutSetup | null {
+  if (typeof window === 'undefined') return null;
+  const stored = sessionStorage.getItem(buildFreeWorkoutSetupCacheKey(sessionMode));
+  if (!stored) return null;
+  try {
+    const entry = JSON.parse(stored) as FreeWorkoutSetupCacheEntry;
+    return entry.setup ?? null;
+  } catch (error) {
+    console.error('Failed to parse free workout setup cache:', error);
+    return null;
+  }
+}
+
+export function saveFreeWorkoutSetupCache(sessionMode: string, setup: FreeWorkoutSetup): void {
+  if (typeof window === 'undefined') return;
+  const entry: FreeWorkoutSetupCacheEntry = {
+    cachedAt: new Date().toISOString(),
+    setup,
+  };
+  sessionStorage.setItem(buildFreeWorkoutSetupCacheKey(sessionMode), JSON.stringify(entry));
+}
+
+export function clearFreeWorkoutSetupCache(sessionMode?: string): void {
+  if (typeof window === 'undefined') return;
+  if (sessionMode) {
+    sessionStorage.removeItem(buildFreeWorkoutSetupCacheKey(sessionMode));
+    return;
+  }
+
+  const keysToRemove: string[] = [];
+  for (let index = 0; index < sessionStorage.length; index += 1) {
+    const key = sessionStorage.key(index);
+    if (!key) continue;
+    if (key.startsWith(`${FREE_WORKOUT_SETUP_CACHE_PREFIX}:`)) {
+      keysToRemove.push(key);
+    }
+  }
+
+  for (const key of keysToRemove) {
+    sessionStorage.removeItem(key);
+  }
 }

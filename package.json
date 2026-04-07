@@ -12,6 +12,7 @@
     "lint": "bun --cwd apps/web lint",
     "test": "bun --cwd apps/web test",
     "test:run": "bun --cwd apps/web test:run",
-    "test:e2e": "bun --cwd apps/web test:e2e"
+    "test:e2e": "bun --cwd apps/web test:e2e",
+    "docs:architecture": "bun --cwd apps/web scripts/generate-architecture-index.ts"
   }
 }

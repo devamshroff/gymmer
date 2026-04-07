@@ -48,6 +48,7 @@ test('Routines index and create modal flow', async ({ page }) => {
   await page.goto('/routines');
   await expect(page.getByRole('heading', { name: 'My Routines', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'E2E Routine' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Start Free Workout/i })).toHaveCount(0);
 
   await page.getByRole('button', { name: '+ Create New Routine' }).click();
   await expect(page.getByRole('heading', { name: 'Create a new routine' })).toBeVisible();

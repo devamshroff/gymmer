@@ -2,6 +2,17 @@
 
 This file is a concise, code-backed reference for how Gymmer’s web app is structured and how core features are designed. It is intended for assistants and contributors who need to locate logic quickly and reason about flow.
 
+## Read Order
+- Start with `AGENTS.md` for repo rules.
+- Use this file for the curated summary.
+- Use `docs/architecture-index.md` for the generated route/API/component/test inventory.
+- Refresh the generated index with `bun run docs:architecture` after structural changes.
+
+## Maintenance Rule
+- Keep this file aligned with the actual app.
+- Update it in the same change whenever the curated understanding of feature ownership, architecture, storage, workflow, or PWA behavior changes.
+- Do not rely on the generated architecture index as a substitute for updating this file when the summary itself is outdated.
+
 ## Scope + Product Focus
 - Gymmer is a **web-only product**.
 - The **web app is the source of truth** (`apps/web`).
@@ -15,12 +26,17 @@ This file is a concise, code-backed reference for how Gymmer’s web app is stru
 - **State + caching:** localStorage and sessionStorage for workout state and caching (details below).
 - **PWA shell:** manifest route in `apps/web/app/manifest.ts`, bootstrap in `apps/web/app/components/PwaBootstrap.tsx`, install/offline banner in `apps/web/app/components/PwaStatusBanner.tsx`, offline fallback in `apps/web/app/offline/page.tsx`, service worker in `apps/web/public/sw.js`.
 
+## Production Runtime Notes
+- The production web app runs on Render free tier.
+- After roughly 15 minutes of inactivity, the Render web service can spin down and the next request may incur a cold start.
+- Product flows that depend on server APIs should prefer fewer, consolidated startup requests where possible, especially for workout bootstrapping.
+
 ## Cross-Cutting Design Patterns
 - **Workout state lives on the client** during a session and is persisted in localStorage (`lib/workout-session.ts`).
 - **Autosave is event-driven**: the client emits structured autosave events -> API -> DB (`lib/workout-autosave.ts` + `app/api/workout-autosave/route.ts`).
 - **Resume flows** rely on locally cached session data and server session IDs (`lib/active-routines.ts`).
 - **Routine edits** invalidate caches via local edit-version tracking (`lib/workout-bootstrap.ts`).
-- **Session-level overrides** (edited workout plan + targets meta + change warnings) live in sessionStorage (`lib/session-workout.ts`).
+- **Session-level overrides** (edited workout plan + targets meta + free-workout bootstrap data + change warnings) live in sessionStorage (`lib/session-workout.ts`).
 - **Session change tracking** for edits during workouts is stored in sessionStorage (`lib/session-changes.ts`).
 
 ## Feature Design (Where Things Live)
@@ -55,12 +71,15 @@ This file is a concise, code-backed reference for how Gymmer’s web app is stru
 - **Shared UI:** `apps/web/app/components/RoutineEditParts.tsx`, `ExerciseSelector.tsx`, `StretchSelector.tsx`, `SupersetSelector.tsx`
 
 ### Free Workout (No Saved Routine)
-- **Design:** Uses the same workout flow as routines but builds a blank plan in memory.
+- **Design:** Uses the same workout flow as routines but builds a blank plan in memory after a dedicated setup step that captures session mode, warms deterministic history-backed targets for all modes, and only upgrades `Progress` mode with an AI pass in the background.
+- **UI:** `apps/web/app/free-workout/page.tsx`
 - **Core:** `apps/web/lib/free-workout.ts`
-- **Entry point:** `apps/web/app/routines/page.tsx` (starts “Free Workout” session)
+- **Bootstrap API:** `apps/web/app/api/free-workout/bootstrap/route.ts`
+- **Entry point:** `apps/web/app/page.tsx` (links to the dedicated free-workout setup page)
 
 ### Workout Flow (Preview → Pre‑Stretches → Active → Cardio → Post‑Stretches → Summary)
 - **UI pages:**
+  - Free workout setup: `apps/web/app/free-workout/page.tsx`
   - Preview: `apps/web/app/workout/[name]/page.tsx`
   - Pre-stretches: `apps/web/app/stretches/[workoutName]/page.tsx`
   - Active: `apps/web/app/workout/[name]/active/page.tsx`
@@ -126,3 +145,4 @@ Canonical list lives in `apps/web/e2e/flows.md`. Summary below:
 - Check the matching API route in `apps/web/app/api/*`.
 - Look for supporting logic in `apps/web/lib/*` and shared components in `apps/web/app/components/*`.
 - Use the E2E specs in `apps/web/e2e/*` as user-flow ground truth.
+- Use `docs/architecture-index.json` when a machine-readable file inventory is more useful than prose.

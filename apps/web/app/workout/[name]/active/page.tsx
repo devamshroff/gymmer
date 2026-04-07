@@ -17,9 +17,16 @@ import { useWorkoutSessionStore } from '@/lib/use-workout-session';
 import { autosaveWorkout } from '@/lib/workout-autosave';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
 import SupersetSelector from '@/app/components/SupersetSelector';
-import { acknowledgeChangeWarning, hasChangeWarningAck, loadSessionWorkout, saveSessionWorkout } from '@/lib/session-workout';
+import {
+  acknowledgeChangeWarning,
+  hasChangeWarningAck,
+  loadFreeWorkoutSetup,
+  loadSessionWorkout,
+  saveSessionWorkout,
+  type FreeWorkoutSetup,
+} from '@/lib/session-workout';
 import ExerciseHistoryModal from '@/app/components/ExerciseHistoryModal';
-import { EXERCISE_TYPES, type ExercisePrimaryMetric } from '@/lib/constants';
+import { EXERCISE_PRIMARY_METRICS, EXERCISE_TYPES, type ExercisePrimaryMetric } from '@/lib/constants';
 import {
   DEFAULT_HEIGHT_UNIT,
   DEFAULT_WEIGHT_UNIT,
@@ -59,6 +66,8 @@ type ExerciseOption = {
   equipment?: string | null;
   is_bodyweight?: number | null;
   is_machine?: number | null;
+  primary_metric?: string | null;
+  metric_unit?: string | null;
 };
 
 function ActiveWorkoutContent() {
@@ -74,6 +83,7 @@ function ActiveWorkoutContent() {
   const [heightUnit, setHeightUnit] = useState<HeightUnit>(DEFAULT_HEIGHT_UNIT);
   const [timerSoundEnabled, setTimerSoundEnabled] = useState(true);
   const [timerVibrateEnabled, setTimerVibrateEnabled] = useState(true);
+  const [freeWorkoutSetup, setFreeWorkoutSetup] = useState<FreeWorkoutSetup | null>(null);
 
   // Single exercise state
   const [machineOnlyHoldWeight, setMachineOnlyHoldWeight] = useState(0);
@@ -83,7 +93,6 @@ function ActiveWorkoutContent() {
   const [machineOnlyHoldWeight2, setMachineOnlyHoldWeight2] = useState(0);
 
   const [showExitConfirm, setShowExitConfirm] = useState(false);
-  const [showExerciseTypePicker, setShowExerciseTypePicker] = useState(false);
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
   const [showSupersetSelector, setShowSupersetSelector] = useState(false);
   const [exerciseActionMode, setExerciseActionMode] = useState<'add' | 'replace' | null>(null);
@@ -153,6 +162,27 @@ function ActiveWorkoutContent() {
   ) => {
     if (isExerciseTimeMetric(exercise)) return 0;
     return exercise.isMachine && useMachineOnly ? 0 : exercise.targetWeight;
+  };
+
+  const getFreeWorkoutTarget = (exerciseName: string) => (
+    freeWorkoutSetup?.targetsByExercise?.[exerciseName] ?? null
+  );
+
+  const getInitialTargetsForOption = (exercise: ExerciseOption) => {
+    const isBodyweight = exercise.is_bodyweight === 1;
+    const primaryMetric = resolvePrimaryMetric(
+      (exercise.primary_metric as ExercisePrimaryMetric | undefined) ?? undefined,
+      isBodyweight
+    );
+    const suggested = getFreeWorkoutTarget(exercise.name);
+    const defaultReps = primaryMetric === EXERCISE_PRIMARY_METRICS.time ? 0 : 10;
+
+    return {
+      targetWeight: typeof suggested?.suggestedWeight === 'number' ? suggested.suggestedWeight : 0,
+      targetReps: typeof suggested?.suggestedReps === 'number' ? suggested.suggestedReps : defaultReps,
+      primaryMetric,
+      metricUnit: exercise.metric_unit ?? null,
+    };
   };
 
   const formatMetric = (
@@ -517,6 +547,7 @@ function ActiveWorkoutContent() {
       try {
         const decodedName = decodeURIComponent(params.name as string);
         if (isFreeMode) {
+          setFreeWorkoutSetup(loadFreeWorkoutSetup());
           const fallbackPlan = buildFreeWorkoutPlan();
           const sessionPlan = loadSessionWorkout(fallbackPlan.name, null);
           const resolvedWorkout = sessionPlan || fallbackPlan;
@@ -541,6 +572,7 @@ function ActiveWorkoutContent() {
           }
           return;
         }
+        setFreeWorkoutSetup(null);
         const cached = loadWorkoutBootstrapCache({
           workoutName: decodedName,
           routineId: routineIdParam,
@@ -1434,20 +1466,23 @@ function ActiveWorkoutContent() {
     const isMachine = typeof exercise.is_machine === 'number'
       ? exercise.is_machine === 1
       : false;
+    const { targetWeight, targetReps, primaryMetric, metricUnit } = getInitialTargetsForOption(exercise);
     return {
       type: EXERCISE_TYPES.single,
       exerciseId: exercise.id,
       name: exercise.name,
       sets: 3,
-      targetReps: 10,
-      targetWeight: 0,
+      targetReps,
+      targetWeight,
       warmupWeight: 0,
       hasWarmup: !isBodyweight,
-      restTime: 60,
+      restTime: restTimeSeconds,
       videoUrl: exercise.video_url || '',
       tips: exercise.tips || '',
       isBodyweight,
-      isMachine
+      isMachine,
+      primaryMetric,
+      metricUnit,
     };
   };
 
@@ -1464,35 +1499,41 @@ function ActiveWorkoutContent() {
     const isMachine2 = typeof exercise2.is_machine === 'number'
       ? exercise2.is_machine === 1
       : false;
+    const targets1 = getInitialTargetsForOption(exercise1);
+    const targets2 = getInitialTargetsForOption(exercise2);
     return {
       type: EXERCISE_TYPES.b2b,
-      restTime: 30,
+      restTime: supersetRestSeconds,
       exercises: [
         {
           exerciseId: exercise1.id,
           name: exercise1.name,
           sets: 3,
-          targetReps: 10,
-          targetWeight: 0,
+          targetReps: targets1.targetReps,
+          targetWeight: targets1.targetWeight,
           warmupWeight: 0,
           hasWarmup: false,
           videoUrl: exercise1.video_url || '',
           tips: exercise1.tips || '',
           isBodyweight: isBodyweight1,
-          isMachine: isMachine1
+          isMachine: isMachine1,
+          primaryMetric: targets1.primaryMetric,
+          metricUnit: targets1.metricUnit,
         },
         {
           exerciseId: exercise2.id,
           name: exercise2.name,
           sets: 3,
-          targetReps: 10,
-          targetWeight: 0,
+          targetReps: targets2.targetReps,
+          targetWeight: targets2.targetWeight,
           warmupWeight: 0,
           hasWarmup: false,
           videoUrl: exercise2.video_url || '',
           tips: exercise2.tips || '',
           isBodyweight: isBodyweight2,
-          isMachine: isMachine2
+          isMachine: isMachine2,
+          primaryMetric: targets2.primaryMetric,
+          metricUnit: targets2.metricUnit,
         }
       ]
     };
@@ -1653,7 +1694,7 @@ function ActiveWorkoutContent() {
     setShowChangeWarning(false);
   };
 
-  const openExerciseTypePicker = (mode: 'add' | 'replace', insertIndex?: number) => {
+  const openExercisePicker = (mode: 'add' | 'replace', insertIndex?: number) => {
     runWithChangeWarning(() => {
       setExerciseActionMode(mode);
       if (mode === 'add' && Number.isFinite(insertIndex)) {
@@ -1661,7 +1702,7 @@ function ActiveWorkoutContent() {
       } else {
         setPendingInsertIndex(null);
       }
-      setShowExerciseTypePicker(true);
+      setShowExerciseSelector(true);
     });
   };
 
@@ -1723,6 +1764,7 @@ function ActiveWorkoutContent() {
 
     applyWorkoutUpdate({ ...workout, exercises: updatedExercises });
     setExerciseActionMode(null);
+    setShowExerciseSelector(false);
     setShowSupersetSelector(false);
     setPendingInsertIndex(null);
     if (insertedAfter) {
@@ -1742,15 +1784,9 @@ function ActiveWorkoutContent() {
     }
   };
 
-  const handleExerciseTypeCancel = () => {
-    setShowExerciseTypePicker(false);
-    setExerciseActionMode(null);
-    setPendingInsertIndex(null);
-  };
-
   const handleFreeNextAddExercise = () => {
     setShowFreeNextPrompt(false);
-    openExerciseTypePicker('add', currentExerciseIndex + 1);
+    openExercisePicker('add', currentExerciseIndex + 1);
   };
 
   const handleFreeNextGoCardio = () => {
@@ -1770,13 +1806,13 @@ function ActiveWorkoutContent() {
   const exerciseModifyControls = canModifyExercise ? (
     <div className="flex items-center gap-2">
       <button
-        onClick={() => openExerciseTypePicker('add')}
-        className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors ${modifyAccentClasses}`}
+        onClick={() => openExercisePicker('add')}
+        className={`inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white shadow-lg transition-colors ${modifyAccentClasses}`}
       >
         + Add Exercise
       </button>
       <button
-        onClick={() => openExerciseTypePicker('replace')}
+        onClick={() => openExercisePicker('replace')}
         className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors ${modifyAccentClasses}`}
       >
         ↺ Replace
@@ -1835,40 +1871,6 @@ function ActiveWorkoutContent() {
         </div>
       )}
 
-      {showExerciseTypePicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-sm rounded-lg border border-zinc-700 bg-zinc-900 p-5 text-white">
-            <h3 className="text-lg font-semibold mb-4">Choose exercise type</h3>
-            <div className="space-y-3">
-              <button
-                onClick={() => {
-                  setShowExerciseTypePicker(false);
-                  setShowExerciseSelector(true);
-                }}
-                className="w-full rounded-lg bg-rose-800 py-2 text-sm font-semibold text-white hover:bg-rose-700"
-              >
-                Single exercise
-              </button>
-              <button
-                onClick={() => {
-                  setShowExerciseTypePicker(false);
-                  setShowSupersetSelector(true);
-                }}
-                className="w-full rounded-lg bg-purple-600 py-2 text-sm font-semibold text-white hover:bg-purple-500"
-              >
-                Superset
-              </button>
-              <button
-                onClick={handleExerciseTypeCancel}
-                className="w-full rounded-lg bg-zinc-700 py-2 text-sm font-semibold text-white hover:bg-zinc-600"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showExerciseSelector && (
         <ExerciseSelector
           title={exerciseActionMode === 'replace' ? 'Replace Exercise' : 'Add Exercise'}
@@ -1878,6 +1880,13 @@ function ActiveWorkoutContent() {
             setPendingInsertIndex(null);
           }}
           onSelect={handleSelectSingleExercise}
+          onSelectSuperset={handleSelectSuperset}
+          onBuildCustomSuperset={() => {
+            setShowExerciseSelector(false);
+            setShowSupersetSelector(true);
+          }}
+          recommendedExercises={isFreeMode ? freeWorkoutSetup?.popularExercises ?? [] : []}
+          recommendedSupersets={isFreeMode ? freeWorkoutSetup?.popularSupersets ?? [] : []}
         />
       )}
 
@@ -1916,8 +1925,8 @@ function ActiveWorkoutContent() {
             <div className="text-zinc-300 mb-4">No exercises yet.</div>
             <div className="space-y-3">
               <button
-                onClick={() => openExerciseTypePicker('add')}
-                className="w-full rounded-lg bg-rose-800 py-3 text-sm font-semibold text-white hover:bg-rose-700"
+                onClick={() => openExercisePicker('add')}
+                className="w-full rounded-xl bg-rose-800 py-4 text-base font-bold text-white hover:bg-rose-700"
               >
                 + Add Exercise
               </button>

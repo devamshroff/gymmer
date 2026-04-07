@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test('Home, marketing, and login pages load', async ({ page }) => {
   await page.goto('/');
+  await expect(page.getByRole('link', { name: 'Start Free Workout' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'My Routines' })).toBeVisible();
 
   await page.getByRole('link', { name: 'What is Gymmer?' }).click();
