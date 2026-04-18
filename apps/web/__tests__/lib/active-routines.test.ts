@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  ACTIVE_ROUTINE_SECTIONS,
   ACTIVE_ROUTINE_TTL_MS,
   ACTIVE_ROUTINES_STORAGE_KEY,
   getActiveRoutines,
@@ -40,6 +41,7 @@ describe('active-routines', () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]?.workoutName).toBe('Leg Day');
     expect(entries[0]?.resumeIndex).toBe(2);
+    expect(entries[0]?.resumeSection).toBe(ACTIVE_ROUTINE_SECTIONS.active);
 
     const stored = JSON.parse(localStorage.getItem(`${ACTIVE_ROUTINES_STORAGE_KEY}:user-1`) || '[]');
     expect(stored).toHaveLength(1);
@@ -47,6 +49,22 @@ describe('active-routines', () => {
     const fetched = getActiveRoutines('user-1');
     expect(fetched).toHaveLength(1);
     expect(fetched[0]?.sessionId).toBe(55);
+  });
+
+  it('stores and restores later workout sections for resume', () => {
+    touchActiveRoutine({
+      sessionKey: '2026-01-31T10:00:00.000Z',
+      userId: 'user-1',
+      workoutName: 'Leg Day',
+      routineId: 12,
+      resumeIndex: 1,
+      resumeSection: ACTIVE_ROUTINE_SECTIONS.postStretches,
+    });
+
+    const fetched = getActiveRoutines('user-1');
+    expect(fetched).toHaveLength(1);
+    expect(fetched[0]?.resumeSection).toBe(ACTIVE_ROUTINE_SECTIONS.postStretches);
+    expect(fetched[0]?.resumeIndex).toBe(1);
   });
 
   it('filters out expired entries', () => {

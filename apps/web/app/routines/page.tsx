@@ -7,6 +7,7 @@ import UsernameSetup from '@/app/components/UsernameSetup';
 import {
   ACTIVE_ROUTINE_TTL_MS,
   ACTIVE_ROUTINES_STORAGE_KEY,
+  ACTIVE_ROUTINE_SECTIONS,
   getActiveRoutines,
   removeActiveRoutine,
   type ActiveRoutineEntry,
@@ -278,9 +279,17 @@ function RoutinesContent() {
     if (typeof entry.routineId === 'number') {
       query.set('routineId', String(entry.routineId));
     }
-    query.set('resumeIndex', String(entry.resumeIndex));
+    let pathname = `/workout/${encodedName}/active`;
+    if (entry.resumeSection === ACTIVE_ROUTINE_SECTIONS.cardio) {
+      pathname = `/workout/${encodedName}/cardio`;
+    } else if (entry.resumeSection === ACTIVE_ROUTINE_SECTIONS.postStretches) {
+      pathname = `/workout/${encodedName}/post-stretches`;
+      query.set('index', String(entry.resumeIndex));
+    } else {
+      query.set('resumeIndex', String(entry.resumeIndex));
+    }
     const suffix = query.toString() ? `?${query.toString()}` : '';
-    router.push(`/workout/${encodedName}/active${suffix}`);
+    router.push(`${pathname}${suffix}`);
   };
 
   const handleDiscardActiveRoutine = (sessionKey: string) => {
@@ -532,7 +541,11 @@ function RoutinesContent() {
                     <div>
                       <h3 className="text-2xl font-semibold text-white">{entry.workoutName}</h3>
                       <div className="text-sm text-zinc-400 mt-1">
-                        Last active {formatTimeAgo(entry.lastActiveAt)} - Resume at exercise {entry.resumeIndex + 1}
+                        Last active {formatTimeAgo(entry.lastActiveAt)} - {entry.resumeSection === ACTIVE_ROUTINE_SECTIONS.cardio
+                          ? 'Resume at cardio'
+                          : entry.resumeSection === ACTIVE_ROUTINE_SECTIONS.postStretches
+                            ? `Resume at post-workout stretch ${entry.resumeIndex + 1}`
+                            : `Resume at exercise ${entry.resumeIndex + 1}`}
                       </div>
                       <div className="text-xs text-zinc-500 mt-1">
                         Expires in {formatExpiresIn(entry.lastActiveAt)}

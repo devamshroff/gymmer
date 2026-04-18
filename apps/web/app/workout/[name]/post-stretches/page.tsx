@@ -9,11 +9,13 @@ import StretchSelector from '@/app/components/StretchSelector';
 import LoadingScreen from '@/app/components/LoadingScreen';
 import ErrorScreen from '@/app/components/ErrorScreen';
 import AutosaveBadge from '@/app/components/AutosaveBadge';
+import { getWorkoutSession } from '@/lib/workout-session';
 import { addSessionStretchChange } from '@/lib/session-changes';
 import { acknowledgeChangeWarning, hasChangeWarningAck, loadSessionWorkout, saveSessionWorkout } from '@/lib/session-workout';
 import { autosaveWorkout } from '@/lib/workout-autosave';
 import { loadWorkoutBootstrapCache } from '@/lib/workout-bootstrap';
 import { buildFreeWorkoutPlan } from '@/lib/free-workout';
+import { ACTIVE_ROUTINE_SECTIONS, touchActiveRoutine } from '@/lib/active-routines';
 
 type StretchOption = {
   id: number;
@@ -38,6 +40,7 @@ function PostStretchesContent() {
   const pendingChangeRef = useRef<(() => void) | null>(null);
   const [timerSoundEnabled, setTimerSoundEnabled] = useState(true);
   const [timerVibrateEnabled, setTimerVibrateEnabled] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
 
   // Get routineId from URL params (for public/favorited routines)
   const routineIdParam = searchParams.get('routineId');
@@ -45,6 +48,27 @@ function PostStretchesContent() {
   if (routineIdParam) routineQueryParams.set('routineId', routineIdParam);
   if (isFreeMode) routineQueryParams.set('free', '1');
   const routineQuery = routineQueryParams.toString() ? `?${routineQueryParams.toString()}` : '';
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchUser() {
+      try {
+        const response = await fetch('/api/user');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (isMounted && typeof data?.id === 'string') {
+          setUserId(data.id);
+        }
+      } catch (error) {
+        console.error('Error fetching user:', error);
+      }
+    }
+
+    fetchUser();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     async function fetchWorkout() {
@@ -104,6 +128,26 @@ function PostStretchesContent() {
 
     fetchWorkout();
   }, [params.name, searchParams, routineIdParam, isFreeMode]);
+
+  useEffect(() => {
+    if (!userId || !workout) return;
+    const session = getWorkoutSession();
+    if (!session?.startTime) return;
+    if (session.workoutName !== workout.name) return;
+    const routineIdValue = routineIdParam ? Number(routineIdParam) : null;
+    const routineId = Number.isNaN(routineIdValue) ? null : routineIdValue;
+    if ((session.routineId ?? null) !== routineId) return;
+    touchActiveRoutine({
+      sessionKey: session.startTime,
+      userId,
+      workoutName: workout.name,
+      routineId: session.routineId ?? null,
+      resumeIndex: currentIndex,
+      resumeSection: ACTIVE_ROUTINE_SECTIONS.postStretches,
+      sessionId: session.sessionId ?? null,
+      sessionData: session,
+    });
+  }, [currentIndex, routineIdParam, userId, workout]);
 
   if (loading) {
     return <LoadingScreen />;

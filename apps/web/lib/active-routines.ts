@@ -1,11 +1,20 @@
 import type { WorkoutSessionData } from '@/lib/workout-session';
 
+export const ACTIVE_ROUTINE_SECTIONS = {
+  active: 'active',
+  cardio: 'cardio',
+  postStretches: 'post-stretches',
+} as const;
+
+export type ActiveRoutineSection = typeof ACTIVE_ROUTINE_SECTIONS[keyof typeof ACTIVE_ROUTINE_SECTIONS];
+
 export type ActiveRoutineEntry = {
   sessionKey: string;
   userId?: string | null;
   workoutName: string;
   routineId: number | null;
   resumeIndex: number;
+  resumeSection: ActiveRoutineSection;
   startTime: string;
   lastActiveAt: string;
   sessionId?: number | null;
@@ -20,6 +29,7 @@ type RawActiveRoutine = Partial<ActiveRoutineEntry> & {
   userId?: unknown;
   routineId?: unknown;
   resumeIndex?: unknown;
+  resumeSection?: unknown;
   sessionId?: unknown;
   sessionData?: unknown;
 };
@@ -37,6 +47,17 @@ const toIndex = (value: unknown): number => {
   return Math.floor(parsed);
 };
 
+const toSection = (value: unknown): ActiveRoutineSection => {
+  if (
+    value === ACTIVE_ROUTINE_SECTIONS.active
+    || value === ACTIVE_ROUTINE_SECTIONS.cardio
+    || value === ACTIVE_ROUTINE_SECTIONS.postStretches
+  ) {
+    return value;
+  }
+  return ACTIVE_ROUTINE_SECTIONS.active;
+};
+
 const normalizeEntry = (entry: RawActiveRoutine): ActiveRoutineEntry | null => {
   if (!entry) return null;
   const workoutName = typeof entry.workoutName === 'string' ? entry.workoutName : null;
@@ -52,6 +73,7 @@ const normalizeEntry = (entry: RawActiveRoutine): ActiveRoutineEntry | null => {
   const lastActiveAt = typeof entry.lastActiveAt === 'string' ? entry.lastActiveAt : startTime;
   const routineId = toNumberOrNull(entry.routineId);
   const resumeIndex = toIndex(entry.resumeIndex);
+  const resumeSection = toSection(entry.resumeSection);
   const sessionId = toNumberOrNull(entry.sessionId);
   const sessionData = entry.sessionData && typeof entry.sessionData === 'object'
     ? (entry.sessionData as WorkoutSessionData)
@@ -63,6 +85,7 @@ const normalizeEntry = (entry: RawActiveRoutine): ActiveRoutineEntry | null => {
     workoutName,
     routineId,
     resumeIndex,
+    resumeSection,
     startTime,
     lastActiveAt,
     sessionId,
@@ -128,6 +151,7 @@ type TouchInput = {
   workoutName: string;
   routineId?: number | null;
   resumeIndex?: number | null;
+  resumeSection?: ActiveRoutineSection | null;
   sessionId?: number | null;
   sessionData?: WorkoutSessionData | null;
 };
@@ -147,6 +171,7 @@ export const touchActiveRoutine = (input: TouchInput): ActiveRoutineEntry[] => {
     workoutName: input.workoutName,
     routineId: input.routineId ?? null,
     resumeIndex: toIndex(input.resumeIndex),
+    resumeSection: toSection(input.resumeSection),
     startTime: sessionKey,
     lastActiveAt: now,
     sessionId: input.sessionId ?? null,

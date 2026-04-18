@@ -34,7 +34,7 @@ This file is a concise, code-backed reference for how Gymmer’s web app is stru
 ## Cross-Cutting Design Patterns
 - **Workout state lives on the client** during a session and is persisted in localStorage (`lib/workout-session.ts`).
 - **Autosave is event-driven**: the client emits structured autosave events -> API -> DB (`lib/workout-autosave.ts` + `app/api/workout-autosave/route.ts`).
-- **Resume flows** rely on locally cached session data and server session IDs (`lib/active-routines.ts`).
+- **Resume flows** rely on locally cached session data, current workout section metadata, and server session IDs (`lib/active-routines.ts`).
 - **Routine edits** invalidate caches via local edit-version tracking (`lib/workout-bootstrap.ts`).
 - **Session-level overrides** (edited workout plan + targets meta + free-workout bootstrap data + change warnings) live in sessionStorage (`lib/session-workout.ts`).
 - **Session change tracking** for edits during workouts is stored in sessionStorage (`lib/session-changes.ts`).

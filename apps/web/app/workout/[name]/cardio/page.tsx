@@ -4,12 +4,13 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { WorkoutPlan } from '@/lib/types';
-import { addCardioToSession } from '@/lib/workout-session';
+import { addCardioToSession, getWorkoutSession } from '@/lib/workout-session';
 import WorkoutNavHeader from '@/app/components/WorkoutNavHeader';
 import { Card } from '@/app/components/SharedUi';
 import { loadSessionWorkout } from '@/lib/session-workout';
 import AutosaveBadge from '@/app/components/AutosaveBadge';
 import { buildFreeWorkoutPlan } from '@/lib/free-workout';
+import { ACTIVE_ROUTINE_SECTIONS, touchActiveRoutine } from '@/lib/active-routines';
 
 const CARDIO_TYPES = [
   { value: 'Treadmill', label: 'Treadmill', icon: '🏃' },
@@ -28,9 +29,12 @@ export default function CardioPage() {
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [isDone, setIsDone] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
   // Get routineId from URL params (for public/favorited routines)
   const routineIdParam = searchParams.get('routineId');
+  const routineIdValue = routineIdParam ? Number(routineIdParam) : null;
+  const routineId = Number.isNaN(routineIdValue) ? null : routineIdValue;
   const routineQueryParams = new URLSearchParams();
   if (routineIdParam) routineQueryParams.set('routineId', routineIdParam);
   if (isFreeMode) routineQueryParams.set('free', '1');
@@ -41,6 +45,27 @@ export default function CardioPage() {
   const [duration, setDuration] = useState('');
   const [speed, setSpeed] = useState<string>('');
   const [incline, setIncline] = useState<string>('');
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchUser() {
+      try {
+        const response = await fetch('/api/user');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (isMounted && typeof data?.id === 'string') {
+          setUserId(data.id);
+        }
+      } catch (error) {
+        console.error('Error fetching user:', error);
+      }
+    }
+
+    fetchUser();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     async function fetchWorkout() {
@@ -78,6 +103,24 @@ export default function CardioPage() {
 
     fetchWorkout();
   }, [params.name, routineIdParam, isFreeMode]);
+
+  useEffect(() => {
+    if (!userId || !workout) return;
+    const session = getWorkoutSession();
+    if (!session?.startTime) return;
+    if (session.workoutName !== workout.name) return;
+    if ((session.routineId ?? null) !== routineId) return;
+    touchActiveRoutine({
+      sessionKey: session.startTime,
+      userId,
+      workoutName: workout.name,
+      routineId: session.routineId ?? null,
+      resumeIndex: 0,
+      resumeSection: ACTIVE_ROUTINE_SECTIONS.cardio,
+      sessionId: session.sessionId ?? null,
+      sessionData: session,
+    });
+  }, [routineId, userId, workout]);
 
   if (loading) {
     return (

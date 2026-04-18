@@ -12,7 +12,7 @@ import {
   DEFAULT_WORKOUT_FLOW_STATE,
   type WorkoutFlowState,
 } from '@/lib/workout-session';
-import { touchActiveRoutine } from '@/lib/active-routines';
+import { ACTIVE_ROUTINE_SECTIONS, touchActiveRoutine } from '@/lib/active-routines';
 import { useWorkoutSessionStore } from '@/lib/use-workout-session';
 import { autosaveWorkout } from '@/lib/workout-autosave';
 import ExerciseSelector from '@/app/components/ExerciseSelector';
@@ -807,6 +807,7 @@ function ActiveWorkoutContent() {
       workoutName: workout.name,
       routineId,
       resumeIndex: currentExerciseIndex,
+      resumeSection: ACTIVE_ROUTINE_SECTIONS.active,
       sessionId: sessionSnapshot.sessionId ?? null,
       sessionData: sessionSnapshot,
     });

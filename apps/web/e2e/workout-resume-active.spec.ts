@@ -5,7 +5,14 @@ test('Resume active routine after leaving workout', async ({ page }) => {
   const plan = {
     name: workoutName,
     preWorkoutStretches: [],
-    postWorkoutStretches: [],
+    postWorkoutStretches: [
+      {
+        name: 'Hamstring Stretch',
+        timerSeconds: 30,
+        videoUrl: '',
+        tips: '',
+      },
+    ],
     exercises: [
       {
         type: 'single',
@@ -133,9 +140,20 @@ test('Resume active routine after leaving workout', async ({ page }) => {
   await page.getByRole('button', { name: /Complete Set 1/ }).click();
 
   await expect(page.getByRole('heading', { name: 'CARDIO' })).toBeVisible();
+  await page.goto('/routines');
+  await expect(page.getByText('Resume at cardio')).toBeVisible();
+  await page.getByRole('button', { name: 'Resume' }).click();
+  await expect(page).toHaveURL(new RegExp(`/workout/${encodeURIComponent(workoutName)}/cardio`));
+  await expect(page.getByRole('heading', { name: 'CARDIO' })).toBeVisible();
   await page.getByRole('button', { name: 'Skip Cardio', exact: true }).click();
 
-  await expect(page.getByText('No post-workout stretches')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'POST-WORKOUT STRETCH' })).toBeVisible();
+  await page.goto('/routines');
+  await expect(page.getByText('Resume at post-workout stretch 1')).toBeVisible();
+  await page.getByRole('button', { name: 'Resume' }).click();
+  await expect(page).toHaveURL(new RegExp(`/workout/${encodeURIComponent(workoutName)}/post-stretches`));
+  await expect(page.getByRole('heading', { name: 'POST-WORKOUT STRETCH' })).toBeVisible();
+  await expect(page.getByText('Hamstring Stretch')).toBeVisible();
   await page.getByRole('button', { name: /View Summary/ }).click();
 
   await expect(page.getByRole('heading', { name: 'Workout Complete!' })).toBeVisible();
