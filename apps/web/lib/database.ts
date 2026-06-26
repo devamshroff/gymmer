@@ -1,12 +1,26 @@
 // lib/database.ts
 import { createClient, Client } from '@libsql/client';
-import type { WorkoutSession, WorkoutExerciseLog, WorkoutCardioLog } from './types';
+import type {
+  ActivityLog,
+  BodyweightEntry,
+  Combo,
+  ComboItem,
+  FoodLogEntry,
+  NutritionDay,
+  NutritionRangeDay,
+  PantryFood,
+  PushSubscriptionRecord,
+  WorkoutSession,
+  WorkoutExerciseLog,
+  WorkoutCardioLog,
+} from './types';
 import {
   EXERCISE_HISTORY_DISPLAY_MODES,
   EXERCISE_PRIMARY_METRICS,
   ExerciseHistoryDisplayMode,
   ExerciseType,
 } from './constants';
+import { NUTRITION_TARGETS } from './nutrition-targets';
 import { normalizeHeightUnit, normalizeWeightUnit } from './units';
 import type { HeightUnit, WeightUnit } from './units';
 
@@ -22,6 +36,9 @@ let routineStretchTablesReady: boolean | null = null;
 let stretchRecommendationCacheReady: boolean | null = null;
 let stretchVersionTableReady: boolean | null = null;
 let exerciseColumnsReady: boolean | null = null;
+let activityLogsTableReady: boolean | null = null;
+let pushSubscriptionsTableReady: boolean | null = null;
+let nutritionTablesReady: boolean | null = null;
 const DEFAULT_REST_TIME_SECONDS = 60;
 const DEFAULT_SUPERSET_REST_TIME_SECONDS = 15;
 const DEFAULT_TIMER_SOUND_ENABLED = true;
@@ -687,8 +704,8 @@ export async function createWorkoutSession(data: {
   session_key?: string | null;
   workout_plan_name: string;
   date_completed: string;
-  total_duration_minutes?: number;
-  total_strain?: number;
+  total_duration_minutes?: number | null;
+  total_strain?: number | null;
 }): Promise<number> {
   const db = getDatabase();
   const hasRoutineIdColumn = await ensureWorkoutSessionRoutineIdColumn();
@@ -1092,6 +1109,1148 @@ export async function getWorkoutSession(sessionId: number): Promise<(WorkoutSess
   const cardio = cardioResult.rows as any as WorkoutCardioLog[];
 
   return { ...session, exercises, cardio };
+}
+
+async function ensureActivityLogsTable(): Promise<void> {
+  if (activityLogsTableReady) return;
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      CREATE TABLE IF NOT EXISTS activity_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        activity_type TEXT NOT NULL,
+        duration_minutes INTEGER NOT NULL,
+        activity_date TEXT NOT NULL,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `
+  });
+  await db.execute({
+    sql: 'CREATE INDEX IF NOT EXISTS idx_activity_logs_user_date ON activity_logs(user_id, activity_date)'
+  });
+  await db.execute({
+    sql: 'CREATE INDEX IF NOT EXISTS idx_activity_logs_user_type ON activity_logs(user_id, activity_type)'
+  });
+  activityLogsTableReady = true;
+}
+
+function mapActivityLog(row: Record<string, unknown>): ActivityLog {
+  return {
+    id: Number(row.id),
+    user_id: String(row.user_id),
+    activity_type: String(row.activity_type),
+    duration_minutes: Number(row.duration_minutes),
+    activity_date: String(row.activity_date),
+    notes: typeof row.notes === 'string' ? row.notes : null,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+  };
+}
+
+export async function createActivityLog(data: {
+  userId: string;
+  activityType: string;
+  durationMinutes: number;
+  activityDate: string;
+  notes?: string | null;
+}): Promise<ActivityLog> {
+  await ensureActivityLogsTable();
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      INSERT INTO activity_logs (
+        user_id,
+        activity_type,
+        duration_minutes,
+        activity_date,
+        notes,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+    `,
+    args: [
+      data.userId,
+      data.activityType,
+      data.durationMinutes,
+      data.activityDate,
+      data.notes ?? null,
+    ]
+  });
+
+  const created = await db.execute({
+    sql: 'SELECT * FROM activity_logs WHERE id = ? AND user_id = ? LIMIT 1',
+    args: [Number(result.lastInsertRowid), data.userId]
+  });
+  return mapActivityLog(created.rows[0] as Record<string, unknown>);
+}
+
+export async function listActivityLogs(
+  userId: string,
+  limit: number = 50
+): Promise<ActivityLog[]> {
+  await ensureActivityLogsTable();
+  const db = getDatabase();
+  const boundedLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
+  const result = await db.execute({
+    sql: `
+      SELECT *
+      FROM activity_logs
+      WHERE user_id = ?
+      ORDER BY activity_date DESC, created_at DESC, id DESC
+      LIMIT ?
+    `,
+    args: [userId, boundedLimit]
+  });
+  return result.rows.map((row) => mapActivityLog(row as Record<string, unknown>));
+}
+
+export async function deleteActivityLog(userId: string, activityId: number): Promise<boolean> {
+  await ensureActivityLogsTable();
+  const db = getDatabase();
+  const existing = await db.execute({
+    sql: 'SELECT id FROM activity_logs WHERE id = ? AND user_id = ? LIMIT 1',
+    args: [activityId, userId]
+  });
+  if (existing.rows.length === 0) return false;
+  await db.execute({
+    sql: 'DELETE FROM activity_logs WHERE id = ? AND user_id = ?',
+    args: [activityId, userId]
+  });
+  return true;
+}
+
+type NutritionRow = Record<string, unknown>;
+type ComboItemInput = {
+  pantryFoodId: number;
+  defaultQuantity: number;
+};
+type ComboOverride = {
+  pantryFoodId: number;
+  quantity: number;
+};
+
+async function ensureNutritionTables(): Promise<void> {
+  if (nutritionTablesReady) return;
+  const db = getDatabase();
+  const statements = [
+    `
+      CREATE TABLE IF NOT EXISTS pantry_foods (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        serving_description TEXT NOT NULL,
+        calories INTEGER NOT NULL,
+        protein_g REAL NOT NULL,
+        carbs_g REAL,
+        fat_g REAL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `,
+    'CREATE INDEX IF NOT EXISTS idx_pantry_foods_user_name ON pantry_foods(user_id, name)',
+    `
+      CREATE TABLE IF NOT EXISTS food_log_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        pantry_food_id INTEGER,
+        name TEXT NOT NULL,
+        calories INTEGER NOT NULL,
+        protein_g REAL NOT NULL,
+        carbs_g REAL,
+        fat_g REAL,
+        quantity REAL NOT NULL DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (pantry_food_id) REFERENCES pantry_foods(id) ON DELETE SET NULL
+      )
+    `,
+    'CREATE INDEX IF NOT EXISTS idx_food_log_entries_user_date ON food_log_entries(user_id, date)',
+    'CREATE INDEX IF NOT EXISTS idx_food_log_entries_pantry_food ON food_log_entries(pantry_food_id)',
+    `
+      CREATE TABLE IF NOT EXISTS bodyweight_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        weight_lbs REAL NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `,
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_bodyweight_entries_user_date ON bodyweight_entries(user_id, date)',
+    `
+      CREATE TABLE IF NOT EXISTS combos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `,
+    'CREATE INDEX IF NOT EXISTS idx_combos_user_name ON combos(user_id, name)',
+    `
+      CREATE TABLE IF NOT EXISTS combo_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        combo_id INTEGER NOT NULL,
+        pantry_food_id INTEGER NOT NULL,
+        default_quantity REAL NOT NULL DEFAULT 1,
+        FOREIGN KEY (combo_id) REFERENCES combos(id) ON DELETE CASCADE,
+        FOREIGN KEY (pantry_food_id) REFERENCES pantry_foods(id) ON DELETE CASCADE
+      )
+    `,
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_combo_items_combo_food ON combo_items(combo_id, pantry_food_id)',
+  ];
+
+  for (const sql of statements) {
+    await db.execute({ sql });
+  }
+  nutritionTablesReady = true;
+}
+
+function numericOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function numericOrZero(value: unknown): number {
+  return numericOrNull(value) ?? 0;
+}
+
+function mapPantryFood(row: NutritionRow): PantryFood {
+  return {
+    id: Number(row.id),
+    user_id: String(row.user_id),
+    name: String(row.name),
+    serving_description: String(row.serving_description),
+    calories: Number(row.calories),
+    protein_g: Number(row.protein_g),
+    carbs_g: numericOrNull(row.carbs_g),
+    fat_g: numericOrNull(row.fat_g),
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+  };
+}
+
+function mapFoodLogEntry(row: NutritionRow): FoodLogEntry {
+  return {
+    id: Number(row.id),
+    user_id: String(row.user_id),
+    date: String(row.date),
+    pantry_food_id: numericOrNull(row.pantry_food_id),
+    name: String(row.name),
+    calories: Number(row.calories),
+    protein_g: Number(row.protein_g),
+    carbs_g: numericOrNull(row.carbs_g),
+    fat_g: numericOrNull(row.fat_g),
+    quantity: Number(row.quantity),
+    created_at: String(row.created_at),
+  };
+}
+
+function mapBodyweightEntry(row: NutritionRow): BodyweightEntry {
+  return {
+    id: Number(row.id),
+    user_id: String(row.user_id),
+    date: String(row.date),
+    weight_lbs: Number(row.weight_lbs),
+    created_at: String(row.created_at),
+  };
+}
+
+function buildNutritionTotals(entries: FoodLogEntry[]): NutritionDay['totals'] {
+  const totals = entries.reduce(
+    (current, entry) => ({
+      calories: current.calories + entry.calories * entry.quantity,
+      protein_g: current.protein_g + entry.protein_g * entry.quantity,
+      carbs_g: current.carbs_g + (entry.carbs_g ?? 0) * entry.quantity,
+      fat_g: current.fat_g + (entry.fat_g ?? 0) * entry.quantity,
+    }),
+    { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+  );
+
+  return {
+    calories: Math.round(totals.calories),
+    protein_g: Number(totals.protein_g.toFixed(1)),
+    carbs_g: Number(totals.carbs_g.toFixed(1)),
+    fat_g: Number(totals.fat_g.toFixed(1)),
+  };
+}
+
+function compactComboItems(items: ComboItemInput[]): ComboItemInput[] {
+  const byFood = new Map<number, number>();
+  for (const item of items) {
+    if (!Number.isInteger(item.pantryFoodId) || item.pantryFoodId < 1) continue;
+    if (!Number.isFinite(item.defaultQuantity) || item.defaultQuantity <= 0) continue;
+    byFood.set(item.pantryFoodId, item.defaultQuantity);
+  }
+  return Array.from(byFood.entries()).map(([pantryFoodId, defaultQuantity]) => ({
+    pantryFoodId,
+    defaultQuantity,
+  }));
+}
+
+async function assertPantryFoodOwned(userId: string, pantryFoodId: number): Promise<void> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT id FROM pantry_foods WHERE id = ? AND user_id = ? LIMIT 1',
+    args: [pantryFoodId, userId],
+  });
+  if (result.rows.length === 0) {
+    throw new Error('Pantry food not found');
+  }
+}
+
+async function validateComboItemsOwned(
+  userId: string,
+  items: ComboItemInput[]
+): Promise<ComboItemInput[]> {
+  const compacted = compactComboItems(items);
+  const db = getDatabase();
+  for (const item of compacted) {
+    const result = await db.execute({
+      sql: 'SELECT id FROM pantry_foods WHERE id = ? AND user_id = ? LIMIT 1',
+      args: [item.pantryFoodId, userId],
+    });
+    if (result.rows.length === 0) {
+      throw new Error('Pantry food not found');
+    }
+  }
+  return compacted;
+}
+
+export async function listPantryFoods(userId: string): Promise<PantryFood[]> {
+  await ensureNutritionTables();
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      SELECT *
+      FROM pantry_foods
+      WHERE user_id = ?
+      ORDER BY lower(name) ASC, id ASC
+    `,
+    args: [userId],
+  });
+  return result.rows.map((row) => mapPantryFood(row as NutritionRow));
+}
+
+export async function createPantryFood(data: {
+  userId: string;
+  name: string;
+  servingDescription: string;
+  calories: number;
+  proteinG: number;
+  carbsG?: number | null;
+  fatG?: number | null;
+}): Promise<PantryFood> {
+  await ensureNutritionTables();
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      INSERT INTO pantry_foods (
+        user_id,
+        name,
+        serving_description,
+        calories,
+        protein_g,
+        carbs_g,
+        fat_g,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `,
+    args: [
+      data.userId,
+      data.name,
+      data.servingDescription,
+      Math.round(data.calories),
+      data.proteinG,
+      data.carbsG ?? null,
+      data.fatG ?? null,
+    ],
+  });
+
+  const created = await db.execute({
+    sql: 'SELECT * FROM pantry_foods WHERE id = ? AND user_id = ? LIMIT 1',
+    args: [Number(result.lastInsertRowid), data.userId],
+  });
+  return mapPantryFood(created.rows[0] as NutritionRow);
+}
+
+export async function updatePantryFood(
+  userId: string,
+  pantryFoodId: number,
+  data: {
+    name: string;
+    servingDescription: string;
+    calories: number;
+    proteinG: number;
+    carbsG?: number | null;
+    fatG?: number | null;
+  }
+): Promise<PantryFood | null> {
+  await ensureNutritionTables();
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      UPDATE pantry_foods
+      SET
+        name = ?,
+        serving_description = ?,
+        calories = ?,
+        protein_g = ?,
+        carbs_g = ?,
+        fat_g = ?,
+        updated_at = datetime('now')
+      WHERE id = ? AND user_id = ?
+    `,
+    args: [
+      data.name,
+      data.servingDescription,
+      Math.round(data.calories),
+      data.proteinG,
+      data.carbsG ?? null,
+      data.fatG ?? null,
+      pantryFoodId,
+      userId,
+    ],
+  });
+
+  const updated = await db.execute({
+    sql: 'SELECT * FROM pantry_foods WHERE id = ? AND user_id = ? LIMIT 1',
+    args: [pantryFoodId, userId],
+  });
+  return updated.rows[0] ? mapPantryFood(updated.rows[0] as NutritionRow) : null;
+}
+
+export async function deletePantryFood(userId: string, pantryFoodId: number): Promise<boolean> {
+  await ensureNutritionTables();
+  const db = getDatabase();
+  const existing = await db.execute({
+    sql: 'SELECT id FROM pantry_foods WHERE id = ? AND user_id = ? LIMIT 1',
+    args: [pantryFoodId, userId],
+  });
+  if (existing.rows.length === 0) return false;
+
+  await db.execute({
+    sql: `
+      DELETE FROM combo_items
+      WHERE pantry_food_id = ?
+        AND combo_id IN (SELECT id FROM combos WHERE user_id = ?)
+    `,
+    args: [pantryFoodId, userId],
+  });
+  await db.execute({
+    sql: 'UPDATE food_log_entries SET pantry_food_id = NULL WHERE pantry_food_id = ? AND user_id = ?',
+    args: [pantryFoodId, userId],
+  });
+  await db.execute({
+    sql: 'DELETE FROM pantry_foods WHERE id = ? AND user_id = ?',
+    args: [pantryFoodId, userId],
+  });
+  return true;
+}
+
+export async function createFoodLogEntry(data: {
+  userId: string;
+  date: string;
+  pantryFoodId?: number | null;
+  name: string;
+  calories: number;
+  proteinG: number;
+  carbsG?: number | null;
+  fatG?: number | null;
+  quantity?: number | null;
+}): Promise<FoodLogEntry> {
+  await ensureNutritionTables();
+  const pantryFoodId = data.pantryFoodId ?? null;
+  if (pantryFoodId !== null) {
+    await assertPantryFoodOwned(data.userId, pantryFoodId);
+  }
+
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      INSERT INTO food_log_entries (
+        user_id,
+        date,
+        pantry_food_id,
+        name,
+        calories,
+        protein_g,
+        carbs_g,
+        fat_g,
+        quantity
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    args: [
+      data.userId,
+      data.date,
+      pantryFoodId,
+      data.name,
+      Math.round(data.calories),
+      data.proteinG,
+      data.carbsG ?? null,
+      data.fatG ?? null,
+      data.quantity ?? 1,
+    ],
+  });
+
+  const created = await db.execute({
+    sql: 'SELECT * FROM food_log_entries WHERE id = ? AND user_id = ? LIMIT 1',
+    args: [Number(result.lastInsertRowid), data.userId],
+  });
+  return mapFoodLogEntry(created.rows[0] as NutritionRow);
+}
+
+export async function logPantryFoodEntry(data: {
+  userId: string;
+  date: string;
+  pantryFoodId: number;
+  quantity?: number | null;
+}): Promise<FoodLogEntry> {
+  await ensureNutritionTables();
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT * FROM pantry_foods WHERE id = ? AND user_id = ? LIMIT 1',
+    args: [data.pantryFoodId, data.userId],
+  });
+  const pantryFood = result.rows[0] ? mapPantryFood(result.rows[0] as NutritionRow) : null;
+  if (!pantryFood) {
+    throw new Error('Pantry food not found');
+  }
+
+  return createFoodLogEntry({
+    userId: data.userId,
+    date: data.date,
+    pantryFoodId: pantryFood.id,
+    name: pantryFood.name,
+    calories: pantryFood.calories,
+    proteinG: pantryFood.protein_g,
+    carbsG: pantryFood.carbs_g,
+    fatG: pantryFood.fat_g,
+    quantity: data.quantity ?? 1,
+  });
+}
+
+export async function updateFoodLogEntryQuantity(
+  userId: string,
+  entryId: number,
+  quantity: number
+): Promise<FoodLogEntry | null> {
+  await ensureNutritionTables();
+  const db = getDatabase();
+  await db.execute({
+    sql: 'UPDATE food_log_entries SET quantity = ? WHERE id = ? AND user_id = ?',
+    args: [quantity, entryId, userId],
+  });
+  const updated = await db.execute({
+    sql: 'SELECT * FROM food_log_entries WHERE id = ? AND user_id = ? LIMIT 1',
+    args: [entryId, userId],
+  });
+  return updated.rows[0] ? mapFoodLogEntry(updated.rows[0] as NutritionRow) : null;
+}
+
+export async function deleteFoodLogEntry(userId: string, entryId: number): Promise<boolean> {
+  await ensureNutritionTables();
+  const db = getDatabase();
+  const existing = await db.execute({
+    sql: 'SELECT id FROM food_log_entries WHERE id = ? AND user_id = ? LIMIT 1',
+    args: [entryId, userId],
+  });
+  if (existing.rows.length === 0) return false;
+  await db.execute({
+    sql: 'DELETE FROM food_log_entries WHERE id = ? AND user_id = ?',
+    args: [entryId, userId],
+  });
+  return true;
+}
+
+export async function upsertBodyweightEntry(data: {
+  userId: string;
+  date: string;
+  weightLbs: number;
+}): Promise<BodyweightEntry> {
+  await ensureNutritionTables();
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      INSERT INTO bodyweight_entries (user_id, date, weight_lbs)
+      VALUES (?, ?, ?)
+      ON CONFLICT(user_id, date) DO UPDATE SET
+        weight_lbs = excluded.weight_lbs
+    `,
+    args: [data.userId, data.date, data.weightLbs],
+  });
+  const saved = await db.execute({
+    sql: 'SELECT * FROM bodyweight_entries WHERE user_id = ? AND date = ? LIMIT 1',
+    args: [data.userId, data.date],
+  });
+  return mapBodyweightEntry(saved.rows[0] as NutritionRow);
+}
+
+async function getBodyweightEntry(userId: string, date: string): Promise<BodyweightEntry | null> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: 'SELECT * FROM bodyweight_entries WHERE user_id = ? AND date = ? LIMIT 1',
+    args: [userId, date],
+  });
+  return result.rows[0] ? mapBodyweightEntry(result.rows[0] as NutritionRow) : null;
+}
+
+export async function getNutritionDay(userId: string, date: string): Promise<NutritionDay> {
+  await ensureNutritionTables();
+  const db = getDatabase();
+  const entriesResult = await db.execute({
+    sql: `
+      SELECT *
+      FROM food_log_entries
+      WHERE user_id = ? AND date = ?
+      ORDER BY created_at DESC, id DESC
+    `,
+    args: [userId, date],
+  });
+  const entries = entriesResult.rows.map((row) => mapFoodLogEntry(row as NutritionRow));
+
+  return {
+    date,
+    entries,
+    totals: buildNutritionTotals(entries),
+    targets: NUTRITION_TARGETS,
+    bodyweight: await getBodyweightEntry(userId, date),
+  };
+}
+
+function parseNutritionDay(value: string, label: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new Error(`${label} must use YYYY-MM-DD format`);
+  }
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    throw new Error(`${label} must be a valid calendar date`);
+  }
+  return date;
+}
+
+export async function getNutritionRange(
+  userId: string,
+  from: string,
+  to: string
+): Promise<NutritionRangeDay[]> {
+  await ensureNutritionTables();
+  const fromDate = parseNutritionDay(from, 'from');
+  const toDate = parseNutritionDay(to, 'to');
+  if (fromDate.getTime() > toDate.getTime()) {
+    throw new Error('from must be on or before to');
+  }
+
+  const days = Math.floor((toDate.getTime() - fromDate.getTime()) / 86400000) + 1;
+  if (days > 365) {
+    throw new Error('date range cannot exceed 365 days');
+  }
+
+  const db = getDatabase();
+  const totalsResult = await db.execute({
+    sql: `
+      SELECT
+        date,
+        COALESCE(SUM(calories * quantity), 0) as calories,
+        COALESCE(SUM(protein_g * quantity), 0) as protein_g
+      FROM food_log_entries
+      WHERE user_id = ?
+        AND date >= ?
+        AND date <= ?
+      GROUP BY date
+    `,
+    args: [userId, from, to],
+  });
+  const weightResult = await db.execute({
+    sql: `
+      SELECT date, weight_lbs
+      FROM bodyweight_entries
+      WHERE user_id = ?
+        AND date >= ?
+        AND date <= ?
+    `,
+    args: [userId, from, to],
+  });
+
+  const totalsByDate = new Map<string, { calories: number; protein_g: number }>();
+  for (const row of totalsResult.rows) {
+    const item = row as NutritionRow;
+    totalsByDate.set(String(item.date), {
+      calories: Math.round(numericOrZero(item.calories)),
+      protein_g: Number(numericOrZero(item.protein_g).toFixed(1)),
+    });
+  }
+
+  const weightByDate = new Map<string, number>();
+  for (const row of weightResult.rows) {
+    const item = row as NutritionRow;
+    weightByDate.set(String(item.date), Number(item.weight_lbs));
+  }
+
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date(fromDate.getTime() + index * 86400000).toISOString().slice(0, 10);
+    const totals = totalsByDate.get(date) || { calories: 0, protein_g: 0 };
+    return {
+      date,
+      calories: totals.calories,
+      protein_g: totals.protein_g,
+      bodyweight_lbs: weightByDate.get(date) ?? null,
+    };
+  });
+}
+
+function mapComboItem(row: NutritionRow): ComboItem {
+  const pantryFood: PantryFood = {
+    id: Number(row.food_id),
+    user_id: String(row.food_user_id),
+    name: String(row.food_name),
+    serving_description: String(row.food_serving_description),
+    calories: Number(row.food_calories),
+    protein_g: Number(row.food_protein_g),
+    carbs_g: numericOrNull(row.food_carbs_g),
+    fat_g: numericOrNull(row.food_fat_g),
+    created_at: String(row.food_created_at),
+    updated_at: String(row.food_updated_at),
+  };
+
+  return {
+    id: Number(row.id),
+    combo_id: Number(row.combo_id),
+    pantry_food_id: Number(row.pantry_food_id),
+    default_quantity: Number(row.default_quantity),
+    pantry_food: pantryFood,
+  };
+}
+
+async function getComboById(userId: string, comboId: number): Promise<Combo | null> {
+  const db = getDatabase();
+  const comboResult = await db.execute({
+    sql: 'SELECT * FROM combos WHERE id = ? AND user_id = ? LIMIT 1',
+    args: [comboId, userId],
+  });
+  const comboRow = comboResult.rows[0] as NutritionRow | undefined;
+  if (!comboRow) return null;
+
+  const itemResult = await db.execute({
+    sql: `
+      SELECT
+        ci.id,
+        ci.combo_id,
+        ci.pantry_food_id,
+        ci.default_quantity,
+        pf.id as food_id,
+        pf.user_id as food_user_id,
+        pf.name as food_name,
+        pf.serving_description as food_serving_description,
+        pf.calories as food_calories,
+        pf.protein_g as food_protein_g,
+        pf.carbs_g as food_carbs_g,
+        pf.fat_g as food_fat_g,
+        pf.created_at as food_created_at,
+        pf.updated_at as food_updated_at
+      FROM combo_items ci
+      JOIN pantry_foods pf ON pf.id = ci.pantry_food_id
+      WHERE ci.combo_id = ?
+      ORDER BY ci.id ASC
+    `,
+    args: [comboId],
+  });
+
+  return {
+    id: Number(comboRow.id),
+    user_id: String(comboRow.user_id),
+    name: String(comboRow.name),
+    created_at: String(comboRow.created_at),
+    items: itemResult.rows.map((row) => mapComboItem(row as NutritionRow)),
+  };
+}
+
+export async function listCombos(userId: string): Promise<Combo[]> {
+  await ensureNutritionTables();
+  const db = getDatabase();
+  const comboResult = await db.execute({
+    sql: `
+      SELECT *
+      FROM combos
+      WHERE user_id = ?
+      ORDER BY lower(name) ASC, id ASC
+    `,
+    args: [userId],
+  });
+  const combos = comboResult.rows.map((row) => ({
+    id: Number((row as NutritionRow).id),
+    user_id: String((row as NutritionRow).user_id),
+    name: String((row as NutritionRow).name),
+    created_at: String((row as NutritionRow).created_at),
+    items: [] as ComboItem[],
+  }));
+
+  if (combos.length === 0) return combos;
+
+  const itemResult = await db.execute({
+    sql: `
+      SELECT
+        ci.id,
+        ci.combo_id,
+        ci.pantry_food_id,
+        ci.default_quantity,
+        pf.id as food_id,
+        pf.user_id as food_user_id,
+        pf.name as food_name,
+        pf.serving_description as food_serving_description,
+        pf.calories as food_calories,
+        pf.protein_g as food_protein_g,
+        pf.carbs_g as food_carbs_g,
+        pf.fat_g as food_fat_g,
+        pf.created_at as food_created_at,
+        pf.updated_at as food_updated_at
+      FROM combo_items ci
+      JOIN combos c ON c.id = ci.combo_id
+      JOIN pantry_foods pf ON pf.id = ci.pantry_food_id
+      WHERE c.user_id = ?
+      ORDER BY c.name ASC, ci.id ASC
+    `,
+    args: [userId],
+  });
+
+  const combosById = new Map(combos.map((combo) => [combo.id, combo]));
+  for (const row of itemResult.rows) {
+    const item = mapComboItem(row as NutritionRow);
+    combosById.get(item.combo_id)?.items.push(item);
+  }
+  return combos;
+}
+
+export async function createCombo(data: {
+  userId: string;
+  name: string;
+  items: ComboItemInput[];
+}): Promise<Combo> {
+  await ensureNutritionTables();
+  const items = await validateComboItemsOwned(data.userId, data.items);
+  const db = getDatabase();
+  const transaction = await db.transaction('write');
+  let comboId = 0;
+  try {
+    const result = await transaction.execute({
+      sql: 'INSERT INTO combos (user_id, name) VALUES (?, ?)',
+      args: [data.userId, data.name],
+    });
+    comboId = Number(result.lastInsertRowid);
+    if (items.length > 0) {
+      await transaction.batch(
+        items.map((item) => ({
+          sql: `
+            INSERT INTO combo_items (combo_id, pantry_food_id, default_quantity)
+            VALUES (?, ?, ?)
+          `,
+          args: [comboId, item.pantryFoodId, item.defaultQuantity],
+        }))
+      );
+    }
+    await transaction.commit();
+  } finally {
+    transaction.close();
+  }
+  const combo = await getComboById(data.userId, comboId);
+  if (!combo) throw new Error('Combo not found');
+  return combo;
+}
+
+export async function updateCombo(
+  userId: string,
+  comboId: number,
+  data: {
+    name: string;
+    items: ComboItemInput[];
+  }
+): Promise<Combo | null> {
+  await ensureNutritionTables();
+  const items = await validateComboItemsOwned(userId, data.items);
+  const db = getDatabase();
+  const existing = await db.execute({
+    sql: 'SELECT id FROM combos WHERE id = ? AND user_id = ? LIMIT 1',
+    args: [comboId, userId],
+  });
+  if (existing.rows.length === 0) return null;
+
+  await db.batch(
+    [
+      {
+        sql: 'UPDATE combos SET name = ? WHERE id = ? AND user_id = ?',
+        args: [data.name, comboId, userId],
+      },
+      {
+        sql: 'DELETE FROM combo_items WHERE combo_id = ?',
+        args: [comboId],
+      },
+      ...items.map((item) => ({
+        sql: `
+          INSERT INTO combo_items (combo_id, pantry_food_id, default_quantity)
+          VALUES (?, ?, ?)
+        `,
+        args: [comboId, item.pantryFoodId, item.defaultQuantity],
+      })),
+    ],
+    'write'
+  );
+  return getComboById(userId, comboId);
+}
+
+export async function deleteCombo(userId: string, comboId: number): Promise<boolean> {
+  await ensureNutritionTables();
+  const db = getDatabase();
+  const existing = await db.execute({
+    sql: 'SELECT id FROM combos WHERE id = ? AND user_id = ? LIMIT 1',
+    args: [comboId, userId],
+  });
+  if (existing.rows.length === 0) return false;
+  await db.execute({
+    sql: 'DELETE FROM combos WHERE id = ? AND user_id = ?',
+    args: [comboId, userId],
+  });
+  return true;
+}
+
+export async function logCombo(data: {
+  userId: string;
+  date: string;
+  comboId: number;
+  overrides?: ComboOverride[];
+}): Promise<FoodLogEntry[]> {
+  await ensureNutritionTables();
+  const combo = await getComboById(data.userId, data.comboId);
+  if (!combo) throw new Error('Combo not found');
+
+  const overrides = new Map<number, number>();
+  for (const override of data.overrides || []) {
+    if (!Number.isInteger(override.pantryFoodId)) {
+      continue;
+    }
+    if (!Number.isFinite(override.quantity) || override.quantity <= 0) {
+      throw new Error('Combo item quantity must be greater than 0');
+    }
+    overrides.set(override.pantryFoodId, override.quantity);
+  }
+
+  const entries: FoodLogEntry[] = [];
+  const statements = combo.items.map((item) => {
+    const food = item.pantry_food;
+    if (!food) throw new Error('Combo item pantry food not found');
+    const quantity = overrides.get(item.pantry_food_id) ?? item.default_quantity;
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new Error('Combo item quantity must be greater than 0');
+    }
+    return {
+      sql: `
+        INSERT INTO food_log_entries (
+          user_id,
+          date,
+          pantry_food_id,
+          name,
+          calories,
+          protein_g,
+          carbs_g,
+          fat_g,
+          quantity
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      args: [
+        data.userId,
+        data.date,
+        food.id,
+        food.name,
+        Math.round(food.calories),
+        food.protein_g,
+        food.carbs_g ?? null,
+        food.fat_g ?? null,
+        quantity,
+      ],
+    };
+  });
+
+  if (statements.length === 0) {
+    return entries;
+  }
+
+  const db = getDatabase();
+  const results = await db.batch(statements, 'write');
+  for (const result of results) {
+    const created = await db.execute({
+      sql: 'SELECT * FROM food_log_entries WHERE id = ? AND user_id = ? LIMIT 1',
+      args: [Number(result.lastInsertRowid), data.userId],
+    });
+    if (created.rows[0]) {
+      entries.push(mapFoodLogEntry(created.rows[0] as NutritionRow));
+    }
+  }
+
+  return entries;
+}
+
+async function ensurePushSubscriptionsTable(): Promise<void> {
+  if (pushSubscriptionsTableReady) return;
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        timezone TEXT NOT NULL DEFAULT 'UTC',
+        enabled INTEGER DEFAULT 1,
+        last_cardio_reminder_date TEXT,
+        user_agent TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `
+  });
+  await db.execute({
+    sql: 'CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id)'
+  });
+  await db.execute({
+    sql: 'CREATE INDEX IF NOT EXISTS idx_push_subscriptions_enabled ON push_subscriptions(enabled)'
+  });
+  pushSubscriptionsTableReady = true;
+}
+
+function mapPushSubscription(row: Record<string, unknown>): PushSubscriptionRecord {
+  return {
+    id: Number(row.id),
+    user_id: String(row.user_id),
+    endpoint: String(row.endpoint),
+    p256dh: String(row.p256dh),
+    auth: String(row.auth),
+    timezone: typeof row.timezone === 'string' ? row.timezone : 'UTC',
+    enabled: Number(row.enabled ?? 1),
+    last_cardio_reminder_date: typeof row.last_cardio_reminder_date === 'string'
+      ? row.last_cardio_reminder_date
+      : null,
+    user_agent: typeof row.user_agent === 'string' ? row.user_agent : null,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+  };
+}
+
+export async function upsertPushSubscription(data: {
+  userId: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  timezone: string;
+  userAgent?: string | null;
+}): Promise<void> {
+  await ensurePushSubscriptionsTable();
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      INSERT INTO push_subscriptions (
+        user_id,
+        endpoint,
+        p256dh,
+        auth,
+        timezone,
+        enabled,
+        user_agent,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, 1, ?, datetime('now'))
+      ON CONFLICT(endpoint) DO UPDATE SET
+        user_id = excluded.user_id,
+        p256dh = excluded.p256dh,
+        auth = excluded.auth,
+        timezone = excluded.timezone,
+        enabled = 1,
+        user_agent = excluded.user_agent,
+        updated_at = datetime('now')
+    `,
+    args: [
+      data.userId,
+      data.endpoint,
+      data.p256dh,
+      data.auth,
+      data.timezone,
+      data.userAgent ?? null,
+    ]
+  });
+}
+
+export async function disablePushSubscription(
+  userId: string,
+  endpoint: string
+): Promise<boolean> {
+  await ensurePushSubscriptionsTable();
+  const db = getDatabase();
+  const existing = await db.execute({
+    sql: 'SELECT id FROM push_subscriptions WHERE user_id = ? AND endpoint = ? LIMIT 1',
+    args: [userId, endpoint]
+  });
+  if (existing.rows.length === 0) return false;
+  await db.execute({
+    sql: `
+      UPDATE push_subscriptions
+      SET enabled = 0, updated_at = datetime('now')
+      WHERE user_id = ? AND endpoint = ?
+    `,
+    args: [userId, endpoint]
+  });
+  return true;
+}
+
+export async function listEnabledPushSubscriptions(): Promise<PushSubscriptionRecord[]> {
+  await ensurePushSubscriptionsTable();
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      SELECT *
+      FROM push_subscriptions
+      WHERE enabled = 1
+    `
+  });
+  return result.rows.map((row) => mapPushSubscription(row as Record<string, unknown>));
+}
+
+export async function markCardioReminderSent(
+  subscriptionId: number,
+  localDate: string
+): Promise<void> {
+  await ensurePushSubscriptionsTable();
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      UPDATE push_subscriptions
+      SET last_cardio_reminder_date = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `,
+    args: [localDate, subscriptionId]
+  });
+}
+
+export async function disablePushSubscriptionByEndpoint(endpoint: string): Promise<void> {
+  await ensurePushSubscriptionsTable();
+  const db = getDatabase();
+  await db.execute({
+    sql: `
+      UPDATE push_subscriptions
+      SET enabled = 0, updated_at = datetime('now')
+      WHERE endpoint = ?
+    `,
+    args: [endpoint]
+  });
 }
 
 export async function getLastExerciseLog(

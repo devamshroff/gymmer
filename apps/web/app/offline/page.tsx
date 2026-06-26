@@ -15,7 +15,7 @@ export default function OfflinePage() {
             Offline
           </p>
           <h1 className="text-4xl font-semibold text-white sm:text-5xl">
-            Gymmer needs a connection for most live data.
+            Temple needs a connection for most live data.
           </h1>
           <p className="max-w-2xl text-base leading-7 text-zinc-300 sm:text-lg">
             This first PWA release supports installability and a cached app shell. It does not yet

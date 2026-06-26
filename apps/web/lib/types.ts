@@ -155,6 +155,107 @@ export interface WorkoutCardioLog {
   created_at: string;
 }
 
+export interface ActivityLog {
+  id: number;
+  user_id: string;
+  activity_type: string;
+  duration_minutes: number;
+  activity_date: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PushSubscriptionRecord {
+  id: number;
+  user_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  timezone: string;
+  enabled: number;
+  last_cardio_reminder_date: string | null;
+  user_agent: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PantryFood {
+  id: number;
+  user_id: string;
+  name: string;
+  serving_description: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number | null;
+  fat_g: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FoodLogEntry {
+  id: number;
+  user_id: string;
+  date: string;
+  pantry_food_id: number | null;
+  name: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number | null;
+  fat_g: number | null;
+  quantity: number;
+  created_at: string;
+}
+
+export interface BodyweightEntry {
+  id: number;
+  user_id: string;
+  date: string;
+  weight_lbs: number;
+  created_at: string;
+}
+
+export interface ComboItem {
+  id: number;
+  combo_id: number;
+  pantry_food_id: number;
+  default_quantity: number;
+  pantry_food?: PantryFood;
+}
+
+export interface Combo {
+  id: number;
+  user_id: string;
+  name: string;
+  created_at: string;
+  items: ComboItem[];
+}
+
+export interface NutritionTargets {
+  calories: number;
+  protein_g: number;
+}
+
+export interface NutritionDay {
+  date: string;
+  entries: FoodLogEntry[];
+  totals: {
+    calories: number;
+    protein_g: number;
+    carbs_g: number;
+    fat_g: number;
+  };
+  targets: NutritionTargets;
+  bodyweight: BodyweightEntry | null;
+}
+
+export interface NutritionRangeDay {
+  date: string;
+  calories: number;
+  protein_g: number;
+  bodyweight_lbs: number | null;
+}
+
 // Routine Builder Types (v2.0)
 export interface ExerciseDB {
   id: number;

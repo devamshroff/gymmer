@@ -49,7 +49,7 @@ test('iPhone Safari users see Add to Home Screen instructions', async ({ browser
   const { context, page } = await createIosSafariPage(browser, baseURL!);
 
   await expect(
-    page.getByText('On iPhone Safari, tap Share, then Add to Home Screen to install Gymmer.')
+    page.getByText('On iPhone Safari, tap Share, then Add to Home Screen to install Temple.')
   ).toBeVisible();
 
   await context.close();
@@ -95,7 +95,7 @@ test('shows offline status when connectivity drops', async ({ page, context }) =
   });
 
   await expect(
-    page.getByText('You\'re offline. Gymmer\'s cached shell is available, but live data and edits still need a connection.')
+    page.getByText('You\'re offline. Temple\'s cached shell is available, but live data and edits still need a connection.')
   ).toBeVisible();
 
   await context.setOffline(false);
@@ -121,7 +121,7 @@ test('shows reload banner when a service worker update is available', async ({ p
   });
 
   await expect(
-    page.getByText('A new version of Gymmer is ready. Reload to update the app shell.')
+    page.getByText('A new version of Temple is ready. Reload to update the app shell.')
   ).toBeVisible();
 
   await page.getByRole('button', { name: 'Reload' }).click();

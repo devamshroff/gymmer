@@ -7,26 +7,29 @@ export const PWA_BACKGROUND_COLOR = '#0a0a0a';
 export const PWA_RUNTIME_CACHED_ROUTES = [
   '/',
   '/login',
+  '/workout',
+  '/nutrition',
   '/routines',
+  '/activities',
   '/what-is-gymmer',
   PWA_OFFLINE_ROUTE,
 ] as const;
 
 export const PWA_ICON_SOURCES = [
   {
-    src: '/icons/icon-192.png',
+    src: '/icons/icon-192-v4.png',
     sizes: '192x192',
     type: 'image/png',
     purpose: 'any',
   },
   {
-    src: '/icons/icon-512.png',
+    src: '/icons/icon-512-v4.png',
     sizes: '512x512',
     type: 'image/png',
     purpose: 'any',
   },
   {
-    src: '/icons/maskable-icon-512.png',
+    src: '/icons/maskable-icon-512-v4.png',
     sizes: '512x512',
     type: 'image/png',
     purpose: 'maskable',
@@ -35,8 +38,8 @@ export const PWA_ICON_SOURCES = [
 
 export function buildPwaManifest() {
   return {
-    name: 'GYMMER',
-    short_name: 'GYMMER',
+    name: 'Temple',
+    short_name: 'Temple',
     description: 'flow and progress',
     start_url: '/',
     scope: '/',
@@ -47,9 +50,24 @@ export function buildPwaManifest() {
     icons: [...PWA_ICON_SOURCES],
     shortcuts: [
       {
+        name: 'Gymmer',
+        short_name: 'Gymmer',
+        url: '/workout',
+      },
+      {
+        name: 'Nommer',
+        short_name: 'Nommer',
+        url: '/nutrition',
+      },
+      {
         name: 'My Routines',
         short_name: 'Routines',
         url: '/routines',
+      },
+      {
+        name: 'Log Activity',
+        short_name: 'Activity',
+        url: '/activities',
       },
       {
         name: 'Profile',

@@ -9,8 +9,7 @@ import {
   updateWorkoutSessionReport
 } from '@/lib/database';
 import type { WorkoutSessionData } from '@/lib/workout-session';
-
-const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+import { createClaudeText, getClaudeErrorStatus } from '@/lib/claude';
 
 type PreWorkoutTarget = {
   name: string;
@@ -55,9 +54,9 @@ export async function POST(request: NextRequest) {
   if ('error' in authResult) return authResult.error;
   const { user } = authResult;
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
-      { error: 'Missing OPENAI_API_KEY' },
+      { error: 'Missing ANTHROPIC_API_KEY' },
       { status: 500 }
     );
   }
@@ -100,53 +99,25 @@ export async function POST(request: NextRequest) {
       preWorkoutTargets,
     };
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: [
-              'You are a gym trainer helping users make consistent progress.',
-              'Write a post-workout report.',
-              'Use any provided preWorkoutTargets (targets + goalSummary + sessionMode) to compare performance and set next targets.',
-              'If preWorkoutTargets are missing, rely on session data and history.',
-              'Return a short summary sentence plus 3-6 bullet points.',
-              'Call out wins, consistency, and 1-2 actionable next targets.',
-              'Keep it concise and encouraging. No markdown headings. Emphasize recovery.'
-            ].join(' ')
-          },
-          {
-            role: 'user',
-            content: JSON.stringify(payload)
-          }
-        ],
-        temperature: 0.4,
-        max_tokens: 300,
-      }),
+    const { text: reportText } = await createClaudeText({
+      system: [
+        'You are a gym trainer helping users make consistent progress.',
+        'Write a post-workout report.',
+        'Use any provided preWorkoutTargets (targets + goalSummary + sessionMode) to compare performance and set next targets.',
+        'If preWorkoutTargets are missing, rely on session data and history.',
+        'Return a short summary sentence plus 3-6 bullet points.',
+        'Call out wins, consistency, and 1-2 actionable next targets.',
+        'Keep it concise and encouraging. No markdown headings. Emphasize recovery.'
+      ].join(' '),
+      messages: [
+        {
+          role: 'user',
+          content: JSON.stringify(payload)
+        }
+      ],
+      temperature: 0.4,
+      maxTokens: 300,
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      return NextResponse.json(
-        { error: `OpenAI request failed: ${errorText}` },
-        { status: 502 }
-      );
-    }
-
-    const data = await response.json();
-    const reportText = data.choices?.[0]?.message?.content?.trim();
-    if (!reportText) {
-      return NextResponse.json(
-        { error: 'No content returned from model' },
-        { status: 502 }
-      );
-    }
 
     await updateWorkoutSessionReport({
       userId: user.id,
@@ -160,7 +131,7 @@ export async function POST(request: NextRequest) {
     console.error('Error generating workout report:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to generate report' },
-      { status: 500 }
+      { status: getClaudeErrorStatus(error) }
     );
   }
 }

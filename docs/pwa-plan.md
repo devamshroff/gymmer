@@ -13,8 +13,10 @@ As of 2026-04-07, Gymmer already ships the basic PWA shell:
 - install/offline/update banner via `apps/web/app/components/PwaStatusBanner.tsx`
 - offline fallback route via `apps/web/app/offline/page.tsx`
 - app metadata wired through `apps/web/app/layout.tsx`
+- Web Push cardio activity reminders via `/activities`, `push_subscriptions`, and `/api/notifications/cardio-reminder/send`
 
 What remains is the deeper offline work: durable mutation queueing, retry-safe sync, broader offline read coverage, and stronger observability.
+Nightly reminders are intentionally separate from offline sync: they use browser push subscriptions and a server cron job, not local browser timers.
 
 ## Current State
 
@@ -30,6 +32,11 @@ What remains is the deeper offline work: durable mutation queueing, retry-safe s
 - Install/update bootstrap and status UI in `apps/web/app/components/PwaBootstrap.tsx` and `apps/web/app/components/PwaStatusBanner.tsx`.
 - An offline fallback route in `apps/web/app/offline/page.tsx`.
 - Shared PWA config and install helpers in `apps/web/lib/pwa/*`.
+- Versioned icon PNG URLs for manifest and Apple touch icons, so iOS and service-worker caches fetch new artwork after app icon changes.
+- Web Push reminder opt-in on `apps/web/app/activities/page.tsx`.
+- Push subscription APIs at `apps/web/app/api/push/*`.
+- Existing browser push subscriptions are re-synced to the server from `/activities` so browser state cannot appear enabled while `push_subscriptions` is empty.
+- Scheduled reminder sender at `apps/web/app/api/notifications/cardio-reminder/send/route.ts`, which runs several times during the 10 PM America/New_York hour and filters subscriptions to local 10 PM by saved timezone.
 
 ### What Gymmer does not have yet
 - No client-side mutation queue for offline sync.
@@ -37,6 +44,7 @@ What remains is the deeper offline work: durable mutation queueing, retry-safe s
 - No retry-safe mutation contract with stable client mutation IDs.
 - No IndexedDB-backed queue/cache layer for durable offline sync.
 - No broad offline read coverage beyond the cached shell and fallback flow.
+- No offline push scheduling. Nightly reminders require configured Web Push VAPID keys (`VAPID_*`, or `WEB_PUSH_*` aliases) and scheduled server calls during the 10 PM hour.
 
 ## Recommendation
 Implement the PWA in phases.
@@ -190,6 +198,7 @@ Recommended first cache set:
 - `/login`
 - `/routines`
 - `/what-is-gymmer`
+- `/activities`
 - shared CSS, JS, fonts, icons
 
 Workout routes can be added carefully once fallback behavior is proven:

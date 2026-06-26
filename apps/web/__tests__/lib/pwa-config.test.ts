@@ -18,10 +18,15 @@ describe('PWA config', () => {
   it('builds the expected manifest payload', () => {
     const manifest = buildPwaManifest();
 
-    expect(manifest.name).toBe('GYMMER');
+    expect(manifest.name).toBe('Temple');
     expect(manifest.display).toBe('standalone');
     expect(manifest.start_url).toBe('/');
     expect(manifest.icons).toEqual(PWA_ICON_SOURCES);
+    expect(manifest.shortcuts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Gymmer', url: '/workout' }),
+      expect.objectContaining({ name: 'Nommer', url: '/nutrition' }),
+      expect.objectContaining({ name: 'Log Activity', url: '/activities' }),
+    ]));
   });
 
   it('does not register a service worker outside production', async () => {

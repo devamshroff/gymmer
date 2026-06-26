@@ -13,8 +13,8 @@ describe('generateFormTips', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns null when OPENAI_API_KEY is missing', async () => {
-    delete process.env.OPENAI_API_KEY;
+  it('returns null when ANTHROPIC_API_KEY is missing', async () => {
+    delete process.env.ANTHROPIC_API_KEY;
     const result = await generateFormTips({
       kind: 'exercise',
       name: 'Bench Press'
@@ -24,16 +24,15 @@ describe('generateFormTips', () => {
   });
 
   it('returns normalized tips for exercise requests', async () => {
-    process.env.OPENAI_API_KEY = 'test-key';
+    process.env.ANTHROPIC_API_KEY = 'test-key';
 
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        choices: [
+        content: [
           {
-            message: {
-              content: ' - Keep your wrists stacked.  '
-            }
+            type: 'text',
+            text: ' - Keep your wrists stacked.  '
           }
         ]
       })
@@ -54,16 +53,15 @@ describe('generateFormTips', () => {
   });
 
   it('returns normalized tips for stretch requests', async () => {
-    process.env.OPENAI_API_KEY = 'test-key';
+    process.env.ANTHROPIC_API_KEY = 'test-key';
 
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        choices: [
+        content: [
           {
-            message: {
-              content: '"Breathe slowly and avoid bouncing."'
-            }
+            type: 'text',
+            text: '"Breathe slowly and avoid bouncing."'
           }
         ]
       })
@@ -82,8 +80,8 @@ describe('generateFormTips', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('returns null when the OpenAI request fails', async () => {
-    process.env.OPENAI_API_KEY = 'test-key';
+  it('returns null when the Claude request fails', async () => {
+    process.env.ANTHROPIC_API_KEY = 'test-key';
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     const fetchMock = vi.fn().mockResolvedValue({

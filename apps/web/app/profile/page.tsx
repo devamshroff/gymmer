@@ -249,6 +249,15 @@ export default function ProfilePage() {
             </Link>
           </div>
 
+          <div className="mb-6">
+            <Link
+              href="/activities"
+              className="inline-flex rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/20"
+            >
+              Log Activity
+            </Link>
+          </div>
+
           {loadError && (
             <div className="mb-3 text-sm text-red-400">Could not load profile data.</div>
           )}

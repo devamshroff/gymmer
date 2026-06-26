@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-utils';
 import { getAllExercises, getUserGoals } from '@/lib/database';
-
-const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+import { createClaudeText, getClaudeErrorStatus } from '@/lib/claude';
 
 function extractJson(content: string): string {
   const fencedMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
@@ -46,9 +45,9 @@ export async function POST(request: NextRequest) {
   if ('error' in authResult) return authResult.error;
   const { user } = authResult;
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
-      { error: 'Missing OPENAI_API_KEY' },
+      { error: 'Missing ANTHROPIC_API_KEY' },
       { status: 500 }
     );
   }
@@ -68,38 +67,12 @@ export async function POST(request: NextRequest) {
     const exerciseNames = allExercises.map((exercise) => exercise.name);
     const goalsText = await getUserGoals(user.id);
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        messages: [
-          { role: 'system', content: buildSystemPrompt(exerciseNames, goalsText) },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.4,
-      }),
+    const { text: content } = await createClaudeText({
+      system: buildSystemPrompt(exerciseNames, goalsText),
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.4,
+      maxTokens: 3000,
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      return NextResponse.json(
-        { error: `OpenAI request failed: ${errorText}` },
-        { status: 502 }
-      );
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content?.trim();
-    if (!content) {
-      return NextResponse.json(
-        { error: 'No content returned from model' },
-        { status: 502 }
-      );
-    }
 
     const jsonText = extractJson(content);
     let workoutPlan: any;
@@ -124,7 +97,7 @@ export async function POST(request: NextRequest) {
     console.error('Error generating routine:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to generate routine' },
-      { status: 500 }
+      { status: getClaudeErrorStatus(error) }
     );
   }
 }

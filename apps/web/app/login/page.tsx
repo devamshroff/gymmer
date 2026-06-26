@@ -7,19 +7,24 @@ import { Suspense } from "react"
 function LoginContent() {
   const searchParams = useSearchParams()
   const error = searchParams.get("error")
+  const callbackUrl = searchParams.get("callbackUrl") || "/"
 
   const handleGoogleSignIn = () => {
-    signIn("google", { callbackUrl: "/" })
+    signIn("google", { callbackUrl })
   }
 
   return (
     <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4">
       <div className="text-center max-w-md w-full">
-        <h1 className="text-5xl font-bold text-emerald-600 mb-2">GYMMER</h1>
+        <div
+          aria-hidden
+          className="mx-auto mb-5 h-20 w-20 rounded-2xl bg-[url('/icons/gymmer-icon.svg')] bg-cover bg-center shadow-2xl shadow-[#3b207f]/25"
+        />
+        <h1 className="text-5xl font-bold text-emerald-600 mb-2">Temple</h1>
         <p className="text-zinc-400 text-lg mb-12">flow and progress</p>
         {error === "AccessDenied" && (
           <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-6">
-            You&apos;re not authorized to access Gymmer. Contact the admin to get added to the whitelist.
+            You&apos;re not authorized to access Temple. Contact the admin to get added to the whitelist.
           </div>
         )}
 
@@ -55,7 +60,7 @@ function LoginContent() {
         </button>
 
         <div className="mt-8 text-zinc-500 text-sm">
-          <p>GYMMER is invite-only at the moment.</p>
+          <p>Temple is invite-only at the moment.</p>
           <p className="mt-1">You will not be able to log in if you haven&apos;t been invited.</p>
         </div>
       </div>
@@ -68,7 +73,7 @@ export default function LoginPage() {
     <Suspense fallback={
       <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4">
         <div className="text-center">
-          <h1 className="text-5xl font-bold text-white mb-2">Gymmer</h1>
+          <h1 className="text-5xl font-bold text-white mb-2">Temple</h1>
           <p className="text-zinc-400 text-lg">Loading...</p>
         </div>
       </div>

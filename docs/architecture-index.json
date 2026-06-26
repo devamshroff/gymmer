@@ -24,12 +24,20 @@
   ],
   "appRoutes": [
     {
+      "route": "/activities",
+      "file": "apps/web/app/activities/page.tsx"
+    },
+    {
       "route": "/free-workout",
       "file": "apps/web/app/free-workout/page.tsx"
     },
     {
       "route": "/login",
       "file": "apps/web/app/login/page.tsx"
+    },
+    {
+      "route": "/nutrition",
+      "file": "apps/web/app/nutrition/page.tsx"
     },
     {
       "route": "/offline",
@@ -114,6 +122,10 @@
     {
       "route": "/workout/[name]/summary",
       "file": "apps/web/app/workout/[name]/summary/page.tsx"
+    },
+    {
+      "route": "/workout",
+      "file": "apps/web/app/workout/page.tsx"
     }
   ],
   "specialRoutes": [
@@ -127,6 +139,10 @@
     }
   ],
   "apiRoutes": [
+    {
+      "route": "/api/activities",
+      "file": "apps/web/app/api/activities/route.ts"
+    },
     {
       "route": "/api/auth/[...nextauth]",
       "file": "apps/web/app/api/auth/[...nextauth]/route.ts"
@@ -156,8 +172,40 @@
       "file": "apps/web/app/api/last-exercise/route.ts"
     },
     {
+      "route": "/api/mcp/oauth/authorize",
+      "file": "apps/web/app/api/mcp/oauth/authorize/route.ts"
+    },
+    {
+      "route": "/api/mcp/oauth/register",
+      "file": "apps/web/app/api/mcp/oauth/register/route.ts"
+    },
+    {
+      "route": "/api/mcp/oauth/token",
+      "file": "apps/web/app/api/mcp/oauth/token/route.ts"
+    },
+    {
+      "route": "/api/mcp",
+      "file": "apps/web/app/api/mcp/route.ts"
+    },
+    {
+      "route": "/api/notifications/cardio-reminder/send",
+      "file": "apps/web/app/api/notifications/cardio-reminder/send/route.ts"
+    },
+    {
+      "route": "/api/nutrition",
+      "file": "apps/web/app/api/nutrition/route.ts"
+    },
+    {
       "route": "/api/profile/analytics",
       "file": "apps/web/app/api/profile/analytics/route.ts"
+    },
+    {
+      "route": "/api/push/public-key",
+      "file": "apps/web/app/api/push/public-key/route.ts"
+    },
+    {
+      "route": "/api/push/subscription",
+      "file": "apps/web/app/api/push/subscription/route.ts"
     },
     {
       "route": "/api/report-bug",
@@ -271,10 +319,19 @@
   ],
   "libraryGroups": [
     {
+      "group": "mcp",
+      "files": [
+        "apps/web/lib/mcp/oauth.ts",
+        "apps/web/lib/mcp/progress-export.ts"
+      ]
+    },
+    {
       "group": "pwa",
       "files": [
         "apps/web/lib/pwa/config.ts",
         "apps/web/lib/pwa/install.ts",
+        "apps/web/lib/pwa/push-env.ts",
+        "apps/web/lib/pwa/push-reminders.ts",
         "apps/web/lib/pwa/register-service-worker.ts"
       ]
     },
@@ -284,6 +341,7 @@
         "apps/web/lib/active-routines.ts",
         "apps/web/lib/architecture-index.ts",
         "apps/web/lib/auth-utils.ts",
+        "apps/web/lib/claude.ts",
         "apps/web/lib/constants.ts",
         "apps/web/lib/database.ts",
         "apps/web/lib/db-schema.sql",
@@ -292,6 +350,7 @@
         "apps/web/lib/free-workout.ts",
         "apps/web/lib/metric-utils.ts",
         "apps/web/lib/muscle-tags.ts",
+        "apps/web/lib/nutrition-targets.ts",
         "apps/web/lib/session-changes.ts",
         "apps/web/lib/session-workout.ts",
         "apps/web/lib/stretch-utils.ts",
@@ -303,41 +362,53 @@
         "apps/web/lib/workout-media.ts",
         "apps/web/lib/workout-navigation.ts",
         "apps/web/lib/workout-progress.ts",
+        "apps/web/lib/workout-session-save.ts",
         "apps/web/lib/workout-session.ts",
         "apps/web/lib/workout-timer.ts"
       ]
     }
   ],
   "unitTests": [
+    "apps/web/__tests__/api/cardio-reminder-send.test.ts",
+    "apps/web/__tests__/api/nutrition-estimate.test.ts",
+    "apps/web/__tests__/components/ExerciseSelector.test.tsx",
     "apps/web/__tests__/components/SetDataInput.test.tsx",
     "apps/web/__tests__/components/StretchCard.test.tsx",
     "apps/web/__tests__/components/Timer.test.tsx",
     "apps/web/__tests__/components/WorkoutNavHeader.test.tsx",
     "apps/web/__tests__/lib/active-routines.test.ts",
+    "apps/web/__tests__/lib/activity-logs.test.ts",
     "apps/web/__tests__/lib/architecture-index.test.ts",
     "apps/web/__tests__/lib/exercise-helpers.test.ts",
     "apps/web/__tests__/lib/exercise-history.test.ts",
     "apps/web/__tests__/lib/form-tips.test.ts",
     "apps/web/__tests__/lib/free-workout.test.ts",
+    "apps/web/__tests__/lib/mcp-oauth.test.ts",
+    "apps/web/__tests__/lib/mcp-progress-export.test.ts",
     "apps/web/__tests__/lib/metric-utils.test.ts",
+    "apps/web/__tests__/lib/nutrition.test.ts",
     "apps/web/__tests__/lib/phase2-database.test.ts",
     "apps/web/__tests__/lib/pwa-config.test.ts",
     "apps/web/__tests__/lib/pwa-install.test.ts",
+    "apps/web/__tests__/lib/pwa-push-reminders.test.ts",
     "apps/web/__tests__/lib/pwa-update.test.ts",
     "apps/web/__tests__/lib/session-changes.test.ts",
     "apps/web/__tests__/lib/session-workout.test.ts",
     "apps/web/__tests__/lib/username-validation.test.ts",
     "apps/web/__tests__/lib/workout-autosave-db.test.ts",
     "apps/web/__tests__/lib/workout-progress.test.ts",
+    "apps/web/__tests__/lib/workout-session-save.test.ts",
     "apps/web/__tests__/lib/workout-session.test.ts",
     "apps/web/__tests__/pages/edit-routine-reorder.test.tsx"
   ],
   "e2eSpecs": [
+    "apps/web/e2e/activities.spec.ts",
     "apps/web/e2e/ai-flow.spec.ts",
     "apps/web/e2e/browse-clone.spec.ts",
     "apps/web/e2e/free-workout-save.spec.ts",
     "apps/web/e2e/free-workout-setup.spec.ts",
     "apps/web/e2e/home-login.spec.ts",
+    "apps/web/e2e/nutrition.spec.ts",
     "apps/web/e2e/profile-flow.spec.ts",
     "apps/web/e2e/pwa-banner.spec.ts",
     "apps/web/e2e/report-bug.spec.ts",
@@ -354,6 +425,7 @@
   "e2eFlowDoc": "apps/web/e2e/flows.md",
   "adrFiles": [
     "docs/adr/0001-web-app-source-of-truth.md",
-    "docs/adr/0002-agent-context-and-architecture-index.md"
+    "docs/adr/0002-agent-context-and-architecture-index.md",
+    "docs/adr/0003-remote-mcp-progress-connector.md"
   ]
 }

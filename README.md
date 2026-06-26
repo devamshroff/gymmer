@@ -43,6 +43,19 @@ bun run docs:architecture
 - Gymmer is maintained as a web-only app in this repo.
 - Environment files live in `apps/web` (e.g. `apps/web/.env.local`).
 - You can still run commands directly inside `apps/web` if you prefer.
+- Nightly activity reminders use Web Push. Gymmer accepts the Tether-style `VAPID_*` keys, or `WEB_PUSH_*` aliases, plus `CRON_SECRET`; the production scheduler is a daily 10 PM America/New_York cron-job.org job.
+
+## Remote MCP Connector
+
+Gymmer exposes a read-only remote MCP endpoint at `/api/mcp` for Claude/custom connectors. It uses OAuth discovery and authorization-code tokens, not static bearer tokens.
+
+Claude connector URL:
+
+```
+https://gymmer-liard.vercel.app/api/mcp
+```
+
+The endpoint reads from the existing Turso/libSQL database and creates `mcp_oauth_*` tables automatically for OAuth clients, authorization codes, and tokens. The production Vercel project is linked from `apps/web`; use `bunx vercel --prod --yes` there for production deploys. `temple-liard.vercel.app` currently redirects to `gymmer-liard.vercel.app` until the Google OAuth client allows the Temple callback URL.
 
 ## Repo Context
 

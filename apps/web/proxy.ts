@@ -5,7 +5,8 @@ export default auth((req) => {
   const publicPwaRoute = req.nextUrl.pathname === "/manifest.webmanifest"
     || req.nextUrl.pathname === "/sw.js"
     || req.nextUrl.pathname === "/offline";
-  if (publicPwaRoute) {
+  const publicOAuthMetadataRoute = req.nextUrl.pathname.startsWith("/.well-known/");
+  if (publicPwaRoute || publicOAuthMetadataRoute) {
     return NextResponse.next()
   }
 
@@ -16,13 +17,6 @@ export default auth((req) => {
 
   const isLoggedIn = !!req.auth
   const isLoginPage = req.nextUrl.pathname === "/login"
-  const isApiRoute = req.nextUrl.pathname.startsWith("/api/")
-  const isAuthRoute = req.nextUrl.pathname.startsWith("/api/auth")
-
-  // Allow API routes to pass through (auth handled in route handlers)
-  if (isApiRoute) {
-    return NextResponse.next()
-  }
 
   // Redirect logged-in users away from login page
   if (isLoginPage && isLoggedIn) {
@@ -41,11 +35,13 @@ export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
+     * - api (API routes handle auth themselves)
+     * - .well-known (OAuth/MCP discovery metadata)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - public folder
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api/|\\.well-known/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 }

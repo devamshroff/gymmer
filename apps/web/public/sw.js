@@ -1,11 +1,13 @@
-const CACHE_VERSION = 'gymmer-pwa-v1';
+const CACHE_VERSION = 'gymmer-pwa-v4';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const OFFLINE_URL = '/offline';
+const ACTIVITY_LOG_URL = '/activities';
 const RUNTIME_ROUTES = new Set([
   '/',
   '/login',
   '/routines',
+  ACTIVITY_LOG_URL,
   '/what-is-gymmer',
   OFFLINE_URL,
 ]);
@@ -104,4 +106,51 @@ self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
+});
+
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = {};
+  }
+
+  const title = payload.title || 'Did you do any cardio today?';
+  const options = {
+    body: payload.body || 'Log yoga, biking, running, soccer, or any other activity.',
+    tag: payload.tag || 'cardio-activity-reminder',
+    data: {
+      url: payload.url || ACTIVITY_LOG_URL,
+    },
+    icon: '/icons/icon-192-v4.png',
+    badge: '/icons/icon-192-v4.png',
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = new URL(event.notification.data?.url || ACTIVITY_LOG_URL, self.location.origin);
+
+  event.waitUntil((async () => {
+    const windowClients = await self.clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true,
+    });
+
+    for (const client of windowClients) {
+      const clientUrl = new URL(client.url);
+      if (clientUrl.origin === targetUrl.origin) {
+        if (clientUrl.href !== targetUrl.href && 'navigate' in client) {
+          const navigatedClient = await client.navigate(targetUrl.href);
+          return (navigatedClient || client).focus();
+        }
+        return client.focus();
+      }
+    }
+
+    return self.clients.openWindow(targetUrl.href);
+  })());
 });

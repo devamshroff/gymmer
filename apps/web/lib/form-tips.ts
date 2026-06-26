@@ -3,8 +3,8 @@ import {
   STRETCH_MUSCLE_TAGS,
   normalizeTypeList,
 } from './muscle-tags';
+import { createClaudeText, hasClaudeApiKey } from './claude';
 
-const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const DIFFICULTY_LABELS: Record<string, string> = {
   beginner: 'Beginner',
   intermediate: 'Intermediate',
@@ -86,50 +86,25 @@ export type StretchInsights = {
 };
 
 export async function generateExerciseInsights(data: TipRequest): Promise<ExerciseInsights | null> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!hasClaudeApiKey()) {
     return null;
   }
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: [
-              'You are a gym trainer helping users make consistent progress.',
-              'Return JSON only: {"tips":"...","isBodyweight":true|false,"muscleGroups":["chest","upper body compound"],"difficulty":"Intermediate"}.',
-              `muscleGroups must be 1-2 items from: ${MUSCLE_GROUP_TAGS.join(', ')}.`,
-              'difficulty must be one of: Beginner, Intermediate, Advanced.',
-              'Use "unknown" if the muscle group is unclear.',
-              'If the exercise is a compound movement, include one compound tag and one primary muscle tag when possible.',
-              'tips should be 1-2 short sentences, no markdown.'
-            ].join(' ')
-          },
-          { role: 'user', content: buildUserPrompt(data) }
-        ],
-        temperature: 0.3,
-        max_tokens: 120,
-      }),
+    const { text: content } = await createClaudeText({
+      system: [
+        'You are a gym trainer helping users make consistent progress.',
+        'Return JSON only: {"tips":"...","isBodyweight":true|false,"muscleGroups":["chest","upper body compound"],"difficulty":"Intermediate"}.',
+        `muscleGroups must be 1-2 items from: ${MUSCLE_GROUP_TAGS.join(', ')}.`,
+        'difficulty must be one of: Beginner, Intermediate, Advanced.',
+        'Use "unknown" if the muscle group is unclear.',
+        'If the exercise is a compound movement, include one compound tag and one primary muscle tag when possible.',
+        'tips should be 1-2 short sentences, no markdown.'
+      ].join(' '),
+      messages: [{ role: 'user', content: buildUserPrompt(data) }],
+      temperature: 0.3,
+      maxTokens: 120,
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI exercise insights request failed:', errorText);
-      return null;
-    }
-
-    const payload = await response.json();
-    const content = payload.choices?.[0]?.message?.content?.trim();
-    if (!content) {
-      return null;
-    }
 
     const rawJson = extractJson(content);
     const parsed = JSON.parse(rawJson);
@@ -147,55 +122,30 @@ export async function generateExerciseInsights(data: TipRequest): Promise<Exerci
       difficulty,
     };
   } catch (error) {
-    console.error('OpenAI exercise insights request error:', error);
+    console.error('Claude exercise insights request error:', error);
     return null;
   }
 }
 
 export async function generateStretchInsights(data: TipRequest): Promise<StretchInsights | null> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!hasClaudeApiKey()) {
     return null;
   }
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: [
-              'You are a gym trainer helping users make consistent progress.',
-              'Return JSON only: {"tips":"...","timerSeconds":30,"muscleGroups":["hamstrings","glutes"]}.',
-              `muscleGroups must be 1-2 items from: ${STRETCH_MUSCLE_TAGS.join(', ')}.`,
-              'Use "unknown" if the muscle group is unclear.',
-              'timerSeconds is the hold time in seconds (integer).',
-              'tips should be 1-2 short sentences, no markdown.'
-            ].join(' ')
-          },
-          { role: 'user', content: buildUserPrompt(data) }
-        ],
-        temperature: 0.3,
-        max_tokens: 160,
-      }),
+    const { text: content } = await createClaudeText({
+      system: [
+        'You are a gym trainer helping users make consistent progress.',
+        'Return JSON only: {"tips":"...","timerSeconds":30,"muscleGroups":["hamstrings","glutes"]}.',
+        `muscleGroups must be 1-2 items from: ${STRETCH_MUSCLE_TAGS.join(', ')}.`,
+        'Use "unknown" if the muscle group is unclear.',
+        'timerSeconds is the hold time in seconds (integer).',
+        'tips should be 1-2 short sentences, no markdown.'
+      ].join(' '),
+      messages: [{ role: 'user', content: buildUserPrompt(data) }],
+      temperature: 0.3,
+      maxTokens: 160,
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI stretch insights request failed:', errorText);
-      return null;
-    }
-
-    const payload = await response.json();
-    const content = payload.choices?.[0]?.message?.content?.trim();
-    if (!content) {
-      return null;
-    }
 
     const rawJson = extractJson(content);
     const parsed = JSON.parse(rawJson);
@@ -211,53 +161,28 @@ export async function generateStretchInsights(data: TipRequest): Promise<Stretch
       muscleGroups: muscleGroups.length > 0 ? muscleGroups : null,
     };
   } catch (error) {
-    console.error('OpenAI stretch insights request error:', error);
+    console.error('Claude stretch insights request error:', error);
     return null;
   }
 }
 
 export async function generateFormTips(data: TipRequest): Promise<string | null> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!hasClaudeApiKey()) {
     return null;
   }
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a gym trainer helping users make consistent progress. Return 1-2 short sentences. No markdown or bullet points.'
-          },
-          { role: 'user', content: buildUserPrompt(data) }
-        ],
-        temperature: 0.3,
-        max_tokens: 80,
-      }),
+    const { text: content } = await createClaudeText({
+      system: 'You are a gym trainer helping users make consistent progress. Return 1-2 short sentences. No markdown or bullet points.',
+      messages: [{ role: 'user', content: buildUserPrompt(data) }],
+      temperature: 0.3,
+      maxTokens: 80,
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI tips request failed:', errorText);
-      return null;
-    }
-
-    const payload = await response.json();
-    const content = payload.choices?.[0]?.message?.content?.trim();
-    if (!content) {
-      return null;
-    }
 
     const normalized = normalizeTipOutput(content);
     return normalized.length > 0 ? normalized : null;
   } catch (error) {
-    console.error('OpenAI tips request error:', error);
+    console.error('Claude tips request error:', error);
     return null;
   }
 }

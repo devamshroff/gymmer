@@ -121,22 +121,22 @@ export default function PwaStatusBanner() {
         <div className="space-y-1">
           {shouldShowUpdate ? (
             <p className="font-medium text-sky-200">
-              A new version of Gymmer is ready. Reload to update the app shell.
+              A new version of Temple is ready. Reload to update the app shell.
             </p>
           ) : null}
           {!isOnline ? (
             <p className="font-medium text-amber-300">
-              You&apos;re offline. Gymmer&apos;s cached shell is available, but live data and edits still need a connection.
+              You&apos;re offline. Temple&apos;s cached shell is available, but live data and edits still need a connection.
             </p>
           ) : null}
           {shouldShowInstall ? (
             iosInstallHint ? (
               <p className="font-medium text-emerald-200">
-                On iPhone Safari, tap Share, then Add to Home Screen to install Gymmer.
+                On iPhone Safari, tap Share, then Add to Home Screen to install Temple.
               </p>
             ) : (
               <p className="font-medium text-emerald-200">
-                Install Gymmer for faster launch and a full-screen app experience.
+                Install Temple for faster launch and a full-screen app experience.
               </p>
             )
           ) : null}

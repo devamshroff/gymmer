@@ -1,12 +1,14 @@
-# Gymmer flows and e2e coverage
+# Temple flows and e2e coverage
 
 This is the current set of user flows (page routes) and the e2e specs that cover them.
 
 | Flow | Routes | E2E coverage |
 | --- | --- | --- |
-| Home / marketing | `/`, `/what-is-gymmer` | `home-login.spec.ts` |
+| Home gateway / marketing | `/`, `/workout`, `/what-is-gymmer` | `home-login.spec.ts` |
 | Login screen | `/login` | `home-login.spec.ts` |
 | Profile settings + goals | `/profile` | `profile-flow.spec.ts` |
+| Nommer day log + meal estimates | `/nutrition` | `nutrition.spec.ts` |
+| Activity logging | `/activities` | `activities.spec.ts` |
 | Routines index + create modal | `/routines` | `routines-index.spec.ts` |
 | Manual routine builder | `/routines/builder` | `routines-builder-flow.spec.ts` |
 | Routine stretch selection | `/routines/[id]/stretches` | `routines-builder-flow.spec.ts` |

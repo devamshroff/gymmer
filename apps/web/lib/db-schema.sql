@@ -1,4 +1,4 @@
--- SQLite Database Schema for Gymmer v2.0 (Multi-User)
+-- SQLite Database Schema for Temple v2.0 (Multi-User)
 
 -- ============================================================================
 -- Users Table
@@ -109,6 +109,111 @@ CREATE INDEX IF NOT EXISTS idx_exercise_logs_name ON workout_exercise_logs(exerc
 CREATE INDEX IF NOT EXISTS idx_exercise_logs_partner_name ON workout_exercise_logs(b2b_partner_name);
 CREATE INDEX IF NOT EXISTS idx_cardio_logs_session ON workout_cardio_logs(session_id);
 
+-- Standalone activity log for cardio, sports, classes, and other timed movement.
+CREATE TABLE IF NOT EXISTS activity_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  activity_type TEXT NOT NULL,
+  duration_minutes INTEGER NOT NULL,
+  activity_date TEXT NOT NULL,
+  notes TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_logs_user_date ON activity_logs(user_id, activity_date);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_user_type ON activity_logs(user_id, activity_type);
+
+-- Browser push subscriptions for nightly activity reminders.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  enabled INTEGER DEFAULT 1,
+  last_cardio_reminder_date TEXT,
+  user_agent TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_enabled ON push_subscriptions(enabled);
+
+-- Minimal per-user nutrition tracking.
+CREATE TABLE IF NOT EXISTS pantry_foods (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  serving_description TEXT NOT NULL,
+  calories INTEGER NOT NULL,
+  protein_g REAL NOT NULL,
+  carbs_g REAL,
+  fat_g REAL,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pantry_foods_user_name ON pantry_foods(user_id, name);
+
+CREATE TABLE IF NOT EXISTS food_log_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  pantry_food_id INTEGER,
+  name TEXT NOT NULL,
+  calories INTEGER NOT NULL,
+  protein_g REAL NOT NULL,
+  carbs_g REAL,
+  fat_g REAL,
+  quantity REAL NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (pantry_food_id) REFERENCES pantry_foods(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_food_log_entries_user_date ON food_log_entries(user_id, date);
+CREATE INDEX IF NOT EXISTS idx_food_log_entries_pantry_food ON food_log_entries(pantry_food_id);
+
+CREATE TABLE IF NOT EXISTS bodyweight_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  weight_lbs REAL NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bodyweight_entries_user_date
+  ON bodyweight_entries(user_id, date);
+
+CREATE TABLE IF NOT EXISTS combos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_combos_user_name ON combos(user_id, name);
+
+CREATE TABLE IF NOT EXISTS combo_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  combo_id INTEGER NOT NULL,
+  pantry_food_id INTEGER NOT NULL,
+  default_quantity REAL NOT NULL DEFAULT 1,
+  FOREIGN KEY (combo_id) REFERENCES combos(id) ON DELETE CASCADE,
+  FOREIGN KEY (pantry_food_id) REFERENCES pantry_foods(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_combo_items_combo_food
+  ON combo_items(combo_id, pantry_food_id);
+
 -- ============================================================================
 -- Exercise & Stretch Libraries (Shared across all users)
 -- ============================================================================
@@ -216,3 +321,53 @@ CREATE TABLE IF NOT EXISTS routine_cardio (
 -- Indexes for routines
 CREATE INDEX IF NOT EXISTS idx_routines_user ON routines(user_id);
 CREATE INDEX IF NOT EXISTS idx_routines_public ON routines(is_public);
+
+-- ============================================================================
+-- Remote MCP OAuth (Claude custom connector)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
+  client_id TEXT PRIMARY KEY,
+  client_secret_hash TEXT,
+  redirect_uris TEXT NOT NULL,
+  grant_types TEXT NOT NULL,
+  response_types TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  token_endpoint_auth_method TEXT NOT NULL,
+  client_name TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS mcp_oauth_authorization_codes (
+  code_hash TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  code_challenge TEXT NOT NULL,
+  code_challenge_method TEXT NOT NULL,
+  resource TEXT,
+  expires_at INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (client_id) REFERENCES mcp_oauth_clients(client_id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS mcp_oauth_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  access_token_hash TEXT NOT NULL UNIQUE,
+  refresh_token_hash TEXT UNIQUE,
+  client_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  resource TEXT,
+  access_expires_at INTEGER NOT NULL,
+  refresh_expires_at INTEGER,
+  revoked_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (client_id) REFERENCES mcp_oauth_clients(client_id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_mcp_oauth_tokens_access ON mcp_oauth_tokens(access_token_hash);
+CREATE INDEX IF NOT EXISTS idx_mcp_oauth_tokens_refresh ON mcp_oauth_tokens(refresh_token_hash);

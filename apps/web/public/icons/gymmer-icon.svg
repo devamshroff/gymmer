@@ -1,16 +1,34 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" rx="120" fill="#050816" />
-  <circle cx="256" cy="256" r="168" fill="#34D399" />
-  <circle cx="256" cy="256" r="112" fill="#08111E" />
-  <text
-    x="256"
-    y="326"
-    text-anchor="middle"
-    font-family="Arial, Helvetica, sans-serif"
-    font-size="226"
-    font-weight="700"
-    fill="#ECFEFF"
-  >
-    G
-  </text>
+  <defs>
+    <linearGradient id="bg" x1="84" y1="36" x2="432" y2="492" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F4F0FF" />
+      <stop offset="0.56" stop-color="#EDE7FF" />
+      <stop offset="1" stop-color="#DDD4FF" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(180 100) rotate(48) scale(372)">
+      <stop stop-color="#7B6EF6" stop-opacity="0.3" />
+      <stop offset="1" stop-color="#7B6EF6" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="mark" x1="256" y1="126" x2="256" y2="386" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#08080B" />
+      <stop offset="1" stop-color="#15151C" />
+    </linearGradient>
+    <filter id="shadow" x="104" y="112" width="304" height="304" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feFlood flood-opacity="0" result="BackgroundImageFix" />
+      <feColorMatrix in="SourceAlpha" result="hardAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" />
+      <feOffset dy="14" />
+      <feGaussianBlur stdDeviation="8" />
+      <feComposite in2="hardAlpha" operator="out" />
+      <feColorMatrix type="matrix" values="0 0 0 0 0.094 0 0 0 0 0.063 0 0 0 0 0.196 0 0 0 0.18 0" />
+      <feBlend in2="BackgroundImageFix" mode="normal" result="effect1_dropShadow" />
+      <feBlend in="SourceGraphic" in2="effect1_dropShadow" mode="normal" result="shape" />
+    </filter>
+  </defs>
+  <rect width="512" height="512" fill="#EDE7FF" />
+  <rect width="512" height="512" fill="url(#bg)" />
+  <rect width="512" height="512" fill="url(#glow)" />
+  <g filter="url(#shadow)">
+    <rect x="128" y="136" width="256" height="66" rx="24" fill="url(#mark)" />
+    <rect x="223" y="166" width="66" height="218" rx="28" fill="url(#mark)" />
+  </g>
 </svg>

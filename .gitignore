@@ -68,3 +68,4 @@ next-env.d.ts
 **/fastlane/Preview.html
 **/fastlane/screenshots/
 **/fastlane/test_output/
+.vercel

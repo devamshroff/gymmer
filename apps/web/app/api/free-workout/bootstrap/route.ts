@@ -9,8 +9,7 @@ import {
 } from '@/lib/database';
 import { EXERCISE_PRIMARY_METRICS, SESSION_MODES, type ExercisePrimaryMetric, type SessionMode } from '@/lib/constants';
 import { resolveSessionMode } from '@/lib/workout-session';
-
-const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+import { createClaudeText } from '@/lib/claude';
 
 type HistoryExercise = {
   id: number;
@@ -278,7 +277,7 @@ export async function POST(request: NextRequest) {
 
     const fallbackResponse = buildFallbackTargets(sessionMode, historyExercises, history);
 
-    if (sessionMode !== SESSION_MODES.progress || skipAi || !process.env.OPENAI_API_KEY) {
+    if (sessionMode !== SESSION_MODES.progress || skipAi || !process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json({
         sessionMode,
         ...fallbackResponse,
@@ -306,54 +305,33 @@ export async function POST(request: NextRequest) {
       historySummary: summarizeHistoryTrends(history),
     };
 
-    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
+    let content = '';
+    try {
+      const result = await createClaudeText({
+        system: [
+          'You are a gym trainer helping users preload workout targets for a free-workout session.',
+          'The user has already selected a session mode: Progress, Maintenance, or Light.',
+          'For each exercise in the payload, return a target the user can use immediately if they add that exercise today.',
+          'Base suggestions on recent history and the selected session mode.',
+          'For progress, push a little. For maintenance, hold roughly steady. For light, reduce intensity and never increase both weight and reps.',
+          'Some exercises are machine-based; their logged weight values are added plates only. If no added-weight history exists, leave suggestedWeight null and provide reps only.',
+          'Each exercise has a primaryMetric and metricUnit. If the metric is reps_only, leave suggestedWeight null.',
+          'Keep the response compact. Do not include per-exercise rationale.',
+          'Return JSON only: {"encouragement":"...","goalSummary":"...","trendSummary":"...","targets":[{"name":"...","suggestedWeight":number|null,"suggestedReps":number|null}]}',
+          'Only include exercises provided by name.'
+        ].join(' '),
         messages: [
-          {
-            role: 'system',
-            content: [
-              'You are a gym trainer helping users preload workout targets for a free-workout session.',
-              'The user has already selected a session mode: Progress, Maintenance, or Light.',
-              'For each exercise in the payload, return a target the user can use immediately if they add that exercise today.',
-              'Base suggestions on recent history and the selected session mode.',
-              'For progress, push a little. For maintenance, hold roughly steady. For light, reduce intensity and never increase both weight and reps.',
-              'Some exercises are machine-based; their logged weight values are added plates only. If no added-weight history exists, leave suggestedWeight null and provide reps only.',
-              'Each exercise has a primaryMetric and metricUnit. If the metric is reps_only, leave suggestedWeight null.',
-              'Keep the response compact. Do not include per-exercise rationale.',
-              'Return JSON only: {"encouragement":"...","goalSummary":"...","trendSummary":"...","targets":[{"name":"...","suggestedWeight":number|null,"suggestedReps":number|null}]}',
-              'Only include exercises provided by name.'
-            ].join(' ')
-          },
           {
             role: 'user',
             content: JSON.stringify(payload),
           },
         ],
         temperature: 0.2,
-        max_tokens: 3000,
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error('Free workout bootstrap AI failed:', errorText);
-      return NextResponse.json({
-        sessionMode,
-        ...fallbackResponse,
-        popularExercises,
-        popularSupersets,
+        maxTokens: 3000,
       });
-    }
-
-    const data = await aiResponse.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) {
+      content = result.text;
+    } catch (aiError) {
+      console.error('Free workout bootstrap AI failed:', aiError);
       return NextResponse.json({
         sessionMode,
         ...fallbackResponse,

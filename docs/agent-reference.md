@@ -1,6 +1,6 @@
 # Agent Reference: Feature Design + E2E Workflows
 
-This file is a concise, code-backed reference for how Gymmer’s web app is structured and how core features are designed. It is intended for assistants and contributors who need to locate logic quickly and reason about flow.
+This file is a concise, code-backed reference for how Temple’s web app is structured and how core features are designed. It is intended for assistants and contributors who need to locate logic quickly and reason about flow.
 
 ## Read Order
 - Start with `AGENTS.md` for repo rules.
@@ -14,22 +14,28 @@ This file is a concise, code-backed reference for how Gymmer’s web app is stru
 - Do not rely on the generated architecture index as a substitute for updating this file when the summary itself is outdated.
 
 ## Scope + Product Focus
-- Gymmer is a **web-only product**.
+- Temple is a **web-only product**.
 - The **web app is the source of truth** (`apps/web`).
 
 ## Architecture Overview (Web)
 - **Framework:** Next.js App Router (`apps/web/app/*`), API route handlers in `apps/web/app/api/*`.
 - **Data layer:** `apps/web/lib/database.ts` uses Turso/libSQL. Schema in `apps/web/lib/db-schema.sql`.
 - **Auth:** NextAuth in `apps/web/auth.ts` with Google provider and email allowlist. API auth helpers in `apps/web/lib/auth-utils.ts`.
+- **Remote MCP:** `apps/web/app/api/mcp/route.ts` exposes a Streamable HTTP MCP server for Claude/custom connectors. OAuth discovery and token routes live under `apps/web/app/.well-known/*` and `apps/web/app/api/mcp/oauth/*`.
 - **Domain model:** `apps/web/lib/types.ts` and `apps/web/lib/constants.ts` are the canonical types/constants.
+- **Nutrition targets:** `apps/web/lib/nutrition-targets.ts` hardcodes the current daily nutrition targets.
 - **Shared UI:** `apps/web/app/components/*`.
 - **State + caching:** localStorage and sessionStorage for workout state and caching (details below).
-- **PWA shell:** manifest route in `apps/web/app/manifest.ts`, bootstrap in `apps/web/app/components/PwaBootstrap.tsx`, install/offline banner in `apps/web/app/components/PwaStatusBanner.tsx`, offline fallback in `apps/web/app/offline/page.tsx`, service worker in `apps/web/public/sw.js`.
+- **Standalone activity logs:** Timed cardio/sports/classes live in the user-owned `activity_logs` table and are managed outside workout sessions.
+- **Nommer:** Pantry foods, food logs, bodyweight entries, and combos live in user-owned nutrition tables and are managed from `/nutrition`; Claude-backed meal estimates can be parsed, edited, logged, and optionally saved into inventory.
+- **PWA shell + reminders:** manifest route in `apps/web/app/manifest.ts`, bootstrap in `apps/web/app/components/PwaBootstrap.tsx`, install/offline banner in `apps/web/app/components/PwaStatusBanner.tsx`, offline fallback in `apps/web/app/offline/page.tsx`, service worker in `apps/web/public/sw.js`, and Web Push cardio reminders through `push_subscriptions`.
 
 ## Production Runtime Notes
-- The production web app runs on Render free tier.
-- After roughly 15 minutes of inactivity, the Render web service can spin down and the next request may incur a cold start.
-- Product flows that depend on server APIs should prefer fewer, consolidated startup requests where possible, especially for workout bootstrapping.
+- The production web app runs on Vercel at `https://gymmer-liard.vercel.app`; `https://temple-liard.vercel.app` currently redirects there until the Google OAuth client allows the Temple callback URL.
+- The Vercel project root is `apps/web`.
+- `apps/web/vercel.json` forces Bun install/build commands so production matches the repo workflow.
+- Product flows that depend on server APIs should still prefer fewer, consolidated startup requests where possible, especially for workout bootstrapping.
+- Remote MCP connectors are different from normal web traffic because Claude connects from Anthropic's cloud and expects a reachable HTTPS server plus OAuth. The Vercel deployment is the supported runtime for the remote MCP connector.
 
 ## Cross-Cutting Design Patterns
 - **Workout state lives on the client** during a session and is persisted in localStorage (`lib/workout-session.ts`).
@@ -77,6 +83,39 @@ This file is a concise, code-backed reference for how Gymmer’s web app is stru
 - **Bootstrap API:** `apps/web/app/api/free-workout/bootstrap/route.ts`
 - **Entry point:** `apps/web/app/page.tsx` (links to the dedicated free-workout setup page)
 
+### Activity Logging (Standalone Cardio/Sports/Classes)
+- **UI:** `apps/web/app/activities/page.tsx`
+- **API:** `apps/web/app/api/activities/route.ts`
+- **Storage:** `activity_logs` table in `apps/web/lib/db-schema.sql`
+- **Core helpers:** `createActivityLog`, `listActivityLogs`, `deleteActivityLog` in `apps/web/lib/database.ts`
+- **Nightly reminders:** Users opt into browser push reminders from `/activities`. Subscriptions are stored in `push_subscriptions`; `/activities` re-syncs any existing browser push subscription back to the server before showing reminders as enabled. `/api/notifications/cardio-reminder/send` is cron-protected and sends reminders when a subscription's saved timezone reaches 10 PM.
+- **Notes:** This is for timed activities that are not full Gymmer workout sessions, such as yoga classes, biking, running, soccer, swimming, or similar conditioning work. These records are user-scoped and separate from `workout_sessions`, `workout_exercise_logs`, and `workout_cardio_logs`.
+
+### Nommer
+- **Gateway:** `/` is the Temple two-choice entry screen. `/workout` contains Gymmer, and `/nutrition` contains Nommer.
+- **UI:** `apps/web/app/nutrition/page.tsx`
+- **API:** `apps/web/app/api/nutrition/route.ts`
+- **Storage:** `pantry_foods`, `food_log_entries`, `bodyweight_entries`, `combos`, and `combo_items` in `apps/web/lib/db-schema.sql`
+- **Targets:** `apps/web/lib/nutrition-targets.ts` hardcodes 2,200 calories and 170g protein.
+- **Core helpers:** nutrition CRUD/read helpers in `apps/web/lib/database.ts`
+- **Flow:** The Nommer screen is day-first: native date picker with previous/next day side buttons, daily calorie/protein totals, goal/remaining block, bodyweight save, eaten-so-far list, then `+ Add food`.
+- **Add panel:** Search logs pantry inventory or combos, combo creation builds shortcuts from existing pantry items, and estimate mode calls `estimate_food` to turn a meal description into editable macros before logging it.
+- **Notes:** Pantry foods are defined at the user's measured unit level. Food log entries copy macros at log time and multiply by `quantity`. Combos are saved bundles of pantry foods and default quantities; empty combo shells are allowed, and logging a combo with items expands into separate `food_log_entries` rows as one batched write without storing recipe-level macros.
+
+### Branding + Themes
+- **Temple mark:** App/PWA icons use the shared `T` mark in `apps/web/public/icons/*`.
+- **Temple home:** `/` uses the inverse of Tether's dark purple system: light surface, dark ink, and muted olive accent.
+- **Gymmer:** Workout pages keep the existing green Gymmer styling.
+- **Nommer:** `/nutrition` follows the same dark shell conventions as Gymmer but uses blue accents instead of green.
+
+### PWA Notifications
+- **Client helper:** `apps/web/lib/pwa/push-reminders.ts` handles opt-in, opt-out, and server re-sync for existing browser subscriptions.
+- **Public key API:** `apps/web/app/api/push/public-key/route.ts`
+- **Subscription API:** `apps/web/app/api/push/subscription/route.ts`
+- **Reminder send API:** `apps/web/app/api/notifications/cardio-reminder/send/route.ts`
+- **Service worker:** `apps/web/public/sw.js` handles `push` and `notificationclick`, opening `/activities`.
+- **Deployment:** Requires Web Push VAPID keys and `CRON_SECRET`. Temple accepts Tether-compatible `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT`, with `WEB_PUSH_*` aliases still supported. An external cron-job.org job calls the send route at 10:00, 10:15, 10:30, and 10:45 PM America/New_York; the endpoint still verifies subscription timezone and dedupes by local date.
+
 ### Workout Flow (Preview → Pre‑Stretches → Active → Cardio → Post‑Stretches → Summary)
 - **UI pages:**
   - Free workout setup: `apps/web/app/free-workout/page.tsx`
@@ -96,15 +135,26 @@ This file is a concise, code-backed reference for how Gymmer’s web app is stru
 - **Active routine resume:** `apps/web/lib/active-routines.ts`
 
 ### Workout Save + History + Stats
-- **Save:** `apps/web/app/api/save-workout/route.ts`
+- **Save:** `apps/web/app/api/save-workout/route.ts` delegates to `apps/web/lib/workout-session-save.ts`
 - **History:** `apps/web/app/api/exercise-history/route.ts`, `apps/web/app/api/last-exercise/route.ts`
 - **Stats export:** `apps/web/app/workout/[name]/stats/page.tsx` + `apps/web/app/api/workout/[name]/route.ts`
 
+### Remote MCP Progress Connector
+- **MCP endpoint:** `apps/web/app/api/mcp/route.ts`
+- **OAuth/discovery:** `apps/web/app/api/mcp/oauth/*`, `apps/web/app/.well-known/oauth-authorization-server/route.ts`, `apps/web/app/.well-known/oauth-protected-resource/route.ts`
+- **Read model:** `apps/web/lib/mcp/progress-export.ts`
+- **Token storage:** `apps/web/lib/mcp/oauth.ts` creates `mcp_oauth_*` tables in Turso/libSQL.
+- **Workout tools:** `get_progress_summary`, `list_workout_sessions`, `get_workout_session`, `get_exercise_progress`, `get_routines_snapshot`, `create_workout_session`
+- **Nommer tools:** `list_pantry_foods`, `get_nutrition_day`, `get_nutrition_range`, `log_food`, `create_pantry_food`, `log_bodyweight`, `list_combos`, `log_combo`
+- **Notes:** The connector is user-scoped through OAuth access tokens. Write tools require the `gymmer:write` OAuth scope in addition to normal authenticated MCP access. `create_workout_session` creates a completed free-workout session through the same shared save helper as `/api/save-workout`; set weights are stored in pounds (`lbs`), one warmup set maps to the existing warmup columns, up to four working sets map to `set1..set4`, and optional notes are stored in `workout_report`.
+
 ### AI Features (Routine Generation + Targets + Reports)
+- **Provider helper:** `apps/web/lib/claude.ts` centralizes server-side Anthropic Messages API calls.
 - **Routine generation:** `apps/web/app/api/routines/ai-generate/route.ts`
 - **Targets (pre‑workout):** `apps/web/app/api/workout-targets/route.ts`
 - **Post-workout report:** `apps/web/app/api/workout-report/route.ts`
-- **Notes:** Uses `OPENAI_API_KEY` + `OPENAI_MODEL` and user goals/history from DB.
+- **Nommer meal estimates:** `apps/web/app/api/nutrition/route.ts` action `estimate_food` uses Claude and returns normalized JSON for the add panel.
+- **Notes:** Uses `ANTHROPIC_API_KEY` plus optional `ANTHROPIC_MODEL`/`ANTHROPIC_VERSION` and user goals/history from DB.
 
 ### Exercise + Stretch Library
 - **API:** `apps/web/app/api/exercises/route.ts`, `apps/web/app/api/stretches/route.ts`
@@ -120,9 +170,11 @@ Canonical list lives in `apps/web/e2e/flows.md`. Summary below:
 
 | Workflow | Routes | E2E spec |
 | --- | --- | --- |
-| Home + marketing | `/`, `/what-is-gymmer` | `home-login.spec.ts` |
+| Home gateway + marketing | `/`, `/workout`, `/what-is-gymmer` | `home-login.spec.ts` |
 | Login | `/login` | `home-login.spec.ts` |
 | Profile + goals + analytics | `/profile` | `profile-flow.spec.ts` |
+| Nommer logging | `/nutrition` | `nutrition.spec.ts` |
+| Activity logging | `/activities` | `activities.spec.ts` |
 | Routines index + create | `/routines` | `routines-index.spec.ts` |
 | Manual routine builder | `/routines/builder` | `routines-builder-flow.spec.ts` |
 | Routine stretch selection | `/routines/[id]/stretches` | `routines-builder-flow.spec.ts` |

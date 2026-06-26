@@ -13,8 +13,8 @@ import {
 } from '@/lib/database';
 import { generateStretchInsights } from '@/lib/form-tips';
 import { STRETCH_MUSCLE_TAGS, normalizeTypeList } from '@/lib/muscle-tags';
+import { createClaudeText, getClaudeErrorStatus, getClaudeModel } from '@/lib/claude';
 
-const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const RECOMMENDATION_CACHE_VERSION = 1;
 
 type RecommendedStretch = {
@@ -181,9 +181,9 @@ export async function POST(
   if ('error' in authResult) return authResult.error;
   const { user } = authResult;
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
-      { error: 'Missing OPENAI_API_KEY' },
+      { error: 'Missing ANTHROPIC_API_KEY' },
       { status: 500 }
     );
   }
@@ -231,7 +231,7 @@ export async function POST(
       routineDescription: routine.description ?? null,
       exercisePairs,
       goalsText: goalsText ?? null,
-      model: DEFAULT_MODEL,
+      model: getClaudeModel(),
       stretchVersion,
       signatureVersion: RECOMMENDATION_CACHE_VERSION,
     });
@@ -251,48 +251,19 @@ export async function POST(
     const allStretches = await getAllStretches();
     const availableStretchNames = allStretches.map((stretch) => stretch.name);
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: buildSystemPrompt(
-              exerciseNames,
-              routine.name,
-              routine.description,
-              exercises.length,
-              availableStretchNames,
-              goalsText
-            )
-          },
-          { role: 'user', content: 'Recommend stretches for this routine.' },
-        ],
-        temperature: 0.4,
-      }),
+    const { text: content } = await createClaudeText({
+      system: buildSystemPrompt(
+        exerciseNames,
+        routine.name,
+        routine.description,
+        exercises.length,
+        availableStretchNames,
+        goalsText
+      ),
+      messages: [{ role: 'user', content: 'Recommend stretches for this routine.' }],
+      temperature: 0.4,
+      maxTokens: 3000,
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      return NextResponse.json(
-        { error: `OpenAI request failed: ${errorText}` },
-        { status: 502 }
-      );
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content?.trim();
-    if (!content) {
-      return NextResponse.json(
-        { error: 'No content returned from model' },
-        { status: 502 }
-      );
-    }
 
     const jsonText = extractJson(content);
     let recommendations: {
@@ -358,7 +329,7 @@ export async function POST(
       routineDescription: routine.description ?? null,
       exercisePairs,
       goalsText: goalsText ?? null,
-      model: DEFAULT_MODEL,
+      model: getClaudeModel(),
       stretchVersion: finalStretchVersion,
       signatureVersion: RECOMMENDATION_CACHE_VERSION,
     });
@@ -379,7 +350,7 @@ export async function POST(
     console.error('Error generating stretch recommendations:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to generate recommendations' },
-      { status: 500 }
+      { status: getClaudeErrorStatus(error) }
     );
   }
 }

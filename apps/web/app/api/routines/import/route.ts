@@ -9,6 +9,7 @@ import {
   normalizeTypeList,
 } from '@/lib/muscle-tags';
 import { EXERCISE_TYPES } from '@/lib/constants';
+import { createClaudeText, hasClaudeApiKey } from '@/lib/claude';
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth();
@@ -298,51 +299,33 @@ async function resolveFuzzyMatch(
   index: NameIndex,
   goalsText?: string | null
 ): Promise<number | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
+  if (!hasClaudeApiKey()) return null;
 
   const options = Array.from(index.idToName.entries()).map(([id, label]) => ({ id, label }));
   if (options.length === 0) return null;
 
-  const payload = {
-    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-    messages: [
-      {
-        role: 'system',
-        content: [
-          'You are a gym trainer helping users make consistent progress.',
-          'You match exercise/stretch names to existing options.',
-          'Return ONLY a JSON object: {"matchId": number|null}.',
-          'Return null if there is no close match.',
-          'Prefer exact or near-exact semantic matches; avoid loose matches.',
-          goalsText ? `User goals: ${goalsText}` : 'User goals: (not provided)',
-        ].join(' ')
-      },
-      {
-        role: 'user',
-        content: JSON.stringify({
-          query: name,
-          options: options.map((opt) => ({ id: opt.id, label: opt.label }))
-        })
-      }
-    ],
-    temperature: 0.2,
-  };
-
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
+    const { text: content } = await createClaudeText({
+      system: [
+        'You are a gym trainer helping users make consistent progress.',
+        'You match exercise/stretch names to existing options.',
+        'Return ONLY a JSON object: {"matchId": number|null}.',
+        'Return null if there is no close match.',
+        'Prefer exact or near-exact semantic matches; avoid loose matches.',
+        goalsText ? `User goals: ${goalsText}` : 'User goals: (not provided)',
+      ].join(' '),
+      messages: [
+        {
+          role: 'user',
+          content: JSON.stringify({
+            query: name,
+            options: options.map((opt) => ({ id: opt.id, label: opt.label }))
+          })
+        }
+      ],
+      temperature: 0.2,
+      maxTokens: 100,
     });
-
-    if (!response.ok) return null;
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content?.trim();
-    if (!content) return null;
 
     const jsonText = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1] ?? content;
     const parsed = JSON.parse(jsonText);
