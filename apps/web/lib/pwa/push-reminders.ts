@@ -5,7 +5,7 @@ export type CardioReminderSubscriptionResult =
   | { ok: false; reason: string };
 
 export type ExistingCardioReminderSyncResult =
-  | { ok: true; synced: boolean }
+  | { ok: true; synced: boolean; hadServerSubscription: boolean }
   | { ok: false; reason: string };
 
 function urlBase64ToArrayBuffer(value: string): ArrayBuffer {
@@ -54,6 +54,26 @@ async function saveSubscriptionToServer(
   return { ok: true };
 }
 
+/**
+ * Whether the server still holds a push subscription row for this user.
+ *
+ * Push services expire subscriptions (Apple does this routinely), and the send
+ * route disables the row when it gets a 404/410 back. Without this check a
+ * browser that has silently lost its subscription is indistinguishable from one
+ * that never enabled reminders, so the UI shows "off" and the user never learns
+ * their reminders stopped.
+ */
+async function fetchServerSubscriptionState(): Promise<{ hasSubscription: boolean }> {
+  try {
+    const response = await fetch('/api/push/subscription');
+    if (!response.ok) return { hasSubscription: false };
+    const data = await response.json() as { hasSubscription?: boolean };
+    return { hasSubscription: Boolean(data.hasSubscription) };
+  } catch {
+    return { hasSubscription: false };
+  }
+}
+
 export async function syncExistingCardioReminderSubscription(): Promise<ExistingCardioReminderSyncResult> {
   try {
     if (!isCardioReminderSupported()) {
@@ -62,12 +82,15 @@ export async function syncExistingCardioReminderSubscription(): Promise<Existing
 
     const registration = await navigator.serviceWorker.getRegistration('/');
     const subscription = await registration?.pushManager.getSubscription();
-    if (!subscription) return { ok: true, synced: false };
+    if (!subscription) {
+      const serverState = await fetchServerSubscriptionState();
+      return { ok: true, synced: false, hadServerSubscription: serverState.hasSubscription };
+    }
 
     const result = await saveSubscriptionToServer(subscription);
     if (!result.ok) return result;
 
-    return { ok: true, synced: true };
+    return { ok: true, synced: true, hadServerSubscription: true };
   } catch (error) {
     console.error('Error syncing cardio reminder subscription:', error);
     return { ok: false, reason: 'Could not sync notification settings.' };

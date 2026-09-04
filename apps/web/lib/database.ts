@@ -1,7 +1,8 @@
 // lib/database.ts
-import { createClient, Client } from '@libsql/client';
+import { createClient, Client, InArgs } from '@libsql/client';
 import type {
   ActivityLog,
+  ActivityLogSource,
   BodyweightEntry,
   Combo,
   ComboItem,
@@ -1111,29 +1112,61 @@ export async function getWorkoutSession(sessionId: number): Promise<(WorkoutSess
   return { ...session, exercises, cardio };
 }
 
+const ACTIVITY_LOGS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS activity_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    activity_type TEXT NOT NULL,
+    duration_minutes INTEGER,
+    activity_date TEXT NOT NULL,
+    notes TEXT,
+    source TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )
+`;
+
 async function ensureActivityLogsTable(): Promise<void> {
   if (activityLogsTableReady) return;
   const db = getDatabase();
-  await db.execute({
-    sql: `
-      CREATE TABLE IF NOT EXISTS activity_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT NOT NULL,
-        activity_type TEXT NOT NULL,
-        duration_minutes INTEGER NOT NULL,
-        activity_date TEXT NOT NULL,
-        notes TEXT,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now')),
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  await db.execute({ sql: ACTIVITY_LOGS_TABLE_SQL });
+
+  // Tile-logged activities record what happened, not how long, so
+  // duration_minutes had to lose its NOT NULL constraint. SQLite cannot alter a
+  // column in place, so an existing legacy table is rebuilt and copied over.
+  const columns = await db.execute('PRAGMA table_info(activity_logs)');
+  const columnRows = columns.rows as unknown as Array<Record<string, unknown>>;
+  const durationColumn = columnRows.find((row) => row?.name === 'duration_minutes');
+  const hasSourceColumn = columnRows.some((row) => row?.name === 'source');
+  const durationIsNotNull = Number(durationColumn?.notnull) === 1;
+
+  if (durationIsNotNull) {
+    await db.execute('ALTER TABLE activity_logs RENAME TO activity_logs_old');
+    await db.execute({ sql: ACTIVITY_LOGS_TABLE_SQL });
+    await db.execute(`
+      INSERT INTO activity_logs (
+        id, user_id, activity_type, duration_minutes, activity_date, notes,
+        source, created_at, updated_at
       )
-    `
-  });
+      SELECT
+        id, user_id, activity_type, duration_minutes, activity_date, notes,
+        'manual', created_at, updated_at
+      FROM activity_logs_old
+    `);
+    await db.execute('DROP TABLE activity_logs_old');
+  } else if (!hasSourceColumn) {
+    await db.execute("ALTER TABLE activity_logs ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'");
+  }
+
   await db.execute({
     sql: 'CREATE INDEX IF NOT EXISTS idx_activity_logs_user_date ON activity_logs(user_id, activity_date)'
   });
   await db.execute({
     sql: 'CREATE INDEX IF NOT EXISTS idx_activity_logs_user_type ON activity_logs(user_id, activity_type)'
+  });
+  await db.execute({
+    sql: 'CREATE INDEX IF NOT EXISTS idx_activity_logs_user_source_date ON activity_logs(user_id, source, activity_date)'
   });
   activityLogsTableReady = true;
 }
@@ -1143,9 +1176,12 @@ function mapActivityLog(row: Record<string, unknown>): ActivityLog {
     id: Number(row.id),
     user_id: String(row.user_id),
     activity_type: String(row.activity_type),
-    duration_minutes: Number(row.duration_minutes),
+    duration_minutes: row.duration_minutes === null || row.duration_minutes === undefined
+      ? null
+      : Number(row.duration_minutes),
     activity_date: String(row.activity_date),
     notes: typeof row.notes === 'string' ? row.notes : null,
+    source: row.source === 'tile' ? 'tile' : 'manual',
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
   };
@@ -1154,9 +1190,10 @@ function mapActivityLog(row: Record<string, unknown>): ActivityLog {
 export async function createActivityLog(data: {
   userId: string;
   activityType: string;
-  durationMinutes: number;
+  durationMinutes?: number | null;
   activityDate: string;
   notes?: string | null;
+  source?: ActivityLogSource;
 }): Promise<ActivityLog> {
   await ensureActivityLogsTable();
   const db = getDatabase();
@@ -1168,16 +1205,18 @@ export async function createActivityLog(data: {
         duration_minutes,
         activity_date,
         notes,
+        source,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
     `,
     args: [
       data.userId,
       data.activityType,
-      data.durationMinutes,
+      data.durationMinutes ?? null,
       data.activityDate,
       data.notes ?? null,
+      data.source ?? 'manual',
     ]
   });
 
@@ -1206,6 +1245,128 @@ export async function listActivityLogs(
     args: [userId, boundedLimit]
   });
   return result.rows.map((row) => mapActivityLog(row as Record<string, unknown>));
+}
+
+/**
+ * Activity rows for a single calendar day. `day` is a YYYY-MM-DD string compared
+ * against the date portion of the stored ISO `activity_date`, which the API
+ * normalizes to noon UTC so it cannot slip across a day boundary.
+ */
+export async function listActivityLogsForDay(
+  userId: string,
+  day: string
+): Promise<ActivityLog[]> {
+  await ensureActivityLogsTable();
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      SELECT *
+      FROM activity_logs
+      WHERE user_id = ? AND substr(activity_date, 1, 10) = ?
+      ORDER BY created_at ASC, id ASC
+    `,
+    args: [userId, day]
+  });
+  return result.rows.map((row) => mapActivityLog(row as Record<string, unknown>));
+}
+
+/**
+ * Reconciles the tile picker's selection for one day: inserts newly selected
+ * activities and removes deselected ones.
+ *
+ * Only `source = 'tile'` rows are deleted, so a timed entry created from the
+ * detailed form is never destroyed by tapping tiles — that separation is the
+ * whole reason the `source` column exists.
+ */
+export async function replaceTileActivityLogsForDay(data: {
+  userId: string;
+  day: string;
+  activityDate: string;
+  entries: Array<{ activityType: string; notes?: string | null }>;
+}): Promise<ActivityLog[]> {
+  await ensureActivityLogsTable();
+  const db = getDatabase();
+
+  const existing = await db.execute({
+    sql: `
+      SELECT *
+      FROM activity_logs
+      WHERE user_id = ? AND substr(activity_date, 1, 10) = ? AND source = 'tile'
+    `,
+    args: [data.userId, data.day]
+  });
+  const existingRows = existing.rows.map((row) => mapActivityLog(row as Record<string, unknown>));
+
+  const desired = new Map(data.entries.map((entry) => [entry.activityType, entry.notes ?? null]));
+  const keptIds: number[] = [];
+  const removedIds: number[] = [];
+
+  for (const row of existingRows) {
+    if (!desired.has(row.activity_type)) {
+      removedIds.push(row.id);
+      continue;
+    }
+    keptIds.push(row.id);
+  }
+
+  const statements: Array<{ sql: string; args: InArgs }> = [];
+
+  for (const id of removedIds) {
+    statements.push({
+      sql: 'DELETE FROM activity_logs WHERE id = ? AND user_id = ?',
+      args: [id, data.userId]
+    });
+  }
+
+  // Notes can change without the activity itself changing ("Which class?"), so
+  // kept rows are refreshed rather than left stale.
+  for (const row of existingRows) {
+    if (!keptIds.includes(row.id)) continue;
+    const nextNotes = desired.get(row.activity_type) ?? null;
+    if (nextNotes === row.notes) continue;
+    statements.push({
+      sql: `UPDATE activity_logs SET notes = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?`,
+      args: [nextNotes, row.id, data.userId]
+    });
+  }
+
+  const existingTypes = new Set(existingRows.map((row) => row.activity_type));
+  for (const entry of data.entries) {
+    if (existingTypes.has(entry.activityType)) continue;
+    statements.push({
+      sql: `
+        INSERT INTO activity_logs (
+          user_id, activity_type, duration_minutes, activity_date, notes, source, updated_at
+        )
+        VALUES (?, ?, NULL, ?, ?, 'tile', datetime('now'))
+      `,
+      args: [data.userId, entry.activityType, data.activityDate, entry.notes ?? null]
+    });
+  }
+
+  if (statements.length > 0) {
+    await db.batch(statements, 'write');
+  }
+
+  return listActivityLogsForDay(data.userId, data.day);
+}
+
+/**
+ * Whether the day already has a completed Gymmer workout session. The
+ * strength-training tile hides itself on such days to avoid double-logging.
+ */
+export async function hasWorkoutSessionOnDay(userId: string, day: string): Promise<boolean> {
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      SELECT 1
+      FROM workout_sessions
+      WHERE user_id = ? AND substr(date_completed, 1, 10) = ?
+      LIMIT 1
+    `,
+    args: [userId, day]
+  });
+  return result.rows.length > 0;
 }
 
 export async function deleteActivityLog(userId: string, activityId: number): Promise<boolean> {
@@ -2209,6 +2370,34 @@ export async function disablePushSubscription(
     args: [userId, endpoint]
   });
   return true;
+}
+
+/**
+ * Push subscription state for one user, used to tell "reminders were never
+ * enabled" apart from "the push service expired this device's subscription and
+ * reminders silently stopped".
+ */
+export async function getPushSubscriptionStateForUser(userId: string): Promise<{
+  hasSubscription: boolean;
+  hasEnabledSubscription: boolean;
+}> {
+  await ensurePushSubscriptionsTable();
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: `
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS enabled_total
+      FROM push_subscriptions
+      WHERE user_id = ?
+    `,
+    args: [userId]
+  });
+  const row = result.rows[0] as Record<string, unknown> | undefined;
+  return {
+    hasSubscription: Number(row?.total ?? 0) > 0,
+    hasEnabledSubscription: Number(row?.enabled_total ?? 0) > 0,
+  };
 }
 
 export async function listEnabledPushSubscriptions(): Promise<PushSubscriptionRecord[]> {

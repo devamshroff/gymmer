@@ -105,8 +105,8 @@ export async function GET(request: NextRequest) {
     attempted += 1;
     try {
       const payload = JSON.stringify({
-        title: 'Did you do any cardio today?',
-        body: 'Log yoga, biking, running, soccer, or any other activity.',
+        title: 'What did you end up doing today?',
+        body: 'Tap to log what you did.',
         url: `/activities?date=${encodeURIComponent(due.localDate)}`,
         tag: 'cardio-activity-reminder',
       });

@@ -26,7 +26,7 @@ This file is a concise, code-backed reference for how Temple’s web app is stru
 - **Nutrition targets:** `apps/web/lib/nutrition-targets.ts` hardcodes the current daily nutrition targets.
 - **Shared UI:** `apps/web/app/components/*`.
 - **State + caching:** localStorage and sessionStorage for workout state and caching (details below).
-- **Standalone activity logs:** Timed cardio/sports/classes live in the user-owned `activity_logs` table and are managed outside workout sessions.
+- **Standalone activity logs:** Cardio, sports, classes, rehab, stretching, and rest days live in the user-owned `activity_logs` table and are managed outside workout sessions. Duration is optional.
 - **Nommer:** Pantry foods, food logs, bodyweight entries, and combos live in user-owned nutrition tables and are managed from `/nutrition`; Claude-backed meal estimates can be parsed, edited, logged, and optionally saved into inventory.
 - **PWA shell + reminders:** manifest route in `apps/web/app/manifest.ts`, bootstrap in `apps/web/app/components/PwaBootstrap.tsx`, install/offline banner in `apps/web/app/components/PwaStatusBanner.tsx`, offline fallback in `apps/web/app/offline/page.tsx`, service worker in `apps/web/public/sw.js`, and Web Push cardio reminders through `push_subscriptions`.
 
@@ -56,7 +56,7 @@ This file is a concise, code-backed reference for how Temple’s web app is stru
 ### User Profile + Settings + Goals
 - **UI:** `apps/web/app/profile/page.tsx`, `apps/web/app/settings/page.tsx`
 - **API:** `apps/web/app/api/user/route.ts`, `apps/web/app/api/user/settings/route.ts`, `apps/web/app/api/goals/route.ts`
-- **Analytics:** `apps/web/app/api/profile/analytics/route.ts` (calendar + progress summaries)
+- **Analytics:** `apps/web/app/api/profile/analytics/route.ts` (calendar + progress summaries). The calendar merges `workout_sessions` and `activity_logs`: workout days render green, activity-only days render blue, and each cell's tooltip names both.
 - **Core helpers:** `apps/web/lib/units.ts`, `apps/web/lib/metric-utils.ts`
 
 ### Routines (Create, Edit, Import, Browse)
@@ -83,13 +83,18 @@ This file is a concise, code-backed reference for how Temple’s web app is stru
 - **Bootstrap API:** `apps/web/app/api/free-workout/bootstrap/route.ts`
 - **Entry point:** `apps/web/app/page.tsx` (links to the dedicated free-workout setup page)
 
-### Activity Logging (Standalone Cardio/Sports/Classes)
+### Activity Logging (Standalone Cardio/Sports/Classes/Rest)
 - **UI:** `apps/web/app/activities/page.tsx`
 - **API:** `apps/web/app/api/activities/route.ts`
+- **Presets:** `apps/web/lib/activity-types.ts` is the canonical tile list (slug, stored label, icon, exclusivity, detail prompt).
 - **Storage:** `activity_logs` table in `apps/web/lib/db-schema.sql`
-- **Core helpers:** `createActivityLog`, `listActivityLogs`, `deleteActivityLog` in `apps/web/lib/database.ts`
-- **Nightly reminders:** Users opt into browser push reminders from `/activities`. Subscriptions are stored in `push_subscriptions`; `/activities` re-syncs any existing browser push subscription back to the server before showing reminders as enabled. `/api/notifications/cardio-reminder/send` is cron-protected and sends reminders when a subscription's saved timezone reaches 10 PM.
-- **Notes:** This is for timed activities that are not full Gymmer workout sessions, such as yoga classes, biking, running, soccer, swimming, or similar conditioning work. These records are user-scoped and separate from `workout_sessions`, `workout_exercise_logs`, and `workout_cardio_logs`.
+- **Core helpers:** `createActivityLog`, `listActivityLogs`, `listActivityLogsForDay`, `replaceTileActivityLogsForDay`, `deleteActivityLog`, `hasWorkoutSessionOnDay` in `apps/web/lib/database.ts`
+- **Design:** `/activities` is day-first. A tile picker is the primary path: the user picks any number of preset activities for the selected day and saves once. The page also keeps a collapsed "Add with details" form for free-text activities and for recording a duration.
+- **Two sources, one table:** `activity_logs.source` is `'tile'` or `'manual'`. `PUT /api/activities?date=YYYY-MM-DD` reconciles the tile selection for a day — inserting newly picked activities, deleting deselected ones, and refreshing notes — and only ever deletes `source = 'tile'` rows, so a timed entry from the detailed form is never destroyed by tapping tiles. The reconcile is idempotent, so tapping the nightly notification twice does not duplicate rows.
+- **Duration is optional:** `duration_minutes` is nullable. Tile logs record what happened, not how long. `ensureActivityLogsTable` rebuilds a legacy table (SQLite cannot drop `NOT NULL` in place) and backfills `source = 'manual'`.
+- **Tile rules:** `Rest` is mutually exclusive with every other tile. `Other class` collects the class name into `notes` rather than fragmenting `activity_type`. `Strength training` is hidden on days that already have a completed Gymmer workout session, unless it is already selected for that day.
+- **Nightly reminders:** Users opt into browser push reminders from `/activities`. Subscriptions are stored in `push_subscriptions`; `/activities` re-syncs any existing browser push subscription back to the server before showing reminders as enabled. `/api/notifications/cardio-reminder/send` is cron-protected and sends reminders when a subscription's saved timezone reaches 10 PM. The notification asks "What did you end up doing today?" and deep-links to `/activities?date=<local date>`, which seeds the tile picker from what is already logged for that day.
+- **Notes:** These records are user-scoped and separate from `workout_sessions`, `workout_exercise_logs`, and `workout_cardio_logs`. They appear on the `/profile` Workout Calendar alongside workout sessions.
 
 ### Nommer
 - **Gateway:** `/` is the Temple two-choice entry screen. `/workout` contains Gymmer, and `/nutrition` contains Nommer.
@@ -111,7 +116,8 @@ This file is a concise, code-backed reference for how Temple’s web app is stru
 ### PWA Notifications
 - **Client helper:** `apps/web/lib/pwa/push-reminders.ts` handles opt-in, opt-out, and server re-sync for existing browser subscriptions.
 - **Public key API:** `apps/web/app/api/push/public-key/route.ts`
-- **Subscription API:** `apps/web/app/api/push/subscription/route.ts`
+- **Subscription API:** `apps/web/app/api/push/subscription/route.ts` (`GET` reports whether the user still has a subscription row, `POST` upserts and re-enables, `DELETE` disables)
+- **Expiry recovery:** Push services expire subscriptions on their own schedule, and the send route disables a row after a 404/410. Two things keep that from silently killing reminders: `sw.js` handles `pushsubscriptionchange` by re-subscribing and posting the new endpoint to the server, and `/activities` compares the browser's subscription against the server's record so a device that lost its subscription is told reminders stopped instead of just showing "off".
 - **Reminder send API:** `apps/web/app/api/notifications/cardio-reminder/send/route.ts`
 - **Service worker:** `apps/web/public/sw.js` handles `push` and `notificationclick`, opening `/activities`.
 - **Deployment:** Requires Web Push VAPID keys and `CRON_SECRET`. Temple accepts Tether-compatible `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT`, with `WEB_PUSH_*` aliases still supported. An external cron-job.org job calls the send route at 10:00, 10:15, 10:30, and 10:45 PM America/New_York; the endpoint still verifies subscription timezone and dedupes by local date.
@@ -145,6 +151,7 @@ This file is a concise, code-backed reference for how Temple’s web app is stru
 - **Read model:** `apps/web/lib/mcp/progress-export.ts`
 - **Token storage:** `apps/web/lib/mcp/oauth.ts` creates `mcp_oauth_*` tables in Turso/libSQL.
 - **Workout tools:** `get_progress_summary`, `list_workout_sessions`, `get_workout_session`, `get_exercise_progress`, `get_routines_snapshot`, `create_workout_session`
+- **Activity tools:** `list_activity_logs`, `log_activity`. `get_progress_summary` also carries an `activities` rollup (counts, minutes, distinct active days, per-activity leaders) so a connector can see non-lifting days without paging the log.
 - **Nommer tools:** `list_pantry_foods`, `get_nutrition_day`, `get_nutrition_range`, `log_food`, `create_pantry_food`, `log_bodyweight`, `list_combos`, `log_combo`
 - **Notes:** The connector is user-scoped through OAuth access tokens. Write tools require the `gymmer:write` OAuth scope in addition to normal authenticated MCP access. `create_workout_session` creates a completed free-workout session through the same shared save helper as `/api/save-workout`; set weights are stored in pounds (`lbs`), one warmup set maps to the existing warmup columns, up to four working sets map to `set1..set4`, and optional notes are stored in `workout_report`.
 

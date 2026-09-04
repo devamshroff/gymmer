@@ -49,7 +49,7 @@ describe('push reminder helpers', () => {
 
     const result = await syncExistingCardioReminderSubscription();
 
-    expect(result).toEqual({ ok: true, synced: true });
+    expect(result).toEqual({ ok: true, synced: true, hadServerSubscription: true });
     expect(fetchMock).toHaveBeenCalledWith('/api/push/subscription', expect.objectContaining({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -68,14 +68,35 @@ describe('push reminder helpers', () => {
     expect(body.timezone.length).toBeGreaterThan(0);
   });
 
-  it('does not call the server when the browser has no subscription', async () => {
+  it('does not save anything when the browser has no subscription', async () => {
     stubPushSupport(null);
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ hasSubscription: false, hasEnabledSubscription: false }),
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await syncExistingCardioReminderSubscription();
 
-    expect(result).toEqual({ ok: true, synced: false });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: true, synced: false, hadServerSubscription: false });
+    // It reads subscription state to report expiry, but never writes.
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/push/subscription', expect.objectContaining({
+      method: 'POST',
+    }));
+  });
+
+  it('reports an expired subscription when the server still has a record', async () => {
+    stubPushSupport(null);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ hasSubscription: true, hasEnabledSubscription: false }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await syncExistingCardioReminderSubscription();
+
+    // The push service dropped this device's subscription. Surfacing that is
+    // what stops nightly reminders from failing silently.
+    expect(result).toEqual({ ok: true, synced: false, hadServerSubscription: true });
   });
 });

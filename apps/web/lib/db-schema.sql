@@ -114,9 +114,13 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,
   activity_type TEXT NOT NULL,
-  duration_minutes INTEGER NOT NULL,
+  -- Nullable: tile-logged activities record what happened, not how long.
+  duration_minutes INTEGER,
   activity_date TEXT NOT NULL,
   notes TEXT,
+  -- 'tile' rows come from the daily activity picker and are the only rows the
+  -- day reconcile endpoint may delete. 'manual' rows come from the detailed form.
+  source TEXT NOT NULL DEFAULT 'manual',
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -124,6 +128,7 @@ CREATE TABLE IF NOT EXISTS activity_logs (
 
 CREATE INDEX IF NOT EXISTS idx_activity_logs_user_date ON activity_logs(user_id, activity_date);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_user_type ON activity_logs(user_id, activity_type);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_user_source_date ON activity_logs(user_id, source, activity_date);
 
 -- Browser push subscriptions for nightly activity reminders.
 CREATE TABLE IF NOT EXISTS push_subscriptions (

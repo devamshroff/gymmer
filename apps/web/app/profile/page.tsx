@@ -25,6 +25,26 @@ type ProgressLeader = {
   lastPerformed: string | null;
 };
 
+/**
+ * Calendar cells carry both workout sessions and standalone activities, so the
+ * tooltip has to name whichever are present rather than always saying workouts.
+ */
+function buildCalendarDayTitle(
+  workoutCount: number,
+  workoutNames: string[],
+  activityNames: string[]
+): string {
+  const parts: string[] = [];
+  if (workoutCount > 0) {
+    const names = workoutNames.slice(0, 3).join(', ');
+    parts.push(`${workoutCount} workout${workoutCount > 1 ? 's' : ''}${names ? `: ${names}` : ''}`);
+  }
+  if (activityNames.length > 0) {
+    parts.push(`Activities: ${activityNames.slice(0, 4).join(', ')}`);
+  }
+  return parts.length > 0 ? parts.join(' | ') : 'Nothing logged';
+}
+
 type AnalyticsData = {
   rangeDays: number;
   calendar: {
@@ -35,6 +55,7 @@ type AnalyticsData = {
       date: string;
       count: number;
       workoutNames: string[];
+      activityNames: string[];
     }>;
   };
   calendarPrev: {
@@ -45,6 +66,7 @@ type AnalyticsData = {
       date: string;
       count: number;
       workoutNames: string[];
+      activityNames: string[];
     }>;
   };
   summary: {
@@ -364,30 +386,48 @@ export default function ProfilePage() {
                       ))}
                       {analytics.calendar.days.map((day) => {
                         const hasWorkouts = day.count > 0;
+                        const activityNames = day.activityNames || [];
+                        const hasActivities = activityNames.length > 0;
                         const dayNumber = Number(day.date.slice(-2));
-                        const names = day.workoutNames.slice(0, 3).join(', ');
                         return (
                           <div
                             key={day.date}
-                            title={names ? `${day.count} workout${day.count > 1 ? 's' : ''}: ${names}` : 'No workouts'}
+                            data-testid={`calendar-day-${day.date}`}
+                            data-has-activity={hasActivities ? 'true' : 'false'}
+                            title={buildCalendarDayTitle(day.count, day.workoutNames, activityNames)}
                             className={[
                               'rounded-md border px-2 py-2 text-xs transition-colors',
                               hasWorkouts
                                 ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
-                                : 'border-zinc-800 bg-zinc-950/40 text-zinc-500'
+                                : hasActivities
+                                  ? 'border-sky-500/40 bg-sky-500/10 text-sky-100'
+                                  : 'border-zinc-800 bg-zinc-950/40 text-zinc-500'
                             ].join(' ')}
                           >
                             <div className="flex items-center justify-between">
                               <span className="font-medium">{dayNumber}</span>
-                              {hasWorkouts && (
-                                <span className="text-[10px] font-semibold text-emerald-300">
-                                  {day.count}
-                                </span>
-                              )}
+                              <span className="flex items-center gap-1">
+                                {hasActivities && (
+                                  <span
+                                    aria-hidden
+                                    className="inline-block h-1.5 w-1.5 rounded-full bg-sky-400"
+                                  />
+                                )}
+                                {hasWorkouts && (
+                                  <span className="text-[10px] font-semibold text-emerald-300">
+                                    {day.count}
+                                  </span>
+                                )}
+                              </span>
                             </div>
-                            {hasWorkouts && (
-                              <div className="mt-1 truncate text-[10px] text-emerald-200/80">
-                                {day.workoutNames[0]}
+                            {(hasWorkouts || hasActivities) && (
+                              <div
+                                className={[
+                                  'mt-1 truncate text-[10px]',
+                                  hasWorkouts ? 'text-emerald-200/80' : 'text-sky-200/80'
+                                ].join(' ')}
+                              >
+                                {hasWorkouts ? day.workoutNames[0] : activityNames[0]}
                               </div>
                             )}
                           </div>
@@ -405,30 +445,46 @@ export default function ProfilePage() {
                       ))}
                       {analytics.calendarPrev.days.map((day) => {
                         const hasWorkouts = day.count > 0;
+                        const activityNames = day.activityNames || [];
+                        const hasActivities = activityNames.length > 0;
                         const dayNumber = Number(day.date.slice(-2));
-                        const names = day.workoutNames.slice(0, 3).join(', ');
                         return (
                           <div
                             key={`prev-${day.date}`}
-                            title={names ? `${day.count} workout${day.count > 1 ? 's' : ''}: ${names}` : 'No workouts'}
+                            title={buildCalendarDayTitle(day.count, day.workoutNames, activityNames)}
                             className={[
                               'rounded-md border px-2 py-2 text-xs transition-colors',
                               hasWorkouts
                                 ? 'border-emerald-500/25 bg-emerald-500/5 text-emerald-100'
-                                : 'border-zinc-800 bg-zinc-950/40 text-zinc-500'
+                                : hasActivities
+                                  ? 'border-sky-500/25 bg-sky-500/5 text-sky-100'
+                                  : 'border-zinc-800 bg-zinc-950/40 text-zinc-500'
                             ].join(' ')}
                           >
                             <div className="flex items-center justify-between">
                               <span className="font-medium">{dayNumber}</span>
-                              {hasWorkouts && (
-                                <span className="text-[10px] font-semibold text-emerald-300/80">
-                                  {day.count}
-                                </span>
-                              )}
+                              <span className="flex items-center gap-1">
+                                {hasActivities && (
+                                  <span
+                                    aria-hidden
+                                    className="inline-block h-1.5 w-1.5 rounded-full bg-sky-400/80"
+                                  />
+                                )}
+                                {hasWorkouts && (
+                                  <span className="text-[10px] font-semibold text-emerald-300/80">
+                                    {day.count}
+                                  </span>
+                                )}
+                              </span>
                             </div>
-                            {hasWorkouts && (
-                              <div className="mt-1 truncate text-[10px] text-emerald-200/70">
-                                {day.workoutNames[0]}
+                            {(hasWorkouts || hasActivities) && (
+                              <div
+                                className={[
+                                  'mt-1 truncate text-[10px]',
+                                  hasWorkouts ? 'text-emerald-200/70' : 'text-sky-200/70'
+                                ].join(' ')}
+                              >
+                                {hasWorkouts ? day.workoutNames[0] : activityNames[0]}
                               </div>
                             )}
                           </div>

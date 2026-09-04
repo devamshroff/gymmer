@@ -13,8 +13,8 @@
 - Special routes: 2
 - API routes: 39
 - Shared components: 19
-- Library modules: 34
-- Unit tests: 31
+- Library modules: 35
+- Unit tests: 33
 - E2E specs: 19
 
 ## Key Config Files
@@ -145,6 +145,7 @@
 
 ### root
 - `apps/web/lib/active-routines.ts`
+- `apps/web/lib/activity-types.ts`
 - `apps/web/lib/architecture-index.ts`
 - `apps/web/lib/auth-utils.ts`
 - `apps/web/lib/claude.ts`
@@ -182,11 +183,13 @@
 - `apps/web/__tests__/components/WorkoutNavHeader.test.tsx`
 - `apps/web/__tests__/lib/active-routines.test.ts`
 - `apps/web/__tests__/lib/activity-logs.test.ts`
+- `apps/web/__tests__/lib/activity-types.test.ts`
 - `apps/web/__tests__/lib/architecture-index.test.ts`
 - `apps/web/__tests__/lib/exercise-helpers.test.ts`
 - `apps/web/__tests__/lib/exercise-history.test.ts`
 - `apps/web/__tests__/lib/form-tips.test.ts`
 - `apps/web/__tests__/lib/free-workout.test.ts`
+- `apps/web/__tests__/lib/mcp-activity-export.test.ts`
 - `apps/web/__tests__/lib/mcp-oauth.test.ts`
 - `apps/web/__tests__/lib/mcp-progress-export.test.ts`
 - `apps/web/__tests__/lib/metric-utils.test.ts`
@@ -233,4 +236,5 @@
 - `docs/adr/0001-web-app-source-of-truth.md`
 - `docs/adr/0002-agent-context-and-architecture-index.md`
 - `docs/adr/0003-remote-mcp-progress-connector.md`
+- `docs/adr/0004-daily-activity-tile-logging.md`
 

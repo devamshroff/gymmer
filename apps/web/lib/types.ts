@@ -155,13 +155,21 @@ export interface WorkoutCardioLog {
   created_at: string;
 }
 
+/**
+ * 'tile' rows come from the daily activity picker on /activities and carry no
+ * duration. 'manual' rows come from the detailed form and may be timed.
+ */
+export type ActivityLogSource = 'tile' | 'manual';
+
 export interface ActivityLog {
   id: number;
   user_id: string;
   activity_type: string;
-  duration_minutes: number;
+  /** Null for tile-logged activities, which record what happened, not how long. */
+  duration_minutes: number | null;
   activity_date: string;
   notes: string | null;
+  source: ActivityLogSource;
   created_at: string;
   updated_at: string;
 }

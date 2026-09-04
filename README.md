@@ -43,7 +43,7 @@ bun run docs:architecture
 - Gymmer is maintained as a web-only app in this repo.
 - Environment files live in `apps/web` (e.g. `apps/web/.env.local`).
 - You can still run commands directly inside `apps/web` if you prefer.
-- Nightly activity reminders use Web Push. Gymmer accepts the Tether-style `VAPID_*` keys, or `WEB_PUSH_*` aliases, plus `CRON_SECRET`; the production scheduler is a daily 10 PM America/New_York cron-job.org job.
+- Nightly activity reminders use Web Push. At 10 PM local time the reminder asks what you did that day and opens `/activities` on that date, where a tile picker logs activities without requiring a duration. Gymmer accepts the Tether-style `VAPID_*` keys, or `WEB_PUSH_*` aliases, plus `CRON_SECRET`; the production scheduler is a daily 10 PM America/New_York cron-job.org job.
 
 ## Remote MCP Connector
 

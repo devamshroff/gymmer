@@ -17,3 +17,5 @@ Guidelines:
 Current ADRs:
 - `0001-web-app-source-of-truth.md`
 - `0002-agent-context-and-architecture-index.md`
+- `0003-remote-mcp-progress-connector.md`
+- `0004-daily-activity-tile-logging.md`

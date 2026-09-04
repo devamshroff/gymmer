@@ -8,6 +8,8 @@ type CalendarDayEntry = {
   date: string;
   count: number;
   workoutNames: string[];
+  /** Standalone activity logs (runs, yoga, rest) recorded on this day. */
+  activityNames: string[];
 };
 
 type CalendarPayload = {
@@ -142,6 +144,32 @@ export async function GET(request: NextRequest) {
       args: [user.id, prevMonthStartIso, prevMonthEndIso]
     });
 
+    // Standalone activities share the calendar with workout sessions so a day
+    // spent running or resting is not rendered as an empty day.
+    const monthActivitiesResult = await db.execute({
+      sql: `
+        SELECT activity_type, activity_date
+        FROM activity_logs
+        WHERE user_id = ?
+          AND activity_date >= ?
+          AND activity_date < ?
+        ORDER BY activity_date ASC
+      `,
+      args: [user.id, monthStartIso, monthEndIso]
+    });
+
+    const prevMonthActivitiesResult = await db.execute({
+      sql: `
+        SELECT activity_type, activity_date
+        FROM activity_logs
+        WHERE user_id = ?
+          AND activity_date >= ?
+          AND activity_date < ?
+        ORDER BY activity_date ASC
+      `,
+      args: [user.id, prevMonthStartIso, prevMonthEndIso]
+    });
+
     const exerciseLogsResult = await db.execute({
       sql: `
         SELECT
@@ -251,6 +279,27 @@ export async function GET(request: NextRequest) {
       prevDayWorkouts.get(day)?.add(session.workout_plan_name);
     }
 
+    const dayActivities = new Map<string, Set<string>>();
+    const prevDayActivities = new Map<string, Set<string>>();
+
+    const collectActivities = (
+      rows: unknown[],
+      target: Map<string, Set<string>>
+    ) => {
+      for (const row of rows) {
+        const record = row as Record<string, unknown>;
+        const activityType = asString(record.activity_type);
+        const activityDate = asString(record.activity_date);
+        if (!activityType || !activityDate) continue;
+        const day = toDayString(activityDate);
+        if (!target.has(day)) target.set(day, new Set());
+        target.get(day)?.add(activityType);
+      }
+    };
+
+    collectActivities(monthActivitiesResult.rows, dayActivities);
+    collectActivities(prevMonthActivitiesResult.rows, prevDayActivities);
+
     const trendDays = buildDateRange(rangeStart, rangeDays);
     const trend = trendDays.map((day) => ({ day, count: dayCounts.get(day) || 0 }));
 
@@ -277,7 +326,12 @@ export async function GET(request: NextRequest) {
       }))
       .sort((a, b) => b.count - a.count || b.lastCompleted.localeCompare(a.lastCompleted));
 
-    const buildCalendar = (start: Date, dayCounts: Map<string, number>, dayNames: Map<string, Set<string>>): CalendarPayload => {
+    const buildCalendar = (
+      start: Date,
+      dayCounts: Map<string, number>,
+      dayNames: Map<string, Set<string>>,
+      activityNames: Map<string, Set<string>>
+    ): CalendarPayload => {
       const calendarDays: CalendarDayEntry[] = [];
       const monthDays = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate();
       for (let day = 1; day <= monthDays; day += 1) {
@@ -288,7 +342,8 @@ export async function GET(request: NextRequest) {
         calendarDays.push({
           date: key,
           count,
-          workoutNames: workouts
+          workoutNames: workouts,
+          activityNames: Array.from(activityNames.get(key) || [])
         });
       }
       return {
@@ -299,8 +354,13 @@ export async function GET(request: NextRequest) {
       };
     };
 
-    const calendar = buildCalendar(monthStart, dayWorkoutCounts, dayWorkouts);
-    const calendarPrev = buildCalendar(prevMonthStart, prevDayWorkoutCounts, prevDayWorkouts);
+    const calendar = buildCalendar(monthStart, dayWorkoutCounts, dayWorkouts, dayActivities);
+    const calendarPrev = buildCalendar(
+      prevMonthStart,
+      prevDayWorkoutCounts,
+      prevDayWorkouts,
+      prevDayActivities
+    );
 
     const exerciseRows = exerciseLogsResult.rows.map((row) => ({
       date_completed: asString((row as any).date_completed),

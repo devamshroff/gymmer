@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-utils';
-import { disablePushSubscription, upsertPushSubscription } from '@/lib/database';
+import {
+  disablePushSubscription,
+  getPushSubscriptionStateForUser,
+  upsertPushSubscription,
+} from '@/lib/database';
 
 type PushSubscriptionPayload = {
   endpoint?: unknown;
@@ -18,6 +22,28 @@ function normalizeTimezone(value: unknown): string {
     return timezone;
   } catch {
     return 'UTC';
+  }
+}
+
+/**
+ * Reports whether the server still holds a push subscription for this user, so
+ * the client can distinguish "never enabled" from "expired and silently
+ * stopped" and prompt the user to re-enable.
+ */
+export async function GET(request: NextRequest) {
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) return authResult.error;
+  const { user } = authResult;
+
+  try {
+    const state = await getPushSubscriptionStateForUser(user.id);
+    return NextResponse.json(state);
+  } catch (error) {
+    console.error('Error reading push subscription state:', error);
+    return NextResponse.json(
+      { error: 'Failed to read push subscription state' },
+      { status: 500 }
+    );
   }
 }
 

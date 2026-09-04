@@ -1,6 +1,7 @@
 import { createMcpHandler, getPublicOrigin, withMcpAuth } from 'mcp-handler';
 import { z } from 'zod';
 import {
+  createActivityLog,
   createFoodLogEntry,
   createPantryFood,
   getNutritionDay,
@@ -19,8 +20,10 @@ import {
   getMcpProgressSummary,
   getMcpRoutinesSnapshot,
   getMcpWorkoutSession,
+  listMcpActivityLogs,
   listMcpWorkoutSessions,
 } from '@/lib/mcp/progress-export';
+import { ACTIVITY_PRESETS } from '@/lib/activity-types';
 import { verifyMcpAccessToken } from '@/lib/mcp/oauth';
 
 export const runtime = 'nodejs';
@@ -403,6 +406,58 @@ const mcpHandler = createMcpHandler(
           overrides,
         });
         return jsonContent(data);
+      }
+    );
+
+    registerTool(
+      'list_activity_logs',
+      {
+        title: 'List Gymmer activity logs',
+        description: 'List standalone activity logs (runs, yoga, stretches, rehab, classes, rest days) for the authenticated Temple user within a date range. These are recorded outside workout sessions, so a day with only activities has no matching entry in list_workout_sessions. Tile-logged activities carry no duration by design; durationMinutes is null for them. Results are paginated with a cursor.',
+        inputSchema: {
+          ...dateRangeInput,
+          limit: z.number().int().min(1).max(50).optional(),
+          cursor: z.string().optional().describe('Pagination cursor returned by the previous call.'),
+        },
+      },
+      async (args, extra) => {
+        const data = await listMcpActivityLogs(getUserId(extra), {
+          from: optionalString(args, 'from'),
+          to: optionalString(args, 'to'),
+          limit: optionalNumber(args, 'limit'),
+          cursor: optionalString(args, 'cursor'),
+        });
+        return jsonContent(data);
+      }
+    );
+
+    registerTool(
+      'log_activity',
+      {
+        title: 'Log a Gymmer activity',
+        description: `Record a standalone activity for the authenticated Temple user on a given date. Use this for movement that is not a full Gymmer workout session. Duration is optional: omit it to record only that the activity happened, which matches how the app's daily tile picker logs. The app's canonical activity names are: ${ACTIVITY_PRESETS.map((preset) => preset.label).join(', ')}. Prefer one of those exact names so entries aggregate cleanly, or pass any other name for something not covered. Requires gymmer:write.`,
+        inputSchema: {
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Activity date in YYYY-MM-DD format. Stored at noon UTC for that date.'),
+          activity: z.string().min(1).max(80).describe('Activity name, e.g. "Ran", "Yoga", "Rest".'),
+          duration_minutes: z.number().int().min(1).max(1440).optional().describe('Optional duration. Omit when only the fact of the activity matters.'),
+          notes: z.string().min(1).max(500).optional(),
+        },
+      },
+      async (args, extra) => {
+        requireWriteScope(extra);
+        const date = optionalString(args, 'date');
+        const activity = optionalString(args, 'activity');
+        if (!date || !activity) throw new Error('date and activity are required');
+
+        const data = await createActivityLog({
+          userId: getUserId(extra),
+          activityType: activity.trim(),
+          durationMinutes: optionalNumber(args, 'duration_minutes') ?? null,
+          activityDate: new Date(`${date}T12:00:00.000Z`).toISOString(),
+          notes: optionalString(args, 'notes') ?? null,
+          source: 'manual',
+        });
+        return jsonContent({ activity: data });
       }
     );
   },

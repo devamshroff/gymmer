@@ -98,6 +98,9 @@ describe('cardio reminder send route', () => {
     expect(mockSendNotification).toHaveBeenCalledTimes(1);
     const payload = JSON.parse(mockSendNotification.mock.calls[0][1]);
     expect(payload.url).toBe('/activities?date=2026-05-26');
+    // The reminder asks what the user did, not specifically about cardio.
+    expect(payload.title).toBe('What did you end up doing today?');
+    expect(payload.body).toBe('Tap to log what you did.');
     expect(mockMarkCardioReminderSent).toHaveBeenCalledWith(1, '2026-05-26');
   });
 

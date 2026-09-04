@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'gymmer-pwa-v4';
+const CACHE_VERSION = 'gymmer-pwa-v5';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const OFFLINE_URL = '/offline';
@@ -116,9 +116,9 @@ self.addEventListener('push', (event) => {
     payload = {};
   }
 
-  const title = payload.title || 'Did you do any cardio today?';
+  const title = payload.title || 'What did you end up doing today?';
   const options = {
-    body: payload.body || 'Log yoga, biking, running, soccer, or any other activity.',
+    body: payload.body || 'Tap to log what you did.',
     tag: payload.tag || 'cardio-activity-reminder',
     data: {
       url: payload.url || ACTIVITY_LOG_URL,
@@ -128,6 +128,36 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Push services expire subscriptions on their own schedule (Apple does this
+// routinely). Without re-subscribing here the subscription silently dies, the
+// send route disables the row after a 410, and nightly reminders stop with no
+// visible failure. Re-subscribe with the same key and push the new endpoint to
+// the server.
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil((async () => {
+    try {
+      const applicationServerKey = event.oldSubscription?.options?.applicationServerKey;
+      if (!applicationServerKey) return;
+
+      const subscription = await self.registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey,
+      });
+
+      await fetch('/api/push/subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subscription: subscription.toJSON(),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to renew push subscription:', error);
+    }
+  })());
 });
 
 self.addEventListener('notificationclick', (event) => {

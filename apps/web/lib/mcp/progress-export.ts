@@ -355,6 +355,9 @@ export async function getMcpProgressSummary(userId: string, input: DateRangeInpu
     },
     recentSessions: sessions.slice(-10).reverse(),
     latestReports,
+    // Standalone activities are not workout sessions, so they are reported
+    // alongside rather than folded into the session counts above.
+    activities: await getMcpActivitySummary(userId, input),
   };
 }
 
@@ -652,5 +655,101 @@ export async function getMcpRoutinesSnapshot(userId: string) {
     generatedAt: new Date().toISOString(),
     routineCount: snapshots.length,
     routines: snapshots,
+  };
+}
+
+/**
+ * Standalone activity logs (runs, yoga, rest days, classes) for the MCP
+ * connector. These live outside `workout_sessions`, so without this export a
+ * connector sees only lifting days and concludes nothing else happened.
+ */
+export async function listMcpActivityLogs(userId: string, input: DateRangeInput & {
+  limit?: number | null;
+  cursor?: string | null;
+} = {}) {
+  const range = resolveDateRange(input);
+  const limit = clampLimit(input.limit);
+  const offset = parseCursor(input.cursor);
+  const db = getDatabase();
+
+  const result = await db.execute({
+    sql: `
+      SELECT id, activity_type, activity_date, duration_minutes, notes, source
+      FROM activity_logs
+      WHERE user_id = ?
+        AND activity_date >= ?
+        AND activity_date < ?
+      ORDER BY activity_date DESC, id DESC
+      LIMIT ?
+      OFFSET ?
+    `,
+    args: [userId, range.fromIso, range.toExclusiveIso, limit + 1, offset],
+  });
+
+  const rows = result.rows.slice(0, limit);
+  return {
+    range: { from: range.from, to: range.to, days: range.days },
+    activities: rows.map((row) => ({
+      id: Number((row as DbRow).id),
+      activity: asString((row as DbRow).activity_type),
+      date: asString((row as DbRow).activity_date).slice(0, 10),
+      loggedAt: asString((row as DbRow).activity_date),
+      durationMinutes: asNumber((row as DbRow).duration_minutes),
+      notes: asNullableString((row as DbRow).notes),
+      source: asString((row as DbRow).source) === 'tile' ? 'tile' : 'manual',
+    })),
+    nextCursor: result.rows.length > limit ? String(offset + limit) : null,
+  };
+}
+
+/**
+ * Per-activity and per-day rollup used inside `get_progress_summary` so a
+ * connector can answer "how often did I run last month" without paging the
+ * whole log.
+ */
+export async function getMcpActivitySummary(userId: string, input: DateRangeInput = {}) {
+  const range = resolveDateRange(input);
+  const db = getDatabase();
+
+  const result = await db.execute({
+    sql: `
+      SELECT activity_type, activity_date, duration_minutes
+      FROM activity_logs
+      WHERE user_id = ?
+        AND activity_date >= ?
+        AND activity_date < ?
+      ORDER BY activity_date ASC
+    `,
+    args: [userId, range.fromIso, range.toExclusiveIso],
+  });
+
+  const byActivity = new Map<string, { count: number; totalMinutes: number; lastDate: string }>();
+  const activeDays = new Set<string>();
+
+  for (const row of result.rows) {
+    const activity = asString((row as DbRow).activity_type);
+    const date = asString((row as DbRow).activity_date).slice(0, 10);
+    const minutes = asNumber((row as DbRow).duration_minutes);
+    if (!activity || !date) continue;
+
+    activeDays.add(date);
+    const entry = byActivity.get(activity) || { count: 0, totalMinutes: 0, lastDate: date };
+    entry.count += 1;
+    entry.totalMinutes += minutes ?? 0;
+    if (date > entry.lastDate) entry.lastDate = date;
+    byActivity.set(activity, entry);
+  }
+
+  return {
+    totalLogged: result.rows.length,
+    daysWithActivity: activeDays.size,
+    byActivity: Array.from(byActivity.entries())
+      .map(([activity, stats]) => ({
+        activity,
+        count: stats.count,
+        totalMinutes: stats.totalMinutes,
+        lastDate: stats.lastDate,
+      }))
+      .sort((a, b) => b.count - a.count || b.lastDate.localeCompare(a.lastDate)),
   };
 }
