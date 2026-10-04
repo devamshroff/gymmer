@@ -6,11 +6,13 @@ This is the current set of user flows (page routes) and the e2e specs that cover
 | --- | --- | --- |
 | Home gateway / marketing | `/`, `/workout`, `/what-is-gymmer` | `home-login.spec.ts` |
 | Login screen | `/login` | `home-login.spec.ts` |
+| Sign out (clears device state) | `/settings` | `sign-out.spec.ts` |
 | Profile settings + goals | `/profile` | `profile-flow.spec.ts` |
 | Nommer day log + meal estimates | `/nutrition` | `nutrition.spec.ts` |
 | Daily activity tile logging | `/activities` | `activities.spec.ts` |
 | Activity logging with duration | `/activities` | `activities.spec.ts` |
 | Routines index + create modal | `/routines` | `routines-index.spec.ts` |
+| Routine names unique per user (API) | `/api/routines` | `routine-names-per-user.spec.ts` |
 | Manual routine builder | `/routines/builder` | `routines-builder-flow.spec.ts` |
 | Routine stretch selection | `/routines/[id]/stretches` | `routines-builder-flow.spec.ts` |
 | Routine import (JSON) | `/routines/import` | `routines-import.spec.ts` |

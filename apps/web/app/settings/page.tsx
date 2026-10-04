@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
+import { signOutAndClearDevice } from '@/lib/sign-out';
 import {
   DEFAULT_HEIGHT_UNIT,
   DEFAULT_WEIGHT_UNIT,
@@ -22,6 +24,8 @@ export default function SettingsPage() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
   const [loadError, setLoadError] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+  const { data: session } = useSession();
 
   useEffect(() => {
     async function fetchSettings() {
@@ -105,6 +109,16 @@ export default function SettingsPage() {
       setSaveStatus('error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      await signOutAndClearDevice();
+    } catch (error) {
+      console.error('Error signing out:', error);
+      setSigningOut(false);
     }
   };
 
@@ -240,6 +254,25 @@ export default function SettingsPage() {
               <span className="text-sm text-red-400">Could not save settings.</span>
             )}
           </div>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-zinc-700 bg-zinc-800 p-6">
+          <h2 className="text-lg font-semibold">Account</h2>
+          {session?.user?.email && (
+            <p className="mt-1 text-sm text-zinc-300">
+              Signed in as <span className="text-zinc-100">{session.user.email}</span>
+            </p>
+          )}
+          <p className="mt-2 text-xs text-zinc-400">
+            Signing out clears any in-progress workout on this device and turns off reminders here.
+          </p>
+          <button
+            onClick={handleSignOut}
+            disabled={signingOut}
+            className="mt-4 rounded-lg border border-red-900 bg-red-950 px-4 py-2 text-sm font-semibold text-red-200 transition-colors hover:bg-red-900 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {signingOut ? 'Signing out...' : 'Sign out'}
+          </button>
         </div>
       </div>
     </div>

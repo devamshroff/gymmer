@@ -13,9 +13,9 @@
 - Special routes: 2
 - API routes: 39
 - Shared components: 19
-- Library modules: 35
-- Unit tests: 33
-- E2E specs: 19
+- Library modules: 36
+- Unit tests: 35
+- E2E specs: 21
 
 ## Key Config Files
 - `package.json`
@@ -160,6 +160,7 @@
 - `apps/web/lib/nutrition-targets.ts`
 - `apps/web/lib/session-changes.ts`
 - `apps/web/lib/session-workout.ts`
+- `apps/web/lib/sign-out.ts`
 - `apps/web/lib/stretch-utils.ts`
 - `apps/web/lib/types.ts`
 - `apps/web/lib/units.ts`
@@ -199,8 +200,10 @@
 - `apps/web/__tests__/lib/pwa-install.test.ts`
 - `apps/web/__tests__/lib/pwa-push-reminders.test.ts`
 - `apps/web/__tests__/lib/pwa-update.test.ts`
+- `apps/web/__tests__/lib/routine-name-scope.test.ts`
 - `apps/web/__tests__/lib/session-changes.test.ts`
 - `apps/web/__tests__/lib/session-workout.test.ts`
+- `apps/web/__tests__/lib/sign-out.test.ts`
 - `apps/web/__tests__/lib/username-validation.test.ts`
 - `apps/web/__tests__/lib/workout-autosave-db.test.ts`
 - `apps/web/__tests__/lib/workout-progress.test.ts`
@@ -219,10 +222,12 @@
 - `apps/web/e2e/profile-flow.spec.ts`
 - `apps/web/e2e/pwa-banner.spec.ts`
 - `apps/web/e2e/report-bug.spec.ts`
+- `apps/web/e2e/routine-names-per-user.spec.ts`
 - `apps/web/e2e/routines-builder-flow.spec.ts`
 - `apps/web/e2e/routines-import.spec.ts`
 - `apps/web/e2e/routines-index.spec.ts`
 - `apps/web/e2e/session-changes-review.spec.ts`
+- `apps/web/e2e/sign-out.spec.ts`
 - `apps/web/e2e/workout-extra-sets.spec.ts`
 - `apps/web/e2e/workout-flow.spec.ts`
 - `apps/web/e2e/workout-resume-active.spec.ts`
@@ -237,4 +242,5 @@
 - `docs/adr/0002-agent-context-and-architecture-index.md`
 - `docs/adr/0003-remote-mcp-progress-connector.md`
 - `docs/adr/0004-daily-activity-tile-logging.md`
+- `docs/adr/0005-routine-names-unique-per-user.md`
 

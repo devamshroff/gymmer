@@ -51,7 +51,9 @@ This file is a concise, code-backed reference for how Temple’s web app is stru
 - **UI:** `apps/web/app/login/page.tsx`
 - **Auth config:** `apps/web/auth.ts`
 - **API guard:** `apps/web/lib/auth-utils.ts` (`requireAuth`, E2E bypass via `E2E_TEST=1`)
+- **Sign out:** The Account section of `/settings` calls `signOutAndClearDevice()` in `apps/web/lib/sign-out.ts`. That function turns off this device's push reminders, then clears all localStorage except device preferences (`PWA_INSTALL_DISMISS_KEY`) and all sessionStorage, then calls NextAuth `signOut`. Workout state in browser storage is not partitioned by user, so this step is what stops the next account on the same browser from resuming or autosaving the previous account's workout. Any new device-only localStorage key must be added to `DEVICE_SCOPED_LOCAL_KEYS` or it will be wiped on sign out.
 - **Notes:** Google provider + allowlisted emails (`ALLOWED_EMAILS`). User records are upserted on sign-in.
+- **Multi-user model:** The user ID is the Google email. Every user-owned table is scoped by `user_id`, either directly or through an owned parent such as a routine or workout session. API routes must verify that the caller owns the parent before touching child rows (`routine_exercises`, `routine_*_stretches`, `routine_cardio`), and child-row deletes are also scoped to the parent ID. To add a new user, add their email to `ALLOWED_EMAILS` in the Vercel environment.
 
 ### User Profile + Settings + Goals
 - **UI:** `apps/web/app/profile/page.tsx`, `apps/web/app/settings/page.tsx`
@@ -75,6 +77,7 @@ This file is a concise, code-backed reference for how Temple’s web app is stru
   - Clone/public: `apps/web/app/api/routines/[id]/clone/route.ts`, `apps/web/app/api/routines/public/route.ts`
   - Cardio: `apps/web/app/api/routines/[id]/cardio/route.ts`
 - **Shared UI:** `apps/web/app/components/RoutineEditParts.tsx`, `ExerciseSelector.tsx`, `StretchSelector.tsx`, `SupersetSelector.tsx`
+- **Naming:** Routine names are unique per user (`idx_routines_user_name`), not globally. `ensureRoutineNamesScopedPerUser()` migrates legacy databases using `client.migrate()`, because the routine child tables cascade on delete. See ADR 0005.
 
 ### Free Workout (No Saved Routine)
 - **Design:** Uses the same workout flow as routines but builds a blank plan in memory after a dedicated setup step that captures session mode, warms deterministic history-backed targets for all modes, and only upgrades `Progress` mode with an AI pass in the background.
@@ -179,10 +182,12 @@ Canonical list lives in `apps/web/e2e/flows.md`. Summary below:
 | --- | --- | --- |
 | Home gateway + marketing | `/`, `/workout`, `/what-is-gymmer` | `home-login.spec.ts` |
 | Login | `/login` | `home-login.spec.ts` |
+| Sign out | `/settings` | `sign-out.spec.ts` |
 | Profile + goals + analytics | `/profile` | `profile-flow.spec.ts` |
 | Nommer logging | `/nutrition` | `nutrition.spec.ts` |
 | Activity logging | `/activities` | `activities.spec.ts` |
 | Routines index + create | `/routines` | `routines-index.spec.ts` |
+| Routine names unique per user | `/api/routines` | `routine-names-per-user.spec.ts` |
 | Manual routine builder | `/routines/builder` | `routines-builder-flow.spec.ts` |
 | Routine stretch selection | `/routines/[id]/stretches` | `routines-builder-flow.spec.ts` |
 | Routine import (JSON) | `/routines/import` | `routines-import.spec.ts` |
