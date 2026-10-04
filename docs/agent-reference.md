@@ -116,6 +116,12 @@ This file is a concise, code-backed reference for how Temple’s web app is stru
 - **Gymmer:** Workout pages keep the existing green Gymmer styling.
 - **Nommer:** `/nutrition` follows the same dark shell conventions as Gymmer but uses blue accents instead of green.
 
+### PWA Install Banner
+- **UI:** `apps/web/app/components/PwaStatusBanner.tsx`. Rules live in `apps/web/lib/pwa/install.ts`.
+- **Android/desktop Chrome:** Shows an Install button when the browser fires `beforeinstallprompt`.
+- **iOS:** iOS has no install event, so the banner shows instructions picked by `getIosInstallHint`. Safari gets Share → Add to Home Screen. Chrome, Edge and Firefox on iOS get share-menu instructions. In-app browsers (Instagram, Facebook, WhatsApp, and plain WKWebViews) are told to open the page in Safari, because they cannot install. iPadOS reports a Mac user agent, so it is detected by `navigator.maxTouchPoints`.
+- **Dismiss:** Dismiss is a 14-day snooze (`PWA_INSTALL_SNOOZE_MS`), stored as a timestamp in `PWA_INSTALL_DISMISS_KEY`. The legacy permanent value `'1'` is treated as expired. The banner never shows when the app is already running standalone.
+
 ### PWA Notifications
 - **Client helper:** `apps/web/lib/pwa/push-reminders.ts` handles opt-in, opt-out, and server re-sync for existing browser subscriptions.
 - **Public key API:** `apps/web/app/api/push/public-key/route.ts`

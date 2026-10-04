@@ -6,15 +6,27 @@ const E2E_HEADERS = {
 
 const IOS_SAFARI_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 
+const IOS_INSTAGRAM_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 350.0.0.0 (iPhone15,2; iOS 18_0; en_US)';
+
 async function createIosSafariPage(
   browser: Browser,
-  baseURL: string
+  baseURL: string,
+  options: { userAgent?: string; initialDismissValue?: string } = {}
 ): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({
-    userAgent: IOS_SAFARI_USER_AGENT,
+    userAgent: options.userAgent ?? IOS_SAFARI_USER_AGENT,
     extraHTTPHeaders: E2E_HEADERS,
   });
   const page = await context.newPage();
+
+  if (options.initialDismissValue !== undefined) {
+    await page.addInitScript((value) => {
+      if (!window.sessionStorage.getItem('__seeded_dismiss')) {
+        window.localStorage.setItem('gymmer_pwa_install_dismissed', value);
+        window.sessionStorage.setItem('__seeded_dismiss', '1');
+      }
+    }, options.initialDismissValue);
+  }
 
   await page.addInitScript(() => {
     Object.defineProperty(window.navigator, 'standalone', {
@@ -50,6 +62,41 @@ test('iPhone Safari users see Add to Home Screen instructions', async ({ browser
 
   await expect(
     page.getByText('On iPhone Safari, tap Share, then Add to Home Screen to install Temple.')
+  ).toBeVisible();
+
+  await context.close();
+});
+
+test('a legacy permanent dismissal no longer hides the install hint', async ({ browser, baseURL }) => {
+  const { context, page } = await createIosSafariPage(browser, baseURL!, { initialDismissValue: '1' });
+
+  await expect(
+    page.getByText('On iPhone Safari, tap Share, then Add to Home Screen to install Temple.')
+  ).toBeVisible();
+
+  await context.close();
+});
+
+test('dismissing the install hint snoozes it across reloads', async ({ browser, baseURL }) => {
+  const { context, page } = await createIosSafariPage(browser, baseURL!);
+  const hint = page.getByText('On iPhone Safari, tap Share, then Add to Home Screen to install Temple.');
+
+  await expect(hint).toBeVisible();
+  await page.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(hint).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.getByRole('heading').first()).toBeVisible();
+  await expect(hint).toHaveCount(0);
+
+  await context.close();
+});
+
+test('in-app browser visitors are told to open the page in Safari', async ({ browser, baseURL }) => {
+  const { context, page } = await createIosSafariPage(browser, baseURL!, { userAgent: IOS_INSTAGRAM_USER_AGENT });
+
+  await expect(
+    page.getByText('To install Temple, open this page in Safari, then tap Share and Add to Home Screen.')
   ).toBeVisible();
 
   await context.close();

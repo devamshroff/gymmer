@@ -3,9 +3,11 @@
 import { useEffect, useState } from 'react';
 import {
   getInstallCapability,
+  getIosInstallHint,
+  isInstallBannerSnoozed,
   PWA_INSTALL_DISMISS_KEY,
-  shouldShowIosInstallHint,
 } from '@/lib/pwa/install';
+import type { IosInstallHint } from '@/lib/pwa/install';
 import {
   activateWaitingServiceWorker,
   PWA_UPDATE_ACTIVATED_EVENT,
@@ -20,13 +22,17 @@ type BeforeInstallPromptEvent = Event & {
 
 function readDismissed(): boolean {
   if (typeof window === 'undefined') return false;
-  return window.localStorage.getItem(PWA_INSTALL_DISMISS_KEY) === '1';
+  try {
+    return isInstallBannerSnoozed(window.localStorage.getItem(PWA_INSTALL_DISMISS_KEY));
+  } catch {
+    return false;
+  }
 }
 
 export default function PwaStatusBanner() {
   const [isOnline, setIsOnline] = useState(true);
   const [dismissed, setDismissed] = useState(false);
-  const [iosInstallHint, setIosInstallHint] = useState(false);
+  const [iosInstallHint, setIosInstallHint] = useState<IosInstallHint | null>(null);
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [updateRegistration, setUpdateRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
@@ -36,7 +42,9 @@ export default function PwaStatusBanner() {
 
     setIsOnline(window.navigator.onLine);
     setDismissed(readDismissed());
-    setIosInstallHint(shouldShowIosInstallHint(getInstallCapability(window.navigator.userAgent)));
+    setIosInstallHint(getIosInstallHint(
+      getInstallCapability(window.navigator.userAgent, window.navigator.maxTouchPoints)
+    ));
 
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -46,7 +54,7 @@ export default function PwaStatusBanner() {
     };
     const handleInstalled = () => {
       setInstallPromptEvent(null);
-      setIosInstallHint(false);
+      setIosInstallHint(null);
     };
     const handleUpdateAvailable = (
       event: Event
@@ -78,7 +86,7 @@ export default function PwaStatusBanner() {
   }, []);
 
   const shouldShowUpdate = updateRegistration !== null && !updateDismissed;
-  const shouldShowInstall = !dismissed && (iosInstallHint || installPromptEvent !== null);
+  const shouldShowInstall = !dismissed && (iosInstallHint !== null || installPromptEvent !== null);
 
   if (isOnline && !shouldShowInstall && !shouldShowUpdate) {
     return null;
@@ -97,8 +105,10 @@ export default function PwaStatusBanner() {
   }
 
   function handleDismissInstall() {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(PWA_INSTALL_DISMISS_KEY, '1');
+    try {
+      window.localStorage.setItem(PWA_INSTALL_DISMISS_KEY, String(Date.now()));
+    } catch {
+      // Storage can be unavailable (private mode); the banner just hides for this visit.
     }
     setDismissed(true);
   }
@@ -130,9 +140,17 @@ export default function PwaStatusBanner() {
             </p>
           ) : null}
           {shouldShowInstall ? (
-            iosInstallHint ? (
+            iosInstallHint === 'safari' ? (
               <p className="font-medium text-emerald-200">
                 On iPhone Safari, tap Share, then Add to Home Screen to install Temple.
+              </p>
+            ) : iosInstallHint === 'browser' ? (
+              <p className="font-medium text-emerald-200">
+                Tap Share in your browser, then Add to Home Screen to install Temple.
+              </p>
+            ) : iosInstallHint === 'in-app' ? (
+              <p className="font-medium text-emerald-200">
+                To install Temple, open this page in Safari, then tap Share and Add to Home Screen.
               </p>
             ) : (
               <p className="font-medium text-emerald-200">
