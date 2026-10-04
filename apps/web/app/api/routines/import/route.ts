@@ -1,6 +1,6 @@
 // app/api/routines/import/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { addStretchToRoutine, getDatabase, getUserGoals } from '@/lib/database';
+import { addStretchToRoutine, ensureRoutineNamesScopedPerUser, getDatabase, getUserGoals } from '@/lib/database';
 import { requireAuth } from '@/lib/auth-utils';
 import { generateExerciseInsights, generateStretchInsights } from '@/lib/form-tips';
 import {
@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create routine for this user
+    await ensureRoutineNamesScopedPerUser();
     const routineResult = await db.execute({
       sql: `INSERT INTO routines (name, user_id, description)
             VALUES (?, ?, ?)`,

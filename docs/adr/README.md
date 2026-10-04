@@ -19,3 +19,4 @@ Current ADRs:
 - `0002-agent-context-and-architecture-index.md`
 - `0003-remote-mcp-progress-connector.md`
 - `0004-daily-activity-tile-logging.md`
+- `0005-routine-names-unique-per-user.md`

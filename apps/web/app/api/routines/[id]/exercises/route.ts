@@ -134,7 +134,7 @@ export async function DELETE(
       );
     }
 
-    await removeExerciseFromRoutine(parseInt(exerciseConfigId));
+    await removeExerciseFromRoutine(routineId, parseInt(exerciseConfigId));
 
     return NextResponse.json({ success: true });
   } catch (error) {

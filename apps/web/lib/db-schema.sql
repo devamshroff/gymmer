@@ -258,7 +258,7 @@ CREATE INDEX IF NOT EXISTS idx_exercises_muscle ON exercises(muscle_groups);
 
 CREATE TABLE IF NOT EXISTS routines (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,  -- Unique per user (idx_routines_user_name), not globally
   description TEXT,
   source_file TEXT,
   created_at TEXT DEFAULT (datetime('now')),
@@ -326,6 +326,7 @@ CREATE TABLE IF NOT EXISTS routine_cardio (
 -- Indexes for routines
 CREATE INDEX IF NOT EXISTS idx_routines_user ON routines(user_id);
 CREATE INDEX IF NOT EXISTS idx_routines_public ON routines(is_public);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_routines_user_name ON routines(user_id, name);
 
 -- ============================================================================
 -- Remote MCP OAuth (Claude custom connector)

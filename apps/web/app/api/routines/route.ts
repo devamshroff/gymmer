@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     // Check for UNIQUE constraint violation
     if (error.message && error.message.includes('UNIQUE constraint failed')) {
       return NextResponse.json(
-        { error: `A routine named "${routineName}" already exists. Please choose a different name.` },
+        { error: `You already have a routine named "${routineName}". Please choose a different name.` },
         { status: 409 }
       );
     }

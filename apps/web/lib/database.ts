@@ -33,6 +33,7 @@ let workoutSessionReportColumnReady: boolean | null = null;
 let routineLikeCountColumnReady: boolean | null = null;
 let routineCloneCountColumnReady: boolean | null = null;
 let routineOrderColumnReady: boolean | null = null;
+let routineNameScopeReady: boolean | null = null;
 let routineStretchTablesReady: boolean | null = null;
 let stretchRecommendationCacheReady: boolean | null = null;
 let stretchVersionTableReady: boolean | null = null;
@@ -337,6 +338,52 @@ async function ensureRoutineOrderColumn(): Promise<boolean> {
     routineOrderColumnReady = false;
     return false;
   }
+}
+
+const ROUTINE_NAME_GLOBAL_UNIQUE = /\bname\s+TEXT\s+NOT\s+NULL\s+UNIQUE\b/i;
+const ROUTINE_USER_NAME_INDEX_SQL =
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_routines_user_name ON routines(user_id, name)';
+
+/**
+ * Routine names must be unique per user, not across every account. Legacy
+ * databases declared `name TEXT NOT NULL UNIQUE`, which stops two friends from
+ * both having a "Push Day". SQLite cannot drop a column constraint in place, so
+ * the table is rebuilt from its own DDL (preserving any legacy columns) with
+ * only that UNIQUE removed.
+ *
+ * The rebuild runs through `migrate()` so foreign keys are disabled: the
+ * routine_* child tables cascade on delete, and dropping the old table with
+ * foreign keys on would wipe every routine's exercises, stretches, and cardio.
+ */
+export async function ensureRoutineNamesScopedPerUser(): Promise<void> {
+  if (routineNameScopeReady) return;
+  const db = getDatabase();
+  const result = await db.execute({
+    sql: "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'routines'"
+  });
+  const ddl = (result.rows[0] as { sql?: unknown } | undefined)?.sql;
+
+  if (typeof ddl === 'string' && ROUTINE_NAME_GLOBAL_UNIQUE.test(ddl)) {
+    const rebuildDdl = ddl
+      .replace(ROUTINE_NAME_GLOBAL_UNIQUE, 'name TEXT NOT NULL')
+      .replace(/^CREATE TABLE\s+["`]?routines["`]?/i, 'CREATE TABLE routines_rebuild');
+    if (!rebuildDdl.startsWith('CREATE TABLE routines_rebuild')) {
+      throw new Error('Unexpected routines table definition; refusing to rebuild');
+    }
+    await db.migrate([
+      'DROP TABLE IF EXISTS routines_rebuild',
+      rebuildDdl,
+      'INSERT INTO routines_rebuild SELECT * FROM routines',
+      'DROP TABLE routines',
+      'ALTER TABLE routines_rebuild RENAME TO routines',
+      'CREATE INDEX IF NOT EXISTS idx_routines_user ON routines(user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_routines_public ON routines(is_public)',
+      ROUTINE_USER_NAME_INDEX_SQL,
+    ]);
+  } else {
+    await db.execute({ sql: ROUTINE_USER_NAME_INDEX_SQL });
+  }
+  routineNameScopeReady = true;
 }
 
 async function backfillRoutineOrderForUser(userId: string): Promise<void> {
@@ -2982,6 +3029,7 @@ export async function getPopularSupersetPairs(userId: string, limit: number = 8)
 // Routine CRUD
 export async function createRoutine(name: string, userId: string, isPublic: boolean = true): Promise<number> {
   const db = getDatabase();
+  await ensureRoutineNamesScopedPerUser();
   const orderIndex = await getNextRoutineOrderIndex(userId);
   const result = orderIndex === null
     ? await db.execute({
@@ -3067,6 +3115,7 @@ export async function deleteRoutine(id: number, userId: string): Promise<void> {
 
 export async function updateRoutineName(id: number, newName: string, userId: string): Promise<void> {
   const db = getDatabase();
+  await ensureRoutineNamesScopedPerUser();
 
   // Get the old name first (verify ownership)
   const oldRoutine = await db.execute({
@@ -3154,11 +3203,16 @@ export async function getRoutineExercises(routineId: number): Promise<any[]> {
   return result.rows as any[];
 }
 
-export async function removeExerciseFromRoutine(routineExerciseId: number): Promise<void> {
+export async function removeExerciseFromRoutine(
+  routineId: number,
+  routineExerciseId: number
+): Promise<void> {
   const db = getDatabase();
+  // Scoped to the routine so a caller who owns one routine cannot delete an
+  // exercise row that belongs to someone else's routine.
   await db.execute({
-    sql: 'DELETE FROM routine_exercises WHERE id = ?',
-    args: [routineExerciseId]
+    sql: 'DELETE FROM routine_exercises WHERE id = ? AND routine_id = ?',
+    args: [routineExerciseId, routineId]
   });
 }
 
@@ -3530,6 +3584,7 @@ export async function getFavoritedRoutines(userId: string): Promise<any[]> {
 // Clone a routine to a new user
 export async function cloneRoutine(routineId: number, newUserId: string, newName?: string): Promise<number> {
   const db = getDatabase();
+  await ensureRoutineNamesScopedPerUser();
 
   // Get the original routine
   const original = await db.execute({
