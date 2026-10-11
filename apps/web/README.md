@@ -1,21 +1,13 @@
 # Gymmer Web
 
-## Getting Started
-
-From the repo root, run:
-
-```bash
-bun run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Operational notes for the web app. For first-time setup, local database, environment variables and commands, see the [root README](../../README.md). For a tour of the code, see [docs/codebase-tour.md](../../docs/codebase-tour.md).
 
 ## Remote MCP
 
 The web app exposes a remote MCP endpoint for Claude/custom connectors:
 
 ```
-https://temple-liard.vercel.app/api/mcp
+https://gymmer-liard.vercel.app/api/mcp
 ```
 
 It uses OAuth discovery and authorization-code tokens under:
@@ -72,5 +64,3 @@ bunx vercel --prod --yes
 ```
 
 `vercel.json` forces Bun install/build commands so production matches the repo workflow.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

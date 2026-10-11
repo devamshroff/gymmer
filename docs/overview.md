@@ -12,6 +12,7 @@ Gymmer is a workout tracking app for building routines and flowing through them 
 - `docs/*`: project and contributor documentation
 
 ## Fast Context
+- New to the codebase? `README.md` covers local setup and `docs/codebase-tour.md` explains how the app is put together.
 - Start with `AGENTS.md` for repo rules and testing expectations.
 - Use `docs/agent-reference.md` for the curated architecture summary.
 - Use `docs/architecture-index.md` or `docs/architecture-index.json` for the generated route/API/component/library/test inventory.

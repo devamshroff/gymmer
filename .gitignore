@@ -31,6 +31,9 @@ yarn-error.log*
 !**/.env.example
 **/.env.local
 
+# Local dev database (see README.md)
+**/.local/
+
 # Editors / OS
 .DS_Store
 Thumbs.db
