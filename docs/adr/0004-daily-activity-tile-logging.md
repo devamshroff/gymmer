@@ -24,7 +24,7 @@ Make the daily tile picker the primary logging path on `/activities`, recording 
 - **`duration_minutes` becomes nullable.** SQLite cannot drop a `NOT NULL` constraint in place, so `ensureActivityLogsTable` rebuilds a legacy table and copies rows over.
 - **`activity_logs.source` distinguishes `'tile'` from `'manual'`.** This is the mechanism that lets tile and detailed logging share one table safely.
 - **Day reconcile instead of append.** `PUT /api/activities?date=YYYY-MM-DD` takes the full tile selection for a day and inserts, deletes, and refreshes notes to match. It only ever deletes `source = 'tile'` rows.
-- **Tile behavior rules live with the presets, not the component.** `Rest` is exclusive. `Other class` collects the class name into `notes`. `Strength training` hides on days that already have a completed workout session, unless it is already selected there.
+- **Tile behavior rules live with the presets, not the component.** `Rest` is exclusive. `Other class` collects the class name into `notes`. `Strength training` shows as done and locked on days that already have a completed workout session, unless it is already selected there (amended 2026-10-12: it was originally hidden on those days, which read as the option being missing).
 - **Activities join the calendar and the MCP surface.** `/api/profile/analytics` merges `activity_logs` into both calendar months, and the connector gains `list_activity_logs`, `log_activity`, and an `activities` rollup inside `get_progress_summary`.
 
 ## Consequences
@@ -35,7 +35,7 @@ The `source` column is load-bearing, not decorative. Without it the day reconcil
 
 Canonical labels are now a compatibility surface. Renaming a preset's `label` orphans previously stored rows, which will no longer map back to a tile and will stop seeding the picker. Renaming requires a data migration, not just an edit to the preset list. Slugs, which are what the API accepts, can stay stable independently.
 
-Hiding `Strength training` behind a workout session means the tile grid's contents depend on server state for the selected day. The `hasWorkoutSession` flag is returned by `GET /api/activities?date=`, so the picker cannot render its final shape until that request resolves.
+Tying `Strength training` to a workout session means the tile grid's state depends on server state for the selected day. The `hasWorkoutSession` flag is returned by `GET /api/activities?date=`, so the picker cannot render its final shape until that request resolves.
 
 Duration is now optional across the whole feature, so any consumer of `activity_logs` must handle a null. The `/activities` summary reports "Timed minutes" rather than implying every activity contributes minutes, and the MCP export returns `durationMinutes: null` for tile logs.
 

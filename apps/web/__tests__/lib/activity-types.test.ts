@@ -6,7 +6,7 @@ import {
   isActivityPresetSlug,
   presetForActivityLabel,
   toggleActivitySelection,
-  visibleActivityPresets,
+  isCoveredByWorkoutSession,
 } from '@/lib/activity-types';
 
 describe('activity presets', () => {
@@ -83,25 +83,31 @@ describe('toggleActivitySelection', () => {
   });
 });
 
-describe('visibleActivityPresets', () => {
-  it('shows every tile on a day with no workout session', () => {
-    const visible = visibleActivityPresets({ hasWorkoutSession: false });
-    expect(visible).toHaveLength(ACTIVITY_PRESETS.length);
+describe('isCoveredByWorkoutSession', () => {
+  const strength = getActivityPreset('strength-training')!;
+  const ran = getActivityPreset('ran')!;
+
+  it('covers nothing on a day with no workout session', () => {
+    for (const preset of ACTIVITY_PRESETS) {
+      expect(isCoveredByWorkoutSession(preset, { hasWorkoutSession: false })).toBe(false);
+    }
   });
 
-  it('hides strength training once a workout session exists for the day', () => {
-    const visible = visibleActivityPresets({ hasWorkoutSession: true });
-    expect(visible.map((preset) => preset.slug)).not.toContain('strength-training');
-    // Everything else still shows.
-    expect(visible).toHaveLength(ACTIVITY_PRESETS.length - 1);
+  it('covers only strength training once a workout session exists for the day', () => {
+    const covered = ACTIVITY_PRESETS.filter((preset) =>
+      isCoveredByWorkoutSession(preset, { hasWorkoutSession: true })
+    );
+    expect(covered.map((preset) => preset.slug)).toEqual(['strength-training']);
+    expect(isCoveredByWorkoutSession(ran, { hasWorkoutSession: true })).toBe(false);
   });
 
-  it('keeps strength training visible when it is already selected', () => {
-    // Otherwise an existing selection would vanish and become un-removable.
-    const visible = visibleActivityPresets({
-      hasWorkoutSession: true,
-      selected: ['strength-training'],
-    });
-    expect(visible.map((preset) => preset.slug)).toContain('strength-training');
+  it('leaves strength training a normal tile when it is already selected', () => {
+    // Otherwise an existing selection would lock and become un-removable.
+    expect(
+      isCoveredByWorkoutSession(strength, {
+        hasWorkoutSession: true,
+        selected: ['strength-training'],
+      })
+    ).toBe(false);
   });
 });

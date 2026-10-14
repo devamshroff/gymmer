@@ -34,10 +34,11 @@ export type ActivityPreset = {
    */
   detailPrompt?: string;
   /**
-   * Hidden on days that already have a completed Gymmer workout session, where
-   * the tile would duplicate what the session already records.
+   * On days that already have a completed Gymmer workout session the tile shows
+   * as done and locked, because the session already records it. No activity row
+   * is written for it.
    */
-  hiddenWhenWorkoutLogged?: boolean;
+  coveredByWorkoutSession?: boolean;
 };
 
 export const ACTIVITY_PRESETS: readonly ActivityPreset[] = [
@@ -50,7 +51,7 @@ export const ACTIVITY_PRESETS: readonly ActivityPreset[] = [
     slug: 'strength-training',
     label: 'Strength training',
     icon: '🏋️',
-    hiddenWhenWorkoutLogged: true,
+    coveredByWorkoutSession: true,
   },
   { slug: 'biking-class', label: 'Biking class', icon: '🚴' },
   {
@@ -113,19 +114,15 @@ export function toggleActivitySelection(
 }
 
 /**
- * Tiles to render for a given day. Presets marked `hiddenWhenWorkoutLogged` drop
- * out once the day already has a completed Gymmer workout session, unless the
- * user has already logged that tile for the day (so an existing selection never
- * silently disappears and becomes un-removable).
+ * Whether a tile should render as already done for the day because a completed
+ * Gymmer workout session covers it. A tile the user has explicitly logged for
+ * the day is never treated as covered, so an existing selection stays a normal
+ * tile that can be tapped off.
  */
-export function visibleActivityPresets(options: {
-  hasWorkoutSession: boolean;
-  selected?: readonly string[];
-}): ActivityPreset[] {
-  const selected = new Set(options.selected ?? []);
-  return ACTIVITY_PRESETS.filter((preset) => {
-    if (!preset.hiddenWhenWorkoutLogged) return true;
-    if (!options.hasWorkoutSession) return true;
-    return selected.has(preset.slug);
-  });
+export function isCoveredByWorkoutSession(
+  preset: ActivityPreset,
+  options: { hasWorkoutSession: boolean; selected?: readonly string[] }
+): boolean {
+  if (!preset.coveredByWorkoutSession || !options.hasWorkoutSession) return false;
+  return !(options.selected ?? []).includes(preset.slug);
 }

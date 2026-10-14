@@ -282,14 +282,34 @@ test('deselecting a tile removes it from the day', async ({ page }) => {
   expect(state.rows.map((row) => row.activity_type)).toEqual(['Ran']);
 });
 
-test('strength training tile hides on a day that already has a workout session', async ({ page }) => {
-  installActivityApi(page, { hasWorkoutSession: true });
+test('strength training tile shows as done on a day that already has a workout session', async ({ page }) => {
+  const state = installActivityApi(page, { hasWorkoutSession: true });
 
   await page.goto('/activities?date=2026-05-15');
 
-  await expect(page.getByTestId('activity-tile-ran')).toBeVisible();
-  await expect(page.getByTestId('activity-tile-strength-training')).toHaveCount(0);
-  await expect(page.getByText(/Strength training is hidden/)).toBeVisible();
+  const strength = page.getByTestId('activity-tile-strength-training');
+  await expect(strength).toBeVisible();
+  await expect(strength).toHaveAttribute('aria-pressed', 'true');
+  await expect(strength).toBeDisabled();
+  await expect(strength).toContainText('Logged in Gymmer');
+
+  // The workout session is the record; saving other tiles must not add a row for it.
+  await page.getByTestId('activity-tile-ran').click();
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByTestId('day-saved')).toBeVisible();
+  expect(state.rows.map((row) => row.activity_type)).toEqual(['Ran']);
+});
+
+test('strength training tile is a normal tile on a day without a workout session', async ({ page }) => {
+  installActivityApi(page);
+
+  await page.goto('/activities?date=2026-05-15');
+
+  const strength = page.getByTestId('activity-tile-strength-training');
+  await expect(strength).toBeEnabled();
+  await expect(strength).toHaveAttribute('aria-pressed', 'false');
+  await strength.click();
+  await expect(strength).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('detailed form still logs a timed activity and duration is optional', async ({ page }) => {

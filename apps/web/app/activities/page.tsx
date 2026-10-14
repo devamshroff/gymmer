@@ -7,7 +7,7 @@ import {
   ACTIVITY_PRESETS,
   presetForActivityLabel,
   toggleActivitySelection,
-  visibleActivityPresets,
+  isCoveredByWorkoutSession,
 } from '@/lib/activity-types';
 import {
   isCardioReminderSupported,
@@ -204,13 +204,6 @@ export default function ActivitiesPage() {
       cancelled = true;
     };
   }, []);
-
-  const visiblePresets = useMemo(
-    () => visibleActivityPresets({ hasWorkoutSession, selected: selectedSlugs }),
-    [hasWorkoutSession, selectedSlugs]
-  );
-
-  const hiddenByWorkout = ACTIVITY_PRESETS.length - visiblePresets.length;
 
   const summary = useMemo(() => {
     const thirtyDaysAgo = new Date();
@@ -417,13 +410,20 @@ export default function ActivitiesPage() {
           ) : (
             <>
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {visiblePresets.map((preset) => {
-                  const isSelected = selectedSlugs.includes(preset.slug);
+                {ACTIVITY_PRESETS.map((preset) => {
+                  // A Gymmer workout already logged for the day counts as this
+                  // tile, so it shows as done without writing an activity row.
+                  const isCovered = isCoveredByWorkoutSession(preset, {
+                    hasWorkoutSession,
+                    selected: selectedSlugs,
+                  });
+                  const isSelected = isCovered || selectedSlugs.includes(preset.slug);
                   return (
                     <div key={preset.slug} className="flex flex-col gap-2">
                       <button
                         type="button"
                         aria-pressed={isSelected}
+                        disabled={isCovered}
                         data-testid={`activity-tile-${preset.slug}`}
                         onClick={() => handleToggleTile(preset.slug)}
                         className={[
@@ -431,12 +431,18 @@ export default function ActivitiesPage() {
                           isSelected
                             ? 'border-emerald-500 bg-emerald-500/15 text-emerald-100'
                             : 'border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-emerald-500/50 hover:text-emerald-200',
+                          isCovered ? 'cursor-default' : '',
                         ].join(' ')}
                       >
                         <span aria-hidden className="text-2xl leading-none">
                           {preset.icon}
                         </span>
                         <span className="text-sm font-semibold leading-tight">{preset.label}</span>
+                        {isCovered && (
+                          <span className="text-[11px] leading-none text-emerald-300/80">
+                            Logged in Gymmer
+                          </span>
+                        )}
                       </button>
 
                       {preset.detailPrompt && isSelected && (
@@ -454,12 +460,6 @@ export default function ActivitiesPage() {
                   );
                 })}
               </div>
-
-              {hiddenByWorkout > 0 && (
-                <p className="mt-3 text-xs text-zinc-500">
-                  Strength training is hidden because a Gymmer workout is already logged for this day.
-                </p>
-              )}
 
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <button
